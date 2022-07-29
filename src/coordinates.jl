@@ -21,17 +21,16 @@ function r_from_rstar(a, rstar)
     i.e. we solve the equation rstar_from_rp(h') = rstar
     =#
     f(x) = rstar_from_rp(a, x) - rstar
-    if rstar < 0
+    if rstar <= 0
         #=
-        When rstar < 0, it is more efficient to use bisection method,
+        When rstar <= 0, it is more efficient to use bisection method,
         this is because in this case h' is bounded (weakly),
         h' cannot be smaller than 0 (since r=rp maps to rstar=-Inf),
         and suppose h'_u solves the equation
-        rstar_from_rp(h'_u) = 0.0, then h'_u = h'_(a) is a strictly
-        decreasing function (with |a|), and has a maximum at a = 0
-        of around 0.56
+        rstar_from_rp(h'_u) = 0.0, in which h'_u is a function of |a|
+        The maximum of h'_u occurs when |a| -> 1 with value ~ 1.328
         =#
-        return rp + find_zero(f, (0, 0.56))
+        return rp + find_zero(f, (0, 1.4))
     else
         # Use secant method instead; for large rstar, rstar \approx r
         return rp + find_zero(f, rstar)
