@@ -1,3 +1,5 @@
+include("kerr.jl")
+
 global const I = 1im # Mathematica being Mathematica
 
 function sF(s::Int, m::Int, a, omega, lambda, r)
@@ -189,4 +191,10 @@ function sU(s::Int, m::Int, a, omega, lambda, r)
         # Throw an error, this spin weight is not supported
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
     end
+end
+
+function VT(s::Int, m::Int, a, omega, lambda, r)
+    _K = K(m, a, omega)
+    _Delta = Delta(a, r)
+    return lambda - 4im*s*omega*r - (_K^2 - 2im*s*(r-1)*K)/_Delta
 end
