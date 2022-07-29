@@ -194,7 +194,7 @@ function sU(s::Int, m::Int, a, omega, lambda, r)
 end
 
 function VT(s::Int, m::Int, a, omega, lambda, r)
-    _K = K(m, a, omega)
+    _K = K(m, a, omega, r)
     _Delta = Delta(a, r)
-    return lambda - 4im*s*omega*r - (_K^2 - 2im*s*(r-1)*K)/_Delta
+    return lambda - 4im*s*omega*r - (_K^2 - 2im*s*(r-1)*_K)/_Delta
 end
