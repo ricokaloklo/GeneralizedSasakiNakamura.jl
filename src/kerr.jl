@@ -15,6 +15,6 @@ function omega_horizon(a)
     return a/(2*1*rp)
 end
 
-function K(m::Int, a, omega)
+function K(m::Int, a, omega, r)
     (r^2 + a^2)*omega - m*a
 end
