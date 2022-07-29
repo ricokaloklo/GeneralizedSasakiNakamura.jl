@@ -2,25 +2,25 @@ using Roots
 
 include("kerr.jl")
 
-function rstar_from_rp(M, a, r_from_rp)
-    rp = r_plus(M, a)
-    rm = r_minus(M, a)
-    return rp + r_from_rp + (2*M*rp)/(rp-rm) * log(r_from_rp/(2*M)) - (2*M*rm)/(rp-rm) * log((r_from_rp+rp-rm)/(2*M))
+function rstar_from_rp(a, r_from_rp)
+    rp = r_plus(a)
+    rm = r_minus(a)
+    return rp + r_from_rp + (2*1*rp)/(rp-rm) * log(r_from_rp/(2*1)) - (2*1*rm)/(rp-rm) * log((r_from_rp+rp-rm)/(2*1))
 end
 
-function rstar_from_r(M, a, r)
-    rp = r_plus(M, a)
-    return rstar_from_rp(M, a, r-rp)
+function rstar_from_r(a, r)
+    rp = r_plus(a)
+    return rstar_from_rp(a, r-rp)
 end
 
-function r_from_rstar(M, a, rstar)
-    rp = r_plus(M, a)
+function r_from_rstar(a, rstar)
+    rp = r_plus(a)
     #=
     To find r' that solves the equation rstar_from_r(r') = rstar,
     we first write r' = rp + h' and instead solve for h', then add back rp
     i.e. we solve the equation rstar_from_rp(h') = rstar
     =#
-    f(x) = rstar_from_rp(M, a, x) - rstar
+    f(x) = rstar_from_rp(a, x) - rstar
     if rstar < 0
         #=
         When rstar < 0, it is more efficient to use bisection method,
