@@ -3,6 +3,10 @@ uuid = "7d2aac85-6cc1-40c7-a4aa-e1a43f13f131"
 authors = ["Rico Ka Lok Lo"]
 version = "0.1.0"
 
+[deps]
+Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
+Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
+
 [compat]
 julia = "1"
 
