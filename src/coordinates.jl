@@ -1,4 +1,5 @@
 using Roots
+using Interpolations
 
 include("kerr.jl")
 
@@ -35,4 +36,9 @@ function r_from_rstar(a, rstar)
         # Use secant method instead; for large rstar, rstar \approx r
         return rp + find_zero(f, rstar)
     end
+end
+
+function build_r_from_rstar_interpolant(a, rsin, rsout, rsstep::Float32=0.01)
+    rsgrid = collect(rsin:rsstep:rsout)
+    return linear_interpolation(rsgrid, r_from_rstar.(rsgrid))
 end
