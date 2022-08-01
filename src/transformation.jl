@@ -1,4 +1,4 @@
-global const I = 1im # Mathematica being Mathematica
+const I = 1im # Mathematica being Mathematica
 
 function alpha(s::Int, m::Int, a, omega, lambda, r)
     #=

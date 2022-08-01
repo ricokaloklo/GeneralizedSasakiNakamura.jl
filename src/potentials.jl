@@ -1,6 +1,6 @@
 include("kerr.jl")
 
-global const I = 1im # Mathematica being Mathematica
+const I = 1im # Mathematica being Mathematica
 
 function sF(s::Int, m::Int, a, omega, lambda, r)
     #=
