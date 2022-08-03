@@ -1,8 +1,9 @@
 include("kerr.jl")
+include("coordinates.jl")
 
 const I = 1im # Mathematica being Mathematica
 
-function Xinf_fansatz(s::Int, m::Int, a, omega, lambda, r; order::Int=-1)
+function Xinf_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::Int=-1)
     #=
     We have derived/shown the explicit expression for
     different physically-relevant spin weight (s=0, \pm 1, \pm2)
@@ -109,11 +110,15 @@ function Xinf_fansatz(s::Int, m::Int, a, omega, lambda, r; order::Int=-1)
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
     end
 
-    fansatz = 1 + A1/(omega*r) + A2/(omega*r)^2 + A3/(omega*r)^3
-    return fansatz
+    rout = r_from_rstar(a, rsout)
+    fansatz = 1 + A1/(omega*rout) + A2/(omega*rout)^2 + A3/(omega*rout)^3
+    dfansatz_dr = -A1/(omega*rout^2) - (2*A2)/(omega^2 * rout^3) - (3*A3)/(omega^3 * rout^4)
+    phase = exp(1im * omega * rsout)
+
+    return phase*fansatz, phase*(1im*omega*fansatz + (Delta(a, rout)/(rout^2 + a^2))*dfansatz_dr)
 end
 
-function XH_gansatz(s::Int, m::Int, a, omega, lambda, r; order::Int=-1)
+function XH_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::Int=-1)
     #=
     For XH, which we obtain by integrating from r_* -> -inf (or r -> r_+),
     we simply start our integration very close to the EH
@@ -121,5 +126,10 @@ function XH_gansatz(s::Int, m::Int, a, omega, lambda, r; order::Int=-1)
     =#
     _highest_order_implemented = 0
     order = (order == -1 ? _highest_order_implemented : order)
-    return 1.0
+    gansatz = 1
+    dgansatz_dr = 0
+    p = omega - m*omega_horizon(a)
+    phase = exp(-1im * p * rsin)
+
+    return phase*gansatz, phase*(-1im*p*gansatz)
 end
