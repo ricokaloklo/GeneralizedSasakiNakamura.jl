@@ -84,16 +84,16 @@ function alpha_prime(s::Int, m::Int, a, omega, lambda, r)
     elseif s == 1
         # s = +1
         return begin
-            (sqrt(1/(a^2 + (-2 + r)*r))*(a^2 - 2*I*a*m*r + 3*r^2 + 4*I*r*(a^2 + r^2)*\[Omega]))/(a^2 + r^2) - 
+            (sqrt(1/(a^2 + (-2 + r)*r))*(a^2 - 2*I*a*m*r + 3*r^2 + 4*I*r*(a^2 + r^2)*omega))/(a^2 + r^2) - 
             (2*r*sqrt(1/(a^2 + (-2 + r)*r))*(-2*a^2 - I*a^3*m + a^2*r - I*a*m*r^2 + r^3 + 
-            I*(a^2 + r^2)^2*\[Omega]))/(a^2 + r^2)^2 - ((-2 + 2*r)*(1/(a^2 + (-2 + r)*r))^(3/2)*
-            (-2*a^2 - I*a^3*m + a^2*r - I*a*m*r^2 + r^3 + I*(a^2 + r^2)^2*\[Omega]))/(2*(a^2 + r^2))
+            I*(a^2 + r^2)^2*omega))/(a^2 + r^2)^2 - ((-2 + 2*r)*(1/(a^2 + (-2 + r)*r))^(3/2)*
+            (-2*a^2 - I*a^3*m + a^2*r - I*a*m*r^2 + r^3 + I*(a^2 + r^2)^2*omega))/(2*(a^2 + r^2))
         end
     elseif s == -1
         # s = -1
         return begin
-            (-1 + (2*r)/(a^2 + r^2) + r*(-((4*r^2)/(a^2 + r^2)^2) + 2/(a^2 + r^2)) - 2*I*r*\[Omega])/
-            sqrt(a^2 + (-2 + r)*r) - ((-2 + 2*r)*(I*a*m + r*(-1 + (2*r)/(a^2 + r^2)) - I*(a^2 + r^2)*\[Omega]))/
+            (-1 + (2*r)/(a^2 + r^2) + r*(-((4*r^2)/(a^2 + r^2)^2) + 2/(a^2 + r^2)) - 2*I*r*omega)/
+            sqrt(a^2 + (-2 + r)*r) - ((-2 + 2*r)*(I*a*m + r*(-1 + (2*r)/(a^2 + r^2)) - I*(a^2 + r^2)*omega))/
             (2*(a^2 + (-2 + r)*r)^(3/2))
         end
     elseif s == 2
