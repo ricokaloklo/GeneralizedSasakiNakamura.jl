@@ -38,7 +38,7 @@ function r_from_rstar(a, rstar)
     end
 end
 
-function build_r_from_rstar_interpolant(a, rsin, rsout, rsstep::Float64=0.01)
+function build_r_from_rstar_interpolant(a, rsin, rsout; rsstep::Float64=0.01)
     rsgrid = collect(rsin:rsstep:rsout)
     return linear_interpolation(rsgrid, (x -> r_from_rstar(a, x)).(rsgrid))
 end

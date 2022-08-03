@@ -2,7 +2,7 @@ include("kerr.jl")
 
 const I = 1im # Mathematica being Mathematica
 
-function Xinf_fansatz(s::Int, m::Int, a, omega, lambda, r, order::Int=-1)
+function Xinf_fansatz(s::Int, m::Int, a, omega, lambda, r; order::Int=-1)
     #=
     We have derived/shown the explicit expression for
     different physically-relevant spin weight (s=0, \pm 1, \pm2)
@@ -113,7 +113,7 @@ function Xinf_fansatz(s::Int, m::Int, a, omega, lambda, r, order::Int=-1)
     return fansatz
 end
 
-function XH_gansatz(s::Int, m::Int, a, omega, lambda, r, order::Int=-1)
+function XH_gansatz(s::Int, m::Int, a, omega, lambda, r; order::Int=-1)
     #=
     For XH, which we obtain by integrating from r_* -> -inf (or r -> r_+),
     we simply start our integration very close to the EH
