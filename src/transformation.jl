@@ -1,3 +1,6 @@
+include("kerr.jl")
+include("potentials.jl")
+
 const I = 1im # Mathematica being Mathematica
 
 function alpha(s::Int, m::Int, a, omega, lambda, r)
@@ -168,3 +171,89 @@ function beta_prime(s::Int, m::Int, a, omega, lambda, r)
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
     end
 end
+
+function eta(s::Int, m::Int, a, omega, lambda, r)
+    #=
+    We have derived/shown the explicit expression for
+    different physically-relevant spin weight (s=0, \pm 1, \pm2)
+    =#
+    if s == 0
+        # s = 0
+        return 1.0
+    elseif s == 1
+        # s = +1
+        return begin
+            -((-2*I*a^3*m*r - 2*I*a*m*r^3 + a^4*(1 + lambda) + r^4*(2 + lambda) + a^2*r*(2 + r*(3 + 2*lambda)))/(a^2 + r^2)^2)
+        end
+    elseif s == -1
+        # s = -1
+        return begin
+            -((2*I*a^3*m*r + 2*I*a*m*r^3 + a^4*(-1 + lambda) + 
+            r^4*lambda + a^2*r*(2 + r*(-1 + 2*lambda)))/
+            (a^2 + r^2)^2)
+        end
+    elseif s == 2
+        # s = +2
+        return begin
+            (1/(a^2 + r^2)^2)*(r^4*(24 + 10*lambda + lambda^2 + 12*I*omega) - 4*a^5*m*omega - 4*a^6*omega^2 + 8*a^3*m*(-I - I*r*lambda + r^2*omega) + 
+            4*a*m*r^2*(-6*I - 2*I*r*(4 + lambda) + 3*r^2*omega) - 2*a^2*r*(-8*(3 + lambda) + r*(-12 + 12*m^2 - 6*lambda - lambda^2 + 12*I*omega) + 8*I*r^2*omega + 2*r^3*omega^2) + 
+            a^4*(8*m^2 + 2*lambda + lambda^2 - 4*omega*(I + 4*I*r + 2*r^2*omega)))
+        end
+    elseif s == -2
+        # s = -2
+        return begin
+            (1/r^4)*(r^4*(2*lambda + lambda^2 - 12*I*omega) + 24*a^3*m*r*(-I + 2*r*omega) + 4*a*m*r^2*(6*I + 2*I*r*lambda + 3*r^2*omega) + a^4*(12 + 24*I*r*omega - 24*r^2*omega^2) - 
+            4*a^2*r*(6 + r*(-3 + 6*m^2 + 6*I*omega) + 2*I*r^2*(-3 + lambda)*omega + 3*r^3*omega^2))
+        end
+    else
+        # Throw an error, this spin weight is not supported
+        throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
+    end
+end
+
+function eta_prime(s::Int, m::Int, a, omega, lambda, r)
+    #=
+    We have derived/shown the explicit expression for
+    different physically-relevant spin weight (s=0, \pm 1, \pm2)
+    =#
+    if s == 0
+        # s = 0
+        return 0.0
+    elseif s == 1
+        # s = +1
+        return begin
+            (2*a*(I*a^4*m - a*(-3 + r)*r^2 - I*m*r^4 - a^3*(1 + r)))/(a^2 + r^2)^3
+        end
+    elseif s == -1
+        # s = -1
+        return begin
+            (2*a*((-I)*a^4*m - a*(-3 + r)*r^2 + I*m*r^4 - 
+            a^3*(1 + r)))/(a^2 + r^2)^3
+        end
+    elseif s == 2
+        # s = +2
+        return begin
+            (1/(a^2 + r^2)^3)*8*a*(I*m*r^3*(6 + r*(4 + lambda)) + 2*a^3*(3 + lambda + r*(3 - 5*m^2 + lambda - 2*I*omega)) - 2*I*a^5*omega + a^4*m*((-I)*lambda + 4*r*omega) + 
+            2*a*r^2*(-3*(3 + lambda) + r*(3 + 3*m^2 + lambda + 6*I*omega) + I*r^2*omega) + 2*a^2*m*r*(-I - 6*I*r + 2*r^2*omega))
+        end
+    elseif s == -2
+        # s = -2
+        return begin
+            (1/r^5)*8*a*((-I)*m*r^2*(6 + r*lambda) + 3*a^2*m*r*(3*I - 4*r*omega) + a*r*(9 + r*(-3 + 6*m^2 + 6*I*omega) + I*r^2*(-3 + lambda)*omega) + 
+            a^3*(-6 - 9*I*r*omega + 6*r^2*omega^2))
+        end
+    else
+        # Throw an error, this spin weight is not supported
+        throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
+    end
+end
+
+#=
+function Teukolsky_function_from_Sasaki_Nakamura_function(s::Int, m::Int, a, omega, lambda, r, X, Xprime)
+    _alpha = alpha(s, m, a, omega, lambda, r)
+    _alpha_prime = alpha_prime(s, m, a, omega, lambda, r)
+    _beta = beta(s, m, a, omega, lambda, r)
+    _beta_prime = beta_prime(s, m, a, omega, lambda, r)
+    _Delta = Delta(a, r)
+end
+=#
