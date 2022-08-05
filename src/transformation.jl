@@ -247,13 +247,3 @@ function eta_prime(s::Int, m::Int, a, omega, lambda, r)
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
     end
 end
-
-#=
-function Teukolsky_function_from_Sasaki_Nakamura_function(s::Int, m::Int, a, omega, lambda, r, X, Xprime)
-    _alpha = alpha(s, m, a, omega, lambda, r)
-    _alpha_prime = alpha_prime(s, m, a, omega, lambda, r)
-    _beta = beta(s, m, a, omega, lambda, r)
-    _beta_prime = beta_prime(s, m, a, omega, lambda, r)
-    _Delta = Delta(a, r)
-end
-=#
