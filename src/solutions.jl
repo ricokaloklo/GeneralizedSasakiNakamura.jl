@@ -77,8 +77,8 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(s::Int, m::Int,
     end
     _chi_conv_array = chi_conversion_factor.(rgrid)
     _dchi_conv_dr_array = dchi_conversion_factor_dr.(rgrid)
-    @. chi = X * _chi_conv_array
-    @. chiprime = Xprime * _chi_conv_array + Xprime * _dchi_conv_dr_array
+    chi = X .* _chi_conv_array
+    chiprime = Xprime .* _chi_conv_array .+ X .* _dchi_conv_dr_array
 
     # And then transform from chi, chiprime to R, Rprime
     _eta = (x -> eta(s, m, a, omega, lambda, x)).(rgrid)
@@ -88,11 +88,10 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(s::Int, m::Int,
     _beta_prime = (x -> beta_prime(s, m, a, omega, lambda, x)).(rgrid)
     _Delta = (x -> Delta(a, x)).(rgrid)
     _VT = (x -> VT(s, m, a, omega, lambda, x)).(rgrid)
+    _inv_eta = 1.0 ./ _eta
 
-    @. _inv_eta = 1.0 / _eta
-
-    @. R = _inv_eta * ( (_alpha + _beta_prime*((_Delta)^(s+1)))*chi + (-_beta*((_Delta)^(s+1)))*chiprime )
-    @. Rprime = _inv_eta * ( -(_alpha_prime + _beta*_VT*((_Delta)^(s)))*chi + (_alpha)*chiprime )
+    R = _inv_eta .* ( (_alpha .+ _beta_prime.*((_Delta).^(s+1))).*chi + (-_beta.*((_Delta).^(s+1))).*chiprime )
+    Rprime = _inv_eta .* ( -(_alpha_prime .+ _beta.*_VT.*((_Delta).^(s))).*chi + (_alpha).*chiprime )
 
     return rgrid, rsgrid, R, Rprime
 end
