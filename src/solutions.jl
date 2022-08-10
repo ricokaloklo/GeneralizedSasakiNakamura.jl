@@ -51,47 +51,50 @@ function solve_XH(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, a
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
-function Teukolsky_radial_function_from_Sasaki_Nakamura_function(s::Int, m::Int, a, omega, lambda, Xsoln; rspan=nothing)
-    local rsgrid, rgrid, X_Xprime_vector
-    if isnothing(rspan)
-        # Use the grid that was used to perform the integration
-        rsgrid = Xsoln.t
-        rgrid = (x -> r_from_rstar(a, x)).(rsgrid)
-        X_Xprime_vector = Xsoln.u
-    else
-        # Use the supplied rgrid and perform interpolation/extrapolation if needed
-        rgrid = rspan
-        rsgrid = (x -> rstar_from_r(a, x)).(rgrid)
-        X_Xprime_vector = Xsoln.(rsgrid)
-    end
-    # Now X and Xprime are function of r, i.e. X = X(r), Xprime = dX/dr = dX/dr_* dr_*/dr_
-    X = [X_Xprime_vector[i][1] for i in 1:length(rsgrid)]
-    drstar_dr = (x -> (x^2 + a^2)/Delta(a, x)).(rgrid)
-    Xprime = [X_Xprime_vector[i][2] for i in 1:length(rsgrid)] .* drstar_dr
+function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
+    # Unpack the parameters
+    s = Xsoln.prob.p.s
+    m = Xsoln.prob.p.m
+    a = Xsoln.prob.p.a
+    omega = Xsoln.prob.p.omega
+    lambda = Xsoln.prob.p.lambda
 
-    # Now transform from X, Xprime to chi, chiprime
-    chi_conversion_factor(r) = 1.0/sqrt((r^2 + a^2) * Delta(a, r)^s)
+    #=
+    First convert [X(rs), dX/drs(rs)] to [X(r), dX/dr(r)], this is done by
+    [X(r), dX/dr(r)]^T = [1, 0; 0, drstar/dr ] * [X(rs), dX/drs(rs)]^T
+
+    Then we convert [X(r), dX/dr(r)] to [chi(r), dchi/dr(r)] by
+    [chi(r), dchi/dr(r)]^T = [chi_conversion_factor(r), 0 ; dchi_conversion_factor_dr, chi_conversion_factor] * [X(r), dX/dr(r)]^T
+
+    After that we convert [chi(r), dchi/dr(r)] to [R(r), dR/dr(r)] by
+    [R(r), dR/dr(r)]^T = 1/eta(r) * [ alpha + beta_prime*Delta^(s+1), -beta*Delta^s ; -(alpha_prime + beta*VT*Delta^s), a ] *  [chi(r), dchi/dr(r)]^T
+
+    Therefore the overall conversion matrix is 'just' (one matrix for each r)
+    the multiplication of each conversion matrix
+    =#
+
+    drstar_dr(r) = (r^2 + a^2)/Delta(a, r)
+    chi_conversion_factor(r) = (1.0/sqrt((r^2 + a^2) * (Delta(a, r)^s)))
     dchi_conversion_factor_dr(r) = begin
         ((-a^2)*(r - s + r*s) + r^2*(2 + s - r*(1 + s)))/
         ((a^2 + (-2 + r)*r)*sqrt((a^2 + (-2 + r)*r)^s)*(a^2 + r^2)^(3/2))
     end
-    _chi_conv_array = chi_conversion_factor.(rgrid)
-    _dchi_conv_dr_array = dchi_conversion_factor_dr.(rgrid)
-    chi = X .* _chi_conv_array
-    chiprime = Xprime .* _chi_conv_array .+ X .* _dchi_conv_dr_array
+    _eta(r) = eta(s, m, a, omega, lambda, r)
+    _alpha(r) = alpha(s, m, a, omega, lambda, r)
+    _alpha_prime(r) = alpha_prime(s, m, a, omega, lambda, r)
+    _beta(r) = beta(s, m, a, omega, lambda, r)
+    _beta_prime(r) = beta_prime(s, m, a, omega, lambda, r)
+    _Delta(r) = Delta(a, r)
+    _VT(r) = VT(s, m, a, omega, lambda, r)
+    _1_over_eta(r) = 1.0/_eta(r)
 
-    # And then transform from chi, chiprime to R, Rprime
-    _eta = (x -> eta(s, m, a, omega, lambda, x)).(rgrid)
-    _alpha = (x -> alpha(s, m, a, omega, lambda, x)).(rgrid)
-    _alpha_prime = (x -> alpha_prime(s, m, a, omega, lambda, x)).(rgrid)
-    _beta = (x -> beta(s, m, a, omega, lambda, x)).(rgrid)
-    _beta_prime = (x -> beta_prime(s, m, a, omega, lambda, x)).(rgrid)
-    _Delta = (x -> Delta(a, x)).(rgrid)
-    _VT = (x -> VT(s, m, a, omega, lambda, x)).(rgrid)
-    _inv_eta = 1.0 ./ _eta
+    conversion_matrix_from_X_dXdrs_to_X_dXdr(r) = [1 0 ; 0 drstar_dr(r)]
+    conversion_matrix_from_X_dXdr_to_chi_dchidr(r) = [chi_conversion_factor(r) 0 ; dchi_conversion_factor_dr(r) chi_conversion_factor(r)]
+    conversion_matrix_from_chi_dchidr_to_R_dRdr(r) = _1_over_eta(r) * [_alpha(r)+_beta_prime(r)*(_Delta(r)^(s+1)) -_beta(r)*(_Delta(r)^(s+1)) ; -(_alpha_prime(r)+_beta(r)*_VT(r)*(_Delta(r)^(s))) _alpha(r)]
+    # **Left multiplication**
+    overall_conversion_matrix(r) = conversion_matrix_from_chi_dchidr_to_R_dRdr(r) * conversion_matrix_from_X_dXdr_to_chi_dchidr(r) * conversion_matrix_from_X_dXdrs_to_X_dXdr(r)
 
-    R = _inv_eta .* ( (_alpha .+ _beta_prime.*((_Delta).^(s+1))).*chi + (-_beta.*((_Delta).^(s+1))).*chiprime )
-    Rprime = _inv_eta .* ( -(_alpha_prime .+ _beta.*_VT.*((_Delta).^(s))).*chi + (_alpha).*chiprime )
-
-    return rgrid, rsgrid, R, Rprime
+    _interpolant_in_r(r) = Xsoln(rstar_from_r(a, r))
+    Rsoln = (r -> overall_conversion_matrix(r) * _interpolant_in_r(r))
+    return Rsoln
 end
