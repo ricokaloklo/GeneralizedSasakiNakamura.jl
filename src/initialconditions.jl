@@ -118,9 +118,9 @@ function Xinf_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::
     return phase*fansatz, phase*(1im*omega*fansatz + (Delta(a, rout)/(rout^2 + a^2))*dfansatz_dr)
 end
 
-function XH_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::Int=-1)
+function Xhor_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::Int=-1)
     #=
-    For XH, which we obtain by integrating from r_* -> -inf (or r -> r_+),
+    For Xhor, which we obtain by integrating from r_* -> -inf (or r -> r_+),
     we simply start our integration very close to the EH
     i.e. gansatz = 1
     =#

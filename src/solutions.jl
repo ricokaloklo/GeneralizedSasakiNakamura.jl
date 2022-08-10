@@ -36,14 +36,14 @@ function solve_Xinf(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10,
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
-function solve_XH(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
+function solve_Xhor(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
     end
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
-    XH_rsin, XHprime_rsin = XH_initialconditions(s, m, a, omega, lambda, rsin)
-    u0 = [XH_rsin; XHprime_rsin]
+    Xhor_rsin, Xhorprime_rsin = Xhor_initialconditions(s, m, a, omega, lambda, rsin)
+    u0 = [Xhor_rsin; Xhorprime_rsin]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
     odeprob = ODEProblem(generalized_sasaki_nakamura_equation!, u0, rsspan, p)
