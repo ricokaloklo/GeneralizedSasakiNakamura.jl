@@ -1,6 +1,10 @@
 using SpinWeightedSpheroidalHarmonics
 
-function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s::Int, l::Int, m::Int, a, omega, En, Lz, r)
+# Mathematica being Mathematica
+const Pi = pi
+const I = 1im
+
+function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s::Int, l::Int, m::Int, a, omega, En, Lz)
     # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
     # There is a caching mechanism so only need to do spectral decomposition once
     swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
@@ -30,7 +34,7 @@ function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_ze
     end
 end
 
-function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s::Int, l::Int, m::Int, a, omega, En, Lz, r)
+function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s::Int, l::Int, m::Int, a, omega, En, Lz)
     # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
     # There is a caching mechanism so only need to do spectral decomposition once
     swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
