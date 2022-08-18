@@ -265,13 +265,12 @@ function _nearhorizon_ansatz_firstorder(s::Int, l::Int, m::Int, a, omega, En, Lz
     end
 end
 
-function sourceterm_regularization_ansatz_coefficients(s::Int, l::Int, m::Int, a, omega, En, Lz)
+function sourceterm_regularization_ansatz_coefficients(s::Int, l::Int, m::Int, a, omega, En, Lz, lambda)
     # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
     # There is a caching mechanism so only need to do spectral decomposition once
     swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
     psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
     p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
-    lambda = Teukolsky_lambda_const(a*omega, s, l, m)
 
     #=
     We have derived/shown the explicit expression for
@@ -298,9 +297,7 @@ function sourceterm_regularization_ansatz_coefficients(s::Int, l::Int, m::Int, a
     end
 end
 
-function _lhs_without_phasing_ansatz(s::Int, l::Int, m::Int, a, omega, En, Lz, r, scriptA0, scriptA1)
-    lambda = Teukolsky_lambda_const(a*omega, s, l, m)
-
+function _lhs_without_phasing_ansatz(s::Int, l::Int, m::Int, a, omega, En, Lz, lambda, r, scriptA0, scriptA1)
     #=
     We have derived/shown the explicit expression for
     s = +2 ONLY
