@@ -4,12 +4,14 @@ using SpinWeightedSpheroidalHarmonics
 const Pi = pi
 const I = 1im
 
-function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s::Int, l::Int, m::Int, a, omega, En, Lz)
-    # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
-    # There is a caching mechanism so only need to do spectral decomposition once
-    swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
-    psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
-    p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s::Int, l::Int, m::Int, a, omega, En, Lz; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing)
+    if isnothing(swsh_piover2) || isnothing(psptheta_piover2) || isnothing(p2sptheta2_piover2)
+        # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
+        # There is a caching mechanism so only need to do spectral decomposition once
+        swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
+        psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
+        p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+    end
 
     # Some useful terms to pre-compute
     sqrt_one_minus_a_sq = sqrt(1 - a^2)
@@ -34,12 +36,14 @@ function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_ze
     end
 end
 
-function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s::Int, l::Int, m::Int, a, omega, En, Lz)
-    # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
-    # There is a caching mechanism so only need to do spectral decomposition once
-    swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
-    psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
-    p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s::Int, l::Int, m::Int, a, omega, En, Lz; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing)
+    if isnothing(swsh_piover2) || isnothing(psptheta_piover2) || isnothing(p2sptheta2_piover2)
+        # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
+        # There is a caching mechanism so only need to do spectral decomposition once
+        swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
+        psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
+        p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+    end
 
     # Some useful terms to pre-compute
     sqrt_one_minus_a_sq = sqrt(1 - a^2)
@@ -85,6 +89,184 @@ function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_fi
             ((1 + sqrt_one_minus_a_sq)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 4*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)*((-a)*Lz*(1 + sqrt_one_minus_a_sq) + En*(4 - 2*a^2 + 4*sqrt_one_minus_a_sq)) - horizon_term^2*(2*a*Lz*(1 + sqrt_one_minus_a_sq) + a^2*En*(6 + 5*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^2) - 4*En*(3 + 5*sqrt_one_minus_a_sq + 2*sqrt_one_minus_a_sq^2)))*
             ((2 - a^2 + 2*sqrt_one_minus_a_sq)*(p2sptheta2_piover2) + (1 + sqrt_one_minus_a_sq)*(a^2*omega*(2*I + omega + sqrt_one_minus_a_sq*omega)*(swsh_piover2) - 2*a*(I + omega + sqrt_one_minus_a_sq*omega)*((psptheta_piover2) + m*(swsh_piover2)) + (1 + sqrt_one_minus_a_sq)*(2*m*(psptheta_piover2) + (-2 + m^2)*(swsh_piover2)))))))
         end
+    else
+        # Throw an error, this spin weight is not supported
+        throw(DomainError(s, "Currently only spin weight s of +2 is supported"))
+    end
+end
+
+function nearhorizon_ansatz_zerothorder(s::Int, l::Int, m::Int, a, omega, En, Lz; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing, lambda=nothing)
+    if isnothing(swsh_piover2) || isnothing(psptheta_piover2) || isnothing(p2sptheta2_piover2)
+        # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
+        # There is a caching mechanism so only need to do spectral decomposition once
+        swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
+        psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
+        p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+        lambda = Teukolsky_lambda_const(a*omega, s, l, m)
+    end
+
+    # Some useful terms to pre-compute
+    sqrt_one_minus_a_sq = sqrt(1 - a^2)
+    horizon_term = (a*Lz - 2*En*(1 + sqrt_one_minus_a_sq))
+
+    #=
+    We have derived/shown the explicit expression for
+    s = +2 ONLY
+    =#
+    if s == 2
+        # s = +2
+        coefficient_for_scriptA0 = begin
+            (-(1/(1 + sqrt_one_minus_a_sq)^5))*(6*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^3 + 24*(1 + sqrt_one_minus_a_sq)^3*(1 + 3*sqrt_one_minus_a_sq) + (4*(1 + sqrt_one_minus_a_sq)*(-19*a^4 - 48*(1 + sqrt_one_minus_a_sq) + a^2*(67 + 43*sqrt_one_minus_a_sq)))/sqrt_one_minus_a_sq + 
+            (1/(2*horizon_term^2*(sqrt_one_minus_a_sq - a^2*sqrt_one_minus_a_sq)))*(1 + sqrt_one_minus_a_sq)^4*((-a)*(a*horizon_term^2*sqrt_one_minus_a_sq - 4*(-1 + a^2)*horizon_term*(a*En + Lz*sqrt_one_minus_a_sq) - 2*a*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2))*
+            m^2 + 4*(2*a^7 + 8*a*(-1 + En^2)*(1 + sqrt_one_minus_a_sq) - 8*En*Lz*(1 + sqrt_one_minus_a_sq) - 6*a^5*(2 + sqrt_one_minus_a_sq) + a^6*En*Lz*(4 + sqrt_one_minus_a_sq) + 4*a^2*En*Lz*(4 + 3*sqrt_one_minus_a_sq) - 3*a^4*En*Lz*(4 + 3*sqrt_one_minus_a_sq) + 
+            a^3*(18 + (14 + Lz^2)*sqrt_one_minus_a_sq - 4*En^2*(2 + sqrt_one_minus_a_sq)))*m*omega + 4*(1 + sqrt_one_minus_a_sq)*(-2*a^6*(1 + En^2) - 8*a*En*Lz*(1 + sqrt_one_minus_a_sq) + 2*(4 + 8*En^2 + Lz^2)*(1 + sqrt_one_minus_a_sq) - 2*a^5*En*Lz*(4 + sqrt_one_minus_a_sq) + 
+            2*a^3*En*Lz*(8 + 7*sqrt_one_minus_a_sq) + a^4*(Lz^2 + 6*(2 + sqrt_one_minus_a_sq) + 2*En^2*(12 + 5*sqrt_one_minus_a_sq)) - a^2*(3*Lz^2*(1 + sqrt_one_minus_a_sq) + 2*(9 + 7*sqrt_one_minus_a_sq) + En^2*(38 + 30*sqrt_one_minus_a_sq)))*omega^2) - 
+            (2*(1 + sqrt_one_minus_a_sq)^3*((-a)*m + 2*(1 + sqrt_one_minus_a_sq)*omega)*((-a)*m + 2*omega + 2*sqrt_one_minus_a_sq*(-2*I + omega)))/sqrt_one_minus_a_sq + (1/(horizon_term^2*sqrt_one_minus_a_sq))*3*I*(1 + sqrt_one_minus_a_sq)^3*
+            (-2*a^6*(1 + En^2)*omega - a*(1 + sqrt_one_minus_a_sq)*((4 + 40*En^2 - Lz^2)*m + 128*En*Lz*omega) + 4*(1 + sqrt_one_minus_a_sq)*(-2*En*Lz*m + 64*En^2*omega + (4 + Lz^2)*omega) + 
+            a^5*((-3 - sqrt_one_minus_a_sq + En^2*(5 + sqrt_one_minus_a_sq))*m - 2*En*Lz*(5 + sqrt_one_minus_a_sq)*omega) + 2*a^4*(-12*En*Lz*m + 3*En^2*(13 + 2*sqrt_one_minus_a_sq)*omega + (9 - 5*Lz^2 + 4*sqrt_one_minus_a_sq)*omega) + 
+            a^3*((7 + 5*sqrt_one_minus_a_sq - 2*Lz^2*(1 + 3*sqrt_one_minus_a_sq) + En^2*(31 + 11*sqrt_one_minus_a_sq))*m + 2*En*Lz*(65 + 33*sqrt_one_minus_a_sq)*omega) - 2*a^2*(-2*En*Lz*(9 + 8*sqrt_one_minus_a_sq)*m + 4*(4 + 3*sqrt_one_minus_a_sq)*omega - Lz^2*(4 + 5*sqrt_one_minus_a_sq)*omega + 
+            2*En^2*(81 + 49*sqrt_one_minus_a_sq)*omega)) + (1/(horizon_term^2*sqrt_one_minus_a_sq))*2*I*(1 + sqrt_one_minus_a_sq)^2*(4*a^6*(5 + sqrt_one_minus_a_sq + En^2*(7 + sqrt_one_minus_a_sq))*omega + 2*a^7*((-1 + En^2)*m - 2*En*Lz*omega) + 
+            4*a*(1 + sqrt_one_minus_a_sq)*((4 + 44*En^2 - Lz^2)*m + 136*En*Lz*omega) - 16*(1 + sqrt_one_minus_a_sq)*(-2*En*Lz*m + 68*En^2*omega + (4 + Lz^2)*omega) + 
+            a^5*((18 - 13*Lz^2 + 8*sqrt_one_minus_a_sq - 2*En^2*(-7 + 6*sqrt_one_minus_a_sq))*m + 4*En*Lz*(41 + 6*sqrt_one_minus_a_sq)*omega) - a^3*((8*(4 + 3*sqrt_one_minus_a_sq) + 8*En^2*(23 + 12*sqrt_one_minus_a_sq) - Lz^2*(19 + 17*sqrt_one_minus_a_sq))*m + 16*En*Lz*(43 + 26*sqrt_one_minus_a_sq)*omega) + 
+            8*a^2*(-2*En*Lz*(10 + 9*sqrt_one_minus_a_sq)*m - Lz^2*(4 + 5*sqrt_one_minus_a_sq)*omega + 2*(9 + 7*sqrt_one_minus_a_sq)*omega + 2*En^2*(103 + 69*sqrt_one_minus_a_sq)*omega) - 
+            2*a^4*(-2*En*Lz*(30 + 13*sqrt_one_minus_a_sq)*m + 2*En^2*(151 + 47*sqrt_one_minus_a_sq)*omega + (50 + 26*sqrt_one_minus_a_sq - 11*Lz^2*(2 + sqrt_one_minus_a_sq))*omega)) + 
+            ((1 + sqrt_one_minus_a_sq)^4*(-8*omega^2 + 4*a^2*omega*(I + omega) + 2*a*m*(-I + omega + sqrt_one_minus_a_sq*omega) + sqrt_one_minus_a_sq*(lambda - 8*omega^2)))/sqrt_one_minus_a_sq + ((2*(1 + sqrt_one_minus_a_sq)^3)/sqrt_one_minus_a_sq - (1 + sqrt_one_minus_a_sq)^4/(2*(-1 + a^2)))*
+            (a^2*m^2 + 4*(1 + sqrt_one_minus_a_sq)*omega*(omega + sqrt_one_minus_a_sq*(-I + omega)) - 2*a*m*(2*omega + sqrt_one_minus_a_sq*(-I + 2*omega))))
+        end
+        
+        coefficient_for_scriptA1 = begin
+            -((4*I*(-1 + a^2)*(a^3*m - 2*a*(1 + sqrt_one_minus_a_sq)*m + a^2*(2*I + sqrt_one_minus_a_sq*(I - 2*omega) - 6*omega) + 2*(1 + sqrt_one_minus_a_sq)*(-I + 4*omega)))/(sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^5))
+        end
+
+        return coefficient_for_scriptA0, coefficient_for_scriptA1
+    else
+        # Throw an error, this spin weight is not supported
+        throw(DomainError(s, "Currently only spin weight s of +2 is supported"))
+    end
+end
+
+function nearhorizon_ansatz_firstorder(s::Int, l::Int, m::Int, a, omega, En, Lz; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing, lambda=nothing)
+    if isnothing(swsh_piover2) || isnothing(psptheta_piover2) || isnothing(p2sptheta2_piover2)
+        # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
+        # There is a caching mechanism so only need to do spectral decomposition once
+        swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
+        psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
+        p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+        lambda = Teukolsky_lambda_const(a*omega, s, l, m)
+    end
+
+    # Some useful terms to pre-compute
+    sqrt_one_minus_a_sq = sqrt(1 - a^2)
+    horizon_term = (a*Lz - 2*En*(1 + sqrt_one_minus_a_sq))
+
+    #=
+    We have derived/shown the explicit expression for
+    s = +2 ONLY
+    =#
+    if s == 2
+        # s = +2
+        coefficient_for_scriptA0 = begin
+            (-(1/(16*horizon_term^4*(1 + sqrt_one_minus_a_sq)^5*(sqrt_one_minus_a_sq - a^2*sqrt_one_minus_a_sq)^2)))*(72*(-1 + a^2)^2*horizon_term^4*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2*(1 + 3*sqrt_one_minus_a_sq) + 96*(1 - a^2)*(-1 + a^2)*horizon_term^4*(1 + sqrt_one_minus_a_sq)^2*(15*a^2 - 2*(8 + 5*sqrt_one_minus_a_sq)) + 
+            16*(1 - a^2)*(-1 + a^2)*horizon_term^4*(101*a^4 + 324*(1 + sqrt_one_minus_a_sq) - 6*a^2*(70 + 43*sqrt_one_minus_a_sq)) - 4*horizon_term^2*(1 + sqrt_one_minus_a_sq)^3*(5 - 5*a^2 + sqrt_one_minus_a_sq)*
+            (a*(a*horizon_term^2*sqrt_one_minus_a_sq - 4*(-1 + a^2)*horizon_term*(a*En + Lz*sqrt_one_minus_a_sq) - 2*a*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2))*m^2 - 
+            4*(2*a^7 + 8*a*(-1 + En^2)*(1 + sqrt_one_minus_a_sq) - 8*En*Lz*(1 + sqrt_one_minus_a_sq) - 6*a^5*(2 + sqrt_one_minus_a_sq) + a^6*En*Lz*(4 + sqrt_one_minus_a_sq) + 4*a^2*En*Lz*(4 + 3*sqrt_one_minus_a_sq) - 3*a^4*En*Lz*(4 + 3*sqrt_one_minus_a_sq) + 
+            a^3*(18 + (14 + Lz^2)*sqrt_one_minus_a_sq - 4*En^2*(2 + sqrt_one_minus_a_sq)))*m*omega - 4*(1 + sqrt_one_minus_a_sq)*(-2*a^6*(1 + En^2) - 8*a*En*Lz*(1 + sqrt_one_minus_a_sq) + 2*(4 + 8*En^2 + Lz^2)*(1 + sqrt_one_minus_a_sq) - 2*a^5*En*Lz*(4 + sqrt_one_minus_a_sq) + 
+            2*a^3*En*Lz*(8 + 7*sqrt_one_minus_a_sq) + a^4*(Lz^2 + 6*(2 + sqrt_one_minus_a_sq) + 2*En^2*(12 + 5*sqrt_one_minus_a_sq)) - a^2*(3*Lz^2*(1 + sqrt_one_minus_a_sq) + 2*(9 + 7*sqrt_one_minus_a_sq) + En^2*(38 + 30*sqrt_one_minus_a_sq)))*omega^2) - 
+            6*I*(1 + sqrt_one_minus_a_sq)^2*(-2*(-1 + a^2)*horizon_term^4*sqrt_one_minus_a_sq*(1 + 25*(1 - a^2) + 14*sqrt_one_minus_a_sq)*(a*m - 2*(1 + sqrt_one_minus_a_sq)*omega) - horizon_term^2*(1 + sqrt_one_minus_a_sq)*(3 - a^2 + 10*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 - 2*a^2*(1 + 5*sqrt_one_minus_a_sq))*
+            (horizon_term*(4*a*En - 4*a^3*En + a*horizon_term*sqrt_one_minus_a_sq + 4*Lz*sqrt_one_minus_a_sq - 4*a^2*Lz*sqrt_one_minus_a_sq)*m - 2*a*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)*m + 
+            4*(1 - a^2)*(1 + sqrt_one_minus_a_sq)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)*omega + 2*horizon_term*(-4*(-1 + a^2)*horizon_term - 4*a^4*En + 3*a^3*Lz - 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 - a*Lz*(3 + sqrt_one_minus_a_sq) + 
+            2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3))*omega) - sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)*((1 + sqrt_one_minus_a_sq)*((-horizon_term^3)*sqrt_one_minus_a_sq*(4*a*En - 4*a^3*En + a*horizon_term*sqrt_one_minus_a_sq) + 
+            2*(1 - a^2)*horizon_term*(4*a*En - 4*a^3*En + a*horizon_term*sqrt_one_minus_a_sq + 4*Lz*sqrt_one_minus_a_sq - 4*a^2*Lz*sqrt_one_minus_a_sq)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2) - 
+            2*a*(1 - a^2)*(3*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)^2 + horizon_term^2*sqrt_one_minus_a_sq*(4 + (1 - a^2)*(2 - 12*En^2) + (5 - 12*En^2 + Lz^2)*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 + 
+            a^2*(-4 + (-4 + 5*En^2)*sqrt_one_minus_a_sq))))*m + 2*(2*(1 - a^2)*horizon_term*(1 + sqrt_one_minus_a_sq)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)*
+            (-4*(-1 + a^2)*horizon_term - 4*a^4*En + 3*a^3*Lz - 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 - a*Lz*(3 + sqrt_one_minus_a_sq) + 2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3)) + 
+            2*(1 - a^2)*(1 + sqrt_one_minus_a_sq)^2*(3*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)^2 + horizon_term^2*sqrt_one_minus_a_sq*(4 + (1 - a^2)*(2 - 12*En^2) + (5 - 12*En^2 + Lz^2)*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 + 
+            a^2*(-4 + (-4 + 5*En^2)*sqrt_one_minus_a_sq))) + horizon_term^3*(-4*(1 - a^2)*(-1 + a^2)*horizon_term - a*(1 - a^2)*(-8*a^3*En + 7*a^2*Lz - 4*Lz*(2 + sqrt_one_minus_a_sq) + 2*a*En*(5 + 3*sqrt_one_minus_a_sq)) + 
+            4*(1 - a^2)*(-4*a^4*En + 3*a^3*Lz - 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 - a*Lz*(3 + sqrt_one_minus_a_sq) + 2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3))))*omega)) + 
+            8*I*(1 + sqrt_one_minus_a_sq)*(-2*(-1 + a^2)*horizon_term^4*(6 + 34*(1 - a^2) + 25*sqrt_one_minus_a_sq + 20*sqrt_one_minus_a_sq^3 + 5*sqrt_one_minus_a_sq^4 - 6*(a + 2*a*sqrt_one_minus_a_sq)^2)*(a*m - 2*(1 + sqrt_one_minus_a_sq)*omega) - 
+            horizon_term^2*(1 + sqrt_one_minus_a_sq)*(8 + 6*a^4 + 7*(1 - a^2) + 14*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 - 2*a^2*(7 + 3*(1 - a^2) + 7*sqrt_one_minus_a_sq))*(horizon_term*(4*a*En - 4*a^3*En + a*horizon_term*sqrt_one_minus_a_sq + 4*Lz*sqrt_one_minus_a_sq - 4*a^2*Lz*sqrt_one_minus_a_sq)*m - 
+            2*a*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)*m + 4*(1 - a^2)*(1 + sqrt_one_minus_a_sq)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)*omega + 
+            2*horizon_term*(-4*(-1 + a^2)*horizon_term - 4*a^4*En + 3*a^3*Lz - 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 - a*Lz*(3 + sqrt_one_minus_a_sq) + 2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3))*omega) - 
+            (1 + sqrt_one_minus_a_sq)*(1 - a^2 + sqrt_one_minus_a_sq)*((1 + sqrt_one_minus_a_sq)*((-horizon_term^3)*sqrt_one_minus_a_sq*(4*a*En - 4*a^3*En + a*horizon_term*sqrt_one_minus_a_sq) + 2*(1 - a^2)*horizon_term*(4*a*En - 4*a^3*En + a*horizon_term*sqrt_one_minus_a_sq + 4*Lz*sqrt_one_minus_a_sq - 4*a^2*Lz*sqrt_one_minus_a_sq)*
+            (((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2) - 2*a*(1 - a^2)*(3*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)^2 + 
+            horizon_term^2*sqrt_one_minus_a_sq*(4 + (1 - a^2)*(2 - 12*En^2) + (5 - 12*En^2 + Lz^2)*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 + a^2*(-4 + (-4 + 5*En^2)*sqrt_one_minus_a_sq))))*m + 
+            2*(2*(1 - a^2)*horizon_term*(1 + sqrt_one_minus_a_sq)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)*(-4*(-1 + a^2)*horizon_term - 4*a^4*En + 3*a^3*Lz - 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 - a*Lz*(3 + sqrt_one_minus_a_sq) + 
+            2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3)) + 2*(1 - a^2)*(1 + sqrt_one_minus_a_sq)^2*(3*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)^2 + 
+            horizon_term^2*sqrt_one_minus_a_sq*(4 + (1 - a^2)*(2 - 12*En^2) + (5 - 12*En^2 + Lz^2)*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 + a^2*(-4 + (-4 + 5*En^2)*sqrt_one_minus_a_sq))) + 
+            horizon_term^3*(-4*(1 - a^2)*(-1 + a^2)*horizon_term - a*(1 - a^2)*(-8*a^3*En + 7*a^2*Lz - 4*Lz*(2 + sqrt_one_minus_a_sq) + 2*a*En*(5 + 3*sqrt_one_minus_a_sq)) + 4*(1 - a^2)*(-4*a^4*En + 3*a^3*Lz - 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 - 
+            a*Lz*(3 + sqrt_one_minus_a_sq) + 2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3))))*omega)) + 
+            (1 + sqrt_one_minus_a_sq)^3*(-((1 + sqrt_one_minus_a_sq)*(8*a*(1 - a^2)*horizon_term*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)*(a*horizon_term*sqrt_one_minus_a_sq - 4*(-1 + a^2)*(a*En + Lz*sqrt_one_minus_a_sq)) - 
+            horizon_term^2*sqrt_one_minus_a_sq*(3*a^2*horizon_term^2*sqrt_one_minus_a_sq - 16*a*(-1 + a^2)*horizon_term*(a*En + Lz*sqrt_one_minus_a_sq) - 8*(-1 + a^2)*sqrt_one_minus_a_sq*(2*Lz^2 + a^2*(2*En^2 - 3*Lz^2) + 2*a*En*Lz*(1 + 3*sqrt_one_minus_a_sq))) - 
+            4*a^2*(1 - a^2)*(4*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)^2 + horizon_term^2*sqrt_one_minus_a_sq*(4 + (1 - a^2)*(2 - 12*En^2) + (5 - 12*En^2 + Lz^2)*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 + 
+            a^2*(-4 + (-4 + 5*En^2)*sqrt_one_minus_a_sq))))*m^2) - 4*(1 - a^2)*(16*a^11*(-1 + En^2) - 128*En*Lz*(-4 + 4*En^2 - Lz^2)*(1 + sqrt_one_minus_a_sq) + 128*a*(4 + 4*En^4 + Lz^2 - 4*En^2*(2 + Lz^2))*(1 + sqrt_one_minus_a_sq) + 
+            8*a^10*En*Lz*(-7 - sqrt_one_minus_a_sq + En^2*(9 + sqrt_one_minus_a_sq)) + 64*a^2*En*Lz*(-34 - 30*sqrt_one_minus_a_sq - Lz^2*(5 + 4*sqrt_one_minus_a_sq) + 4*En^2*(6 + 5*sqrt_one_minus_a_sq)) - 
+            64*a^3*(4*En^4*(2 + sqrt_one_minus_a_sq) + Lz^2*(5 + 4*sqrt_one_minus_a_sq) + 4*(7 + 6*sqrt_one_minus_a_sq) - 2*En^2*(2 + Lz^2)*(13 + 11*sqrt_one_minus_a_sq)) - 4*a^9*(-80 + Lz^2 - 24*sqrt_one_minus_a_sq + 2*En^2*(58 + 5*Lz^2 + 16*sqrt_one_minus_a_sq)) - 
+            16*a^4*En*Lz*((-Lz^2)*(13 + 6*sqrt_one_minus_a_sq) - 8*(27 + 20*sqrt_one_minus_a_sq) + 6*En^2*(29 + 23*sqrt_one_minus_a_sq)) - 2*a^8*En*Lz*(Lz^2*(7 + 3*sqrt_one_minus_a_sq) - 16*(23 + 8*sqrt_one_minus_a_sq) + 4*En^2*(93 + 35*sqrt_one_minus_a_sq)) + 
+            2*a^6*En*Lz*((-Lz^2)*(13 + sqrt_one_minus_a_sq) + 8*En^2*(146 + 85*sqrt_one_minus_a_sq) - 4*(309 + 175*sqrt_one_minus_a_sq)) + 2*a^5*(-16*En^4*(-1 + sqrt_one_minus_a_sq) + Lz^4*(1 + sqrt_one_minus_a_sq) + 4*Lz^2*(31 + 17*sqrt_one_minus_a_sq) + 16*(73 + 51*sqrt_one_minus_a_sq) - 
+            32*En^2*(63 + 43*sqrt_one_minus_a_sq + 2*Lz^2*(12 + 7*sqrt_one_minus_a_sq))) + a^7*(16*En^4 + Lz^4 - 4*Lz^2*(13 + 2*sqrt_one_minus_a_sq) - 16*(85 + 44*sqrt_one_minus_a_sq) + 16*En^2*(68*(2 + sqrt_one_minus_a_sq) + Lz^2*(31 + 12*sqrt_one_minus_a_sq))))*m*omega + 
+            4*(1 + sqrt_one_minus_a_sq)*(8*(1 - a^2)*horizon_term*(1 + sqrt_one_minus_a_sq)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)*(-4*(-1 + a^2)*horizon_term - 4*a^4*En + 3*a^3*Lz - 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 - 
+            a*Lz*(3 + sqrt_one_minus_a_sq) + 2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3)) + 4*(1 - a^2)*(1 + sqrt_one_minus_a_sq)^2*(4*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)^2 + 
+            horizon_term^2*sqrt_one_minus_a_sq*(4 + (1 - a^2)*(2 - 12*En^2) + (5 - 12*En^2 + Lz^2)*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 + a^2*(-4 + (-4 + 5*En^2)*sqrt_one_minus_a_sq))) + 
+            horizon_term^2*(-24*(1 - a^2)*(-1 + a^2)*horizon_term^2 - 2*a*(1 - a^2)*horizon_term*(-8*a^3*En + 7*a^2*Lz - 4*Lz*(2 + sqrt_one_minus_a_sq) + 2*a*En*(5 + 3*sqrt_one_minus_a_sq)) + 
+            (4*a^4*En - 3*a^3*Lz + 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 + a*Lz*(3 + sqrt_one_minus_a_sq) - 2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3))^2 + 
+            16*(1 - a^2)*horizon_term*(-4*a^4*En + 3*a^3*Lz - 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 - a*Lz*(3 + sqrt_one_minus_a_sq) + 2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3))))*omega^2 - 
+            2*I*((1 + sqrt_one_minus_a_sq)*(-4*(-1 + a^2)*horizon_term^3*sqrt_one_minus_a_sq*((-1 + a^2)*Lz + a*En*sqrt_one_minus_a_sq) + horizon_term^3*((-a)*(-4 + 4*a^2 + 3*(1 - a^2))*horizon_term*sqrt_one_minus_a_sq - 4*(-1 + a^2)*Lz*sqrt_one_minus_a_sq^3) - 
+            8*(1 - a^2)*(-1 + a^2)*horizon_term*sqrt_one_minus_a_sq*(a*En + Lz*sqrt_one_minus_a_sq)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2) - 8*(-1 + a^2)^2*horizon_term*sqrt_one_minus_a_sq*(a*En + Lz*sqrt_one_minus_a_sq)*
+            (((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2) - 2*a*(1 - a^2)*sqrt_one_minus_a_sq*(3*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)^2 + 
+            horizon_term^2*sqrt_one_minus_a_sq*(4 + (1 - a^2)*(2 - 12*En^2) + (5 - 12*En^2 + Lz^2)*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 + a^2*(-4 + (-4 + 5*En^2)*sqrt_one_minus_a_sq))) + 
+            (1 - a^2)*sqrt_one_minus_a_sq*(-12*a*(-1 + a^2)*(2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(a^2*En^2 - 2*a*En*Lz + Lz^2 + (1 + sqrt_one_minus_a_sq)^2))^2 + 
+            horizon_term*(-4*a*(-1 + a^2)*horizon_term*(6 + 5*a^2*(-1 + En^2) + Lz^2 + 6*sqrt_one_minus_a_sq - 12*En^2*(1 + sqrt_one_minus_a_sq)) - (4*a*En - 4*a^3*En + a*horizon_term*sqrt_one_minus_a_sq + 4*Lz*sqrt_one_minus_a_sq - 4*a^2*Lz*sqrt_one_minus_a_sq)*
+            (4*horizon_term*En*(1 + sqrt_one_minus_a_sq) + 2*sqrt_one_minus_a_sq*(((-a)*En + Lz)^2 + (1 + sqrt_one_minus_a_sq)^2)))))*m + 
+            2*(1 - a^2)*sqrt_one_minus_a_sq*(8*(1 - a^2)*horizon_term^2*(1 + sqrt_one_minus_a_sq)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2) + 
+            horizon_term^3*(4*(1 - a^2)*horizon_term - 8*a^4*En + 7*a^3*Lz - 4*a*Lz*(2 + sqrt_one_minus_a_sq) + 2*a^2*En*(5 + 3*sqrt_one_minus_a_sq)) - 4*horizon_term^2*(-2*a^6*(1 + En^2) + 2*(4 + Lz^2)*(1 + sqrt_one_minus_a_sq) - 2*a^5*En*Lz*(4 + sqrt_one_minus_a_sq) + 
+            2*a^3*En*Lz*(4 + 3*sqrt_one_minus_a_sq) + a^4*(3*(4 + Lz^2 + 2*sqrt_one_minus_a_sq) + 2*En^2*(8 + 5*sqrt_one_minus_a_sq)) - a^2*(14*En^2*(1 + sqrt_one_minus_a_sq) + Lz^2*(5 + 3*sqrt_one_minus_a_sq) + 2*(9 + 7*sqrt_one_minus_a_sq))) + 
+            2*(1 + sqrt_one_minus_a_sq)^2*(3*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2)^2 + horizon_term^2*sqrt_one_minus_a_sq*(4 + (1 - a^2)*(2 - 12*En^2) + (5 - 12*En^2 + Lz^2)*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 + 
+            a^2*(-4 + (-4 + 5*En^2)*sqrt_one_minus_a_sq))) - (1 + sqrt_one_minus_a_sq)*(-12*(-1 + a^2)*(1 + sqrt_one_minus_a_sq)*(2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(a^2*En^2 - 2*a*En*Lz + Lz^2 + (1 + sqrt_one_minus_a_sq)^2))^2 + 
+            horizon_term*(-4*(-1 + a^2)*horizon_term*(1 + sqrt_one_minus_a_sq)*(6 + 5*a^2*(-1 + En^2) + Lz^2 + 6*sqrt_one_minus_a_sq - 12*En^2*(1 + sqrt_one_minus_a_sq)) + (-4*(-1 + a^2)*horizon_term - 4*a^4*En + 3*a^3*Lz - 2*En*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2 - a*Lz*(3 + sqrt_one_minus_a_sq) + 
+            2*a^2*En*(2 + 2*(1 - a^2) + 2*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3))*(4*horizon_term*En*(1 + sqrt_one_minus_a_sq) + 2*sqrt_one_minus_a_sq*(((-a)*En + Lz)^2 + (1 + sqrt_one_minus_a_sq)^2)))))*omega)) + 
+            horizon_term^4*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2*(16 + 2*(1 - a^2) + 41*sqrt_one_minus_a_sq + sqrt_one_minus_a_sq^3 - 8*a^2*(2 + 5*sqrt_one_minus_a_sq))*(a^2*m^2 + 4*(1 + sqrt_one_minus_a_sq)*omega*(omega + sqrt_one_minus_a_sq*(-I + omega)) - 2*a*m*(2*omega + sqrt_one_minus_a_sq*(-I + 2*omega))) - 
+            2*horizon_term^2*(10 - 10*a^2 + 3*(1 - a^2) + 3*sqrt_one_minus_a_sq)*(-12*(1 - a^2)*(-1 + a^2)*horizon_term^2*(1 + sqrt_one_minus_a_sq)^2 - 48*(-1 + a^2)*horizon_term^2*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2*(1 + 3*sqrt_one_minus_a_sq) + 
+            8*(-1 + a^2)*horizon_term^2*(19*a^4 + 48*(1 + sqrt_one_minus_a_sq) - a^2*(67 + 43*sqrt_one_minus_a_sq)) - 
+            (1 + sqrt_one_minus_a_sq)^3*(a*(a*horizon_term^2*sqrt_one_minus_a_sq - 4*(-1 + a^2)*horizon_term*(a*En + Lz*sqrt_one_minus_a_sq) - 2*a*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2))*m^2 - 
+            4*(2*a^7 + 8*a*(-1 + En^2)*(1 + sqrt_one_minus_a_sq) - 8*En*Lz*(1 + sqrt_one_minus_a_sq) - 6*a^5*(2 + sqrt_one_minus_a_sq) + a^6*En*Lz*(4 + sqrt_one_minus_a_sq) + 4*a^2*En*Lz*(4 + 3*sqrt_one_minus_a_sq) - 3*a^4*En*Lz*(4 + 3*sqrt_one_minus_a_sq) + 
+            a^3*(18 + (14 + Lz^2)*sqrt_one_minus_a_sq - 4*En^2*(2 + sqrt_one_minus_a_sq)))*m*omega - 4*(1 + sqrt_one_minus_a_sq)*(-2*a^6*(1 + En^2) - 8*a*En*Lz*(1 + sqrt_one_minus_a_sq) + 2*(4 + 8*En^2 + Lz^2)*(1 + sqrt_one_minus_a_sq) - 2*a^5*En*Lz*(4 + sqrt_one_minus_a_sq) + 
+            2*a^3*En*Lz*(8 + 7*sqrt_one_minus_a_sq) + a^4*(Lz^2 + 6*(2 + sqrt_one_minus_a_sq) + 2*En^2*(12 + 5*sqrt_one_minus_a_sq)) - a^2*(3*Lz^2*(1 + sqrt_one_minus_a_sq) + 2*(9 + 7*sqrt_one_minus_a_sq) + En^2*(38 + 30*sqrt_one_minus_a_sq)))*omega^2) + 
+            4*(-1 + a^2)*horizon_term^2*(1 + sqrt_one_minus_a_sq)^2*(a*m - 2*(1 + sqrt_one_minus_a_sq)*omega)*(a*m - 2*omega - 2*sqrt_one_minus_a_sq*(-2*I + omega)) + 6*I*(-1 + a^2)*(1 + sqrt_one_minus_a_sq)^2*
+            (2*a^6*(1 + En^2)*omega + a*(1 + sqrt_one_minus_a_sq)*((4 + 40*En^2 - Lz^2)*m + 128*En*Lz*omega) - 4*(1 + sqrt_one_minus_a_sq)*(-2*En*Lz*m + 64*En^2*omega + (4 + Lz^2)*omega) + 
+            a^5*((3 + sqrt_one_minus_a_sq - En^2*(5 + sqrt_one_minus_a_sq))*m + 2*En*Lz*(5 + sqrt_one_minus_a_sq)*omega) - 2*a^4*(-12*En*Lz*m + 3*En^2*(13 + 2*sqrt_one_minus_a_sq)*omega + (9 - 5*Lz^2 + 4*sqrt_one_minus_a_sq)*omega) - 
+            a^3*((7 + 5*sqrt_one_minus_a_sq - 2*Lz^2*(1 + 3*sqrt_one_minus_a_sq) + En^2*(31 + 11*sqrt_one_minus_a_sq))*m + 2*En*Lz*(65 + 33*sqrt_one_minus_a_sq)*omega) + 2*a^2*(-2*En*Lz*(9 + 8*sqrt_one_minus_a_sq)*m + 4*(4 + 3*sqrt_one_minus_a_sq)*omega - Lz^2*(4 + 5*sqrt_one_minus_a_sq)*omega + 
+            2*En^2*(81 + 49*sqrt_one_minus_a_sq)*omega)) - 4*I*(-1 + a^2)*(1 + sqrt_one_minus_a_sq)*(4*a^6*(5 + sqrt_one_minus_a_sq + En^2*(7 + sqrt_one_minus_a_sq))*omega + 2*a^7*((-1 + En^2)*m - 2*En*Lz*omega) + 
+            4*a*(1 + sqrt_one_minus_a_sq)*((4 + 44*En^2 - Lz^2)*m + 136*En*Lz*omega) - 16*(1 + sqrt_one_minus_a_sq)*(-2*En*Lz*m + 68*En^2*omega + (4 + Lz^2)*omega) + 
+            a^5*((18 - 13*Lz^2 + 8*sqrt_one_minus_a_sq - 2*En^2*(-7 + 6*sqrt_one_minus_a_sq))*m + 4*En*Lz*(41 + 6*sqrt_one_minus_a_sq)*omega) - a^3*((8*(4 + 3*sqrt_one_minus_a_sq) + 8*En^2*(23 + 12*sqrt_one_minus_a_sq) - Lz^2*(19 + 17*sqrt_one_minus_a_sq))*m + 16*En*Lz*(43 + 26*sqrt_one_minus_a_sq)*omega) + 
+            8*a^2*(-2*En*Lz*(10 + 9*sqrt_one_minus_a_sq)*m - Lz^2*(4 + 5*sqrt_one_minus_a_sq)*omega + 2*(9 + 7*sqrt_one_minus_a_sq)*omega + 2*En^2*(103 + 69*sqrt_one_minus_a_sq)*omega) - 
+            2*a^4*(-2*En*Lz*(30 + 13*sqrt_one_minus_a_sq)*m + 2*En^2*(151 + 47*sqrt_one_minus_a_sq)*omega + (50 + 26*sqrt_one_minus_a_sq - 11*Lz^2*(2 + sqrt_one_minus_a_sq))*omega)) - 
+            2*(-1 + a^2)*horizon_term^2*(1 + sqrt_one_minus_a_sq)^3*(-8*omega^2 + 4*a^2*omega*(I + omega) + 2*a*m*(-I + omega + sqrt_one_minus_a_sq*omega) + sqrt_one_minus_a_sq*(lambda - 8*omega^2)) + horizon_term^2*(1 + sqrt_one_minus_a_sq)^2*(5 - 5*a^2 + sqrt_one_minus_a_sq)*
+            (a^2*m^2 + 4*(1 + sqrt_one_minus_a_sq)*omega*(omega + sqrt_one_minus_a_sq*(-I + omega)) - 2*a*m*(2*omega + sqrt_one_minus_a_sq*(-I + 2*omega)))) + 4*(-1 + a^2)*horizon_term^4*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2*
+            (4*a*m*(10*I + sqrt_one_minus_a_sq*(4*I - 15*omega) - 15*omega) + 4*a^4*omega*(11*I + (13 + sqrt_one_minus_a_sq)*omega) + 2*a^3*m*(-20*I + (30 + 9*sqrt_one_minus_a_sq)*omega) - 2*(1 + sqrt_one_minus_a_sq)*(5*lambda + 4*(3*I - 28*omega)*omega) + 
+            a^2*(10*lambda - 4*omega*(5*I + 69*omega) + sqrt_one_minus_a_sq*(6*m^2 + 9*lambda - 4*omega*(2*I + 41*omega)))))
+        end
+        
+        coefficient_for_scriptA1 = begin
+            (1/(4*(1 - a^2)*horizon_term^2*sqrt_one_minus_a_sq^2*(1 + sqrt_one_minus_a_sq)^6))*(4*I*(-1 + a^2)*horizon_term^2*(10 - 10*a^2 + 3*(1 - a^2) + 3*sqrt_one_minus_a_sq)*(a^3*m - 2*a*(1 + sqrt_one_minus_a_sq)*m + a^2*(2*I + sqrt_one_minus_a_sq*(I - 2*omega) - 6*omega) + 
+            2*(1 + sqrt_one_minus_a_sq)*(-I + 4*omega)) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)*(-72*(1 - a^2)*(-1 + a^2)*horizon_term^2*(1 + sqrt_one_minus_a_sq) - 12*(-1 + a^2)*horizon_term^2*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)*(5 + 9*sqrt_one_minus_a_sq) - 
+            16*(-1 + a^2)*horizon_term^2*(-9*(1 + sqrt_one_minus_a_sq) + a^2*(9 + 7*sqrt_one_minus_a_sq)) - 
+            2*(1 + sqrt_one_minus_a_sq)^2*(a*(a*horizon_term^2*sqrt_one_minus_a_sq - 4*(-1 + a^2)*horizon_term*(a*En + Lz*sqrt_one_minus_a_sq) - 2*a*(1 - a^2)*(((-a)*En + Lz)^2*sqrt_one_minus_a_sq + 2*horizon_term*En*(1 + sqrt_one_minus_a_sq) + sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)^2))*m^2 - 
+            4*(2*a^7 + 8*a*(-1 + En^2)*(1 + sqrt_one_minus_a_sq) - 8*En*Lz*(1 + sqrt_one_minus_a_sq) - 6*a^5*(2 + sqrt_one_minus_a_sq) + a^6*En*Lz*(4 + sqrt_one_minus_a_sq) + 4*a^2*En*Lz*(4 + 3*sqrt_one_minus_a_sq) - 3*a^4*En*Lz*(4 + 3*sqrt_one_minus_a_sq) + 
+            a^3*(18 + (14 + Lz^2)*sqrt_one_minus_a_sq - 4*En^2*(2 + sqrt_one_minus_a_sq)))*m*omega - 4*(1 + sqrt_one_minus_a_sq)*(-2*a^6*(1 + En^2) - 8*a*En*Lz*(1 + sqrt_one_minus_a_sq) + 2*(4 + 8*En^2 + Lz^2)*(1 + sqrt_one_minus_a_sq) - 2*a^5*En*Lz*(4 + sqrt_one_minus_a_sq) + 
+            2*a^3*En*Lz*(8 + 7*sqrt_one_minus_a_sq) + a^4*(Lz^2 + 6*(2 + sqrt_one_minus_a_sq) + 2*En^2*(12 + 5*sqrt_one_minus_a_sq)) - a^2*(3*Lz^2*(1 + sqrt_one_minus_a_sq) + 2*(9 + 7*sqrt_one_minus_a_sq) + En^2*(38 + 30*sqrt_one_minus_a_sq)))*omega^2) - 
+            horizon_term^2*(1 + sqrt_one_minus_a_sq)*(5 - 5*a^2 + sqrt_one_minus_a_sq)*(a*m - 2*(1 + sqrt_one_minus_a_sq)*omega)*(a*m - 2*omega - 2*sqrt_one_minus_a_sq*(-2*I + omega)) + 
+            6*I*(-1 + a^2)*(1 + sqrt_one_minus_a_sq)*(4*a^6*(1 + En^2)*omega + 2*a*(1 + sqrt_one_minus_a_sq)*((4 + 32*En^2 - Lz^2)*m + 112*En*Lz*omega) - 8*(1 + sqrt_one_minus_a_sq)*(-2*En*Lz*m + 56*En^2*omega + (4 + Lz^2)*omega) + 
+            a^5*(6*m + 2*sqrt_one_minus_a_sq*m - 2*En^2*(5 + sqrt_one_minus_a_sq)*m + 4*En*Lz*(5 + sqrt_one_minus_a_sq)*omega) - 2*a^4*(-18*En*Lz*m + 6*En^2*(11 + 2*sqrt_one_minus_a_sq)*omega + (18 - 7*Lz^2 + 8*sqrt_one_minus_a_sq)*omega) - 
+            a^3*((2*(7 + 5*sqrt_one_minus_a_sq) + 2*En^2*(21 + 5*sqrt_one_minus_a_sq) - Lz^2*(5 + 9*sqrt_one_minus_a_sq))*m + 4*En*Lz*(55 + 27*sqrt_one_minus_a_sq)*omega) + 4*a^2*(-2*En*Lz*(8 + 7*sqrt_one_minus_a_sq)*m + 4*(4 + 3*sqrt_one_minus_a_sq)*omega - Lz^2*(3 + 4*sqrt_one_minus_a_sq)*omega + 
+            2*En^2*(69 + 41*sqrt_one_minus_a_sq)*omega)) + 4*I*sqrt_one_minus_a_sq*(1 + sqrt_one_minus_a_sq)*(4*a^6*(4 + sqrt_one_minus_a_sq + En^2*(6 + sqrt_one_minus_a_sq))*omega + 2*a^7*((-1 + En^2)*m - 2*En*Lz*omega) + 2*a*(1 + sqrt_one_minus_a_sq)*((4 + 56*En^2 - Lz^2)*m + 160*En*Lz*omega) - 
+            8*(1 + sqrt_one_minus_a_sq)*(-2*En*Lz*m + 80*En^2*omega + (4 + Lz^2)*omega) + a^5*((12 - 15*Lz^2 + En^2*(32 - 10*sqrt_one_minus_a_sq) + 6*sqrt_one_minus_a_sq)*m + 20*En*Lz*(8 + sqrt_one_minus_a_sq)*omega) + 
+            a^4*(20*En*Lz*(4 + 3*sqrt_one_minus_a_sq)*m - 4*(16 + 9*sqrt_one_minus_a_sq)*omega + 2*Lz^2*(14 + 13*sqrt_one_minus_a_sq)*omega - 4*En^2*(124 + 45*sqrt_one_minus_a_sq)*omega) - 
+            a^3*(((-Lz^2)*(17 + 5*sqrt_one_minus_a_sq) + 2*(9 + 7*sqrt_one_minus_a_sq) + 2*En^2*(73 + 45*sqrt_one_minus_a_sq))*m + 4*En*Lz*(119 + 79*sqrt_one_minus_a_sq)*omega) + 4*a^2*(-2*En*Lz*(12 + 11*sqrt_one_minus_a_sq)*m + 4*(5 + 4*sqrt_one_minus_a_sq)*omega - Lz^2*(5 + 6*sqrt_one_minus_a_sq)*omega + 
+            2*En^2*(139 + 99*sqrt_one_minus_a_sq)*omega)) - 4*(-1 + a^2)*horizon_term^2*(1 + sqrt_one_minus_a_sq)^2*(-8*omega^2 + 4*a^2*omega*(I + omega) + 2*a*m*(-I + omega + sqrt_one_minus_a_sq*omega) + sqrt_one_minus_a_sq*(lambda - 8*omega^2)) + 
+            horizon_term^2*(1 + sqrt_one_minus_a_sq)*(4 - 4*a^2 + 3*(1 - a^2) + 3*sqrt_one_minus_a_sq)*(a^2*m^2 + 4*(1 + sqrt_one_minus_a_sq)*omega*(omega + sqrt_one_minus_a_sq*(-I + omega)) - 2*a*m*(2*omega + sqrt_one_minus_a_sq*(-I + 2*omega)))))
+        end
+
+        return coefficient_for_scriptA0, coefficient_for_scriptA1
     else
         # Throw an error, this spin weight is not supported
         throw(DomainError(s, "Currently only spin weight s of +2 is supported"))
