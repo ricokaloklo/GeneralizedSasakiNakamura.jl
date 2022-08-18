@@ -6,8 +6,6 @@ const I = 1im
 
 function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s::Int, l::Int, m::Int, a, omega, En, Lz; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing)
     if isnothing(swsh_piover2) || isnothing(psptheta_piover2) || isnothing(p2sptheta2_piover2)
-        # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
-        # There is a caching mechanism so only need to do spectral decomposition once
         swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
         psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
         p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
@@ -38,8 +36,6 @@ end
 
 function sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s::Int, l::Int, m::Int, a, omega, En, Lz; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing)
     if isnothing(swsh_piover2) || isnothing(psptheta_piover2) || isnothing(p2sptheta2_piover2)
-        # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
-        # There is a caching mechanism so only need to do spectral decomposition once
         swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
         psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
         p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
@@ -97,8 +93,6 @@ end
 
 function nearhorizon_ansatz_zerothorder(s::Int, l::Int, m::Int, a, omega, En, Lz; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing, lambda=nothing)
     if isnothing(swsh_piover2) || isnothing(psptheta_piover2) || isnothing(p2sptheta2_piover2)
-        # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
-        # There is a caching mechanism so only need to do spectral decomposition once
         swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
         psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
         p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
@@ -147,8 +141,6 @@ end
 
 function nearhorizon_ansatz_firstorder(s::Int, l::Int, m::Int, a, omega, En, Lz; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing, lambda=nothing)
     if isnothing(swsh_piover2) || isnothing(psptheta_piover2) || isnothing(p2sptheta2_piover2)
-        # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
-        # There is a caching mechanism so only need to do spectral decomposition once
         swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
         psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
         p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
@@ -271,4 +263,27 @@ function nearhorizon_ansatz_firstorder(s::Int, l::Int, m::Int, a, omega, En, Lz;
         # Throw an error, this spin weight is not supported
         throw(DomainError(s, "Currently only spin weight s of +2 is supported"))
     end
+end
+
+function sourceterm_regularization_ansatz_coefficients(s::Int, l::Int, m::Int, a, omega, En, Lz)
+    # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
+    # There is a caching mechanism so only need to do spectral decomposition once
+    swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
+    psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
+    p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+    lambda = Teukolsky_lambda_const(a*omega, s, l, m)
+
+    # These alpha's are the series expansion coefficients of the RHS/source term
+    alpha0 = sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2)
+    alpha1 = sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2)
+    
+    # These beta's are the series expansion coefficients of the LHS when the ansatz is substituted
+    beta00, beta01 = nearhorizon_ansatz_zerothorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2, lambda=lambda)
+    beta10, beta11 = nearhorizon_ansatz_firstorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2, lambda=lambda)
+
+    # Solve the simple linear algebra
+    scriptA0 = (beta11*alpha0 - beta01*alpha1)/(beta00*beta11 - beta10*beta01)
+    scriptA1 = (beta10*alpha0 - beta00*alpha1)/(beta10*beta01 - beta00*beta11)
+
+    return scriptA0, scriptA1
 end
