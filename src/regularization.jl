@@ -236,6 +236,7 @@ function sourceterm_regularization_ansatz_coefficients(s::Int, l::Int, m::Int, a
     swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
     psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
     p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+    lambda = Teukolsky_lambda_const(a*omega, s, l, m)
 
     #=
     We have derived/shown the explicit expression for
@@ -244,12 +245,12 @@ function sourceterm_regularization_ansatz_coefficients(s::Int, l::Int, m::Int, a
     if s == 2
         # s = +2
         # These alpha's are the series expansion coefficients of the RHS/source term
-        alpha0 = _sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s, l, m, a, omega, En, Lz)
-        alpha1 = _sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s, l, m, a, omega, En, Lz)
+        alpha0 = _sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2)
+        alpha1 = _sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2)
     
         # These beta's are the series expansion coefficients of the LHS when the ansatz is substituted
-        beta00, beta01 = _nearhorizon_ansatz_zerothorder(s, l, m, a, omega, En, Lz)
-        beta10, beta11 = _nearhorizon_ansatz_firstorder(s, l, m, a, omega, En, Lz)
+        beta00, beta01 = _nearhorizon_ansatz_zerothorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2, lambda=lambda)
+        beta10, beta11 = _nearhorizon_ansatz_firstorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2, lambda=lambda)
 
         # Solve the simple system of linear equations
         scriptA0 = (alpha1*beta01 - alpha0*beta11)/(beta01*beta10 - beta00*beta11)
