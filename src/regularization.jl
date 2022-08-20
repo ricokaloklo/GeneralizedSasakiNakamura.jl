@@ -244,16 +244,16 @@ function sourceterm_regularization_ansatz_coefficients(s::Int, l::Int, m::Int, a
     if s == 2
         # s = +2
         # These alpha's are the series expansion coefficients of the RHS/source term
-        alpha0 = _sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2)
-        alpha1 = _sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2)
+        alpha0 = _sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_zerothorder(s, l, m, a, omega, En, Lz)
+        alpha1 = _sourceterm_without_phasing_circularorbit_nearhorizon_seriesexpansion_firstorder(s, l, m, a, omega, En, Lz)
     
         # These beta's are the series expansion coefficients of the LHS when the ansatz is substituted
-        beta00, beta01 = _nearhorizon_ansatz_zerothorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2, lambda=lambda)
-        beta10, beta11 = _nearhorizon_ansatz_firstorder(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2, lambda=lambda)
+        beta00, beta01 = _nearhorizon_ansatz_zerothorder(s, l, m, a, omega, En, Lz)
+        beta10, beta11 = _nearhorizon_ansatz_firstorder(s, l, m, a, omega, En, Lz)
 
         # Solve the simple system of linear equations
-        scriptA0 = (beta11*alpha0 - beta01*alpha1)/(beta00*beta11 - beta10*beta01)
-        scriptA1 = (beta10*alpha0 - beta00*alpha1)/(beta10*beta01 - beta00*beta11)
+        scriptA0 = (alpha1*beta01 - alpha0*beta11)/(beta01*beta10 - beta00*beta11)
+        scriptA1 = (-alpha1*beta00 + alpha0*beta10)/(beta01*beta10 - beta00*beta11)
 
         return scriptA0, scriptA1
     else
