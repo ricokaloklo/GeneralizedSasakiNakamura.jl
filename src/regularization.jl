@@ -304,3 +304,11 @@ function _lhs_without_phasing_ansatz(s::Int, l::Int, m::Int, a, omega, En, Lz, l
         throw(DomainError(s, "Currently only spin weight s of +2 is supported"))
     end
 end
+
+function nearhorizon_ansatz(s::Int, l::Int, m::Int, a, omega, En, Lz, t, phi, r; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing, lambda=nothing)
+    scriptA0, scriptA1 = sourceterm_regularization_ansatz_coefficients(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2, lambda=lambda)
+    phasing_term = exp(1im*omega*t - 1im*m*phi)
+    _Delta = Delta(a, r)
+
+    return ((scriptA0/(r * _Delta^2)) + (scriptA1/(r^3 * _Delta))) * phasing_term
+end
