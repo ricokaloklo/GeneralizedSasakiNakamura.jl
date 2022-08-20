@@ -6,12 +6,12 @@ include("kerr.jl")
 const Pi = pi
 const I = 1im
 
-function sourceterm_without_phasing_circularorbit(s::Int, l::Int, m::Int, a, omega, En, Lz, r)
-    # Compute the necessary angular terms using SpinWeightedSpheroidalHarmonics.jl
-    # There is a caching mechanism so only need to do spectral decomposition once
-    swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
-    psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
-    p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+function sourceterm_without_phasing_circularorbit(s::Int, l::Int, m::Int, a, omega, En, Lz, r; swsh_piover2=nothing, psptheta_piover2=nothing, p2sptheta2_piover2=nothing)
+    if isnothing(swsh_piover2) || isnothing(psptheta_piover2) || isnothing(p2sptheta2_piover2)
+        swsh_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0)
+        psptheta_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=1)
+        p2sptheta2_piover2 = spin_weighted_spheroidal_harmonic(s, l, m, a*omega, pi/2, 0; theta_derivative=2)
+    end
 
     #=
     We have derived/shown the explicit expression for
