@@ -67,8 +67,18 @@ function regularized_sourceterm_without_phasing_circularorbit(s::Int, l::Int, m:
         lambda = Teukolsky_lambda_const(a*omega, s, l, m)
     end
 
-    original_sourceterm = sourceterm_without_phasing_circularorbit(s, l, m, a, omega, En, Lz, r; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2)
-    scriptA0, scriptA1 = sourceterm_regularization_ansatz_coefficients(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2, lambda=lambda)
-    lhs = _lhs_without_phasing_ansatz(s, l, m, a, omega, En, Lz, lambda, r, scriptA0, scriptA1)
-    return original_sourceterm - lhs
+    #=
+    We have derived/shown the explicit expression for
+    s = +2 only for regularization
+    =#
+    if s == 2
+        # s = +2
+        original_sourceterm = sourceterm_without_phasing_circularorbit(s, l, m, a, omega, En, Lz, r; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2)
+        scriptA0, scriptA1 = sourceterm_regularization_ansatz_coefficients(s, l, m, a, omega, En, Lz; swsh_piover2=swsh_piover2, psptheta_piover2=psptheta_piover2, p2sptheta2_piover2=p2sptheta2_piover2, lambda=lambda)
+        lhs = _lhs_without_phasing_ansatz(s, l, m, a, omega, En, Lz, lambda, r, scriptA0, scriptA1)
+        return original_sourceterm - lhs
+    else
+        # Throw an error, this spin weight is not supported
+        throw(DomainError(s, "Currently only spin weight s of +2 is supported"))
+    end
 end
