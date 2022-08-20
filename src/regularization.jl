@@ -269,43 +269,32 @@ function _lhs_without_phasing_ansatz(s::Int, l::Int, m::Int, a, omega, En, Lz, l
     =#
     if s == 2
         sqrt_term = sqrt(-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2)
+        _Delta = Delta(a, r)
+        _K = K(m, a, omega, r)
+        denominator_term = (a*Lz - En*(a^2 + r^2))^2 - (((-a)*En + Lz)^2 + r^2)*_Delta
+        VT_related_term = -_K^2 + 4*I*_K*(-1 + r) + _Delta*lambda - 8*I*r*_Delta*omega
+        three_im_term = (m*(a*(a*Lz - 2*En*r) - Lz*_Delta))/(sqrt_term*_Delta) + (r^2*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*_Delta))*omega)/sqrt_term
+        coefficient_m_term = begin
+            (-2*a*En - Lz*(-2 + 2*r))/(sqrt_term*_Delta) - ((-2 + 2*r)*(a*(a*Lz - 2*En*r) - Lz*_Delta))/(sqrt_term*_Delta^2) - 
+            ((a*(a*Lz - 2*En*r) - Lz*_Delta)*(-((-2 + 2*r)*(((-a)*En + Lz)^2 + r^2)) - 4*En*r*(a*Lz - En*(a^2 + r^2)) - 2*r*_Delta))/(2*denominator_term^(3/2)*_Delta)
+        end
+        coefficient_omega_term = begin
+            -((r^2*(-((2*(-2 + 2*r)*(a^2*En - a*Lz + En*r^2))/(r*_Delta^2)) + (4*En)/_Delta - (2*(a^2*En - a*Lz + En*r^2))/(r^2*_Delta)))/sqrt_term) - (2*r*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*_Delta)))/sqrt_term + 
+            (r^2*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*_Delta))*(-((-2 + 2*r)*(((-a)*En + Lz)^2 + r^2)) - 4*En*r*(a*Lz - En*(a^2 + r^2)) - 2*r*_Delta))/(2*denominator_term^(3/2))
+        end
+        r_Delta_term = begin
+            (m^2*(a*(a*Lz - 2*En*r) - Lz*_Delta)^2)/(denominator_term*_Delta^2) + (2*m*r^2*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*_Delta))*(a*(a*Lz - 2*En*r) - Lz*_Delta)*omega)/(denominator_term*_Delta) + 
+            (r^4*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*_Delta))^2*omega^2)/denominator_term + I*(coefficient_m_term*m - coefficient_omega_term*omega)
+        end
 
         coefficient_for_scriptA0 = begin
-            (-(1/(r^5*(a^2 + (-2 + r)*r)^3)))*(-12*(2 - 2*r)*(-1 + r)*r^4 - 3*(2 - 2*r)*r^3*(a^2 + (-2 + r)*r) - 2*r^2*(a^4 + 4*a^2*(-2 + r)*r + 3*r^2*(8 - 12*r + 5*r^2)) - 
-            3*I*(2 - 2*r)*r^4*(a^2 + (-2 + r)*r)*((m*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r)))/((a^2 + (-2 + r)*r)*sqrt_term) + (r^2*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))*omega)/
-            sqrt_term) - 2*I*r^3*(a^2 + (-2 + r)*r)*(a^2 + r*(-6 + 5*r))*((m*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r)))/((a^2 + (-2 + r)*r)*sqrt_term) + 
-            (r^2*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))*omega)/sqrt_term) + r^4*((a^2 + (-2 + r)*r)*lambda - 8*I*r*(a^2 + (-2 + r)*r)*omega - (a*m - (a^2 + r^2)*omega)^2 + 
-            4*I*(-1 + r)*((-a)*m + (a^2 + r^2)*omega)) + r^4*(a^2 + (-2 + r)*r)^2*((m^2*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r))^2)/
-            ((a^2 + (-2 + r)*r)^2*(-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2)) + 
-            (2*m*r^2*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r))*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))*omega)/
-            ((a^2 + (-2 + r)*r)*(-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2)) + (r^4*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))^2*omega^2)/
-            (-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2) + 
-            I*(m*(-(((a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r))*(-2*r*(a^2 + (-2 + r)*r) - (-2 + 2*r)*(((-a)*En + Lz)^2 + r^2) - 4*En*r*(a*Lz - En*(a^2 + r^2))))/
-           (2*(a^2 + (-2 + r)*r)*(-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2)^(3/2))) + (-2*a*En - Lz*(-2 + 2*r))/((a^2 + (-2 + r)*r)*sqrt_term) - 
-            ((-2 + 2*r)*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r)))/((a^2 + (-2 + r)*r)^2*sqrt_term)) - 
-            ((r^2*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))*(-2*r*(a^2 + (-2 + r)*r) - (-2 + 2*r)*(((-a)*En + Lz)^2 + r^2) - 4*En*r*(a*Lz - En*(a^2 + r^2))))/
-            (2*(-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2)^(3/2)) - 
-            (r^2*((4*En)/(a^2 + (-2 + r)*r) - (2*(-2 + 2*r)*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)^2) - (2*(a^2*En - a*Lz + En*r^2))/(r^2*(a^2 + (-2 + r)*r))))/sqrt_term - 
-            (2*r*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r))))/sqrt_term)*omega)))
+            -((-12*(2 - 2*r)*(-1 + r)*r^4 - 2*r^2*(a^4 + 4*a^2*(-2 + r)*r + 3*r^2*(8 - 12*r + 5*r^2)) + r^4*VT_related_term - 3*(2 - 2*r)*r^3*_Delta - 3*I*three_im_term*(2 - 2*r)*r^4*_Delta - 
+            2*I*three_im_term*r^3*(a^2 + r*(-6 + 5*r))*_Delta + r^4*r_Delta_term*_Delta^2)/(r^5*_Delta^3))
         end
 
         coefficient_for_scriptA1 = begin
-            (-(1/(r^5*(a^2 + (-2 + r)*r)^3)))*(-6*(2 - 2*r)*(-1 + r)*r^2*(a^2 + (-2 + r)*r) - 9*(2 - 2*r)*r*(a^2 + (-2 + r)*r)^2 - 2*(a^2 + (-2 + r)*r)*(6*a^4 + a^2*r*(-30 + 17*r) + r^2*(40 - 48*r + 15*r^2)) - 
-            3*I*(2 - 2*r)*r^2*(a^2 + (-2 + r)*r)^2*((m*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r)))/((a^2 + (-2 + r)*r)*sqrt_term) + (r^2*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))*omega)/
-            sqrt_term) - 2*I*r*(a^2 + (-2 + r)*r)*(3*a^4 + 2*a^2*r*(-7 + 4*r) + r^2*(16 - 18*r + 5*r^2))*((m*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r)))/((a^2 + (-2 + r)*r)*sqrt_term) + 
-            (r^2*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))*omega)/sqrt_term) + r^2*(a^2 + (-2 + r)*r)*((a^2 + (-2 + r)*r)*lambda - 8*I*r*(a^2 + (-2 + r)*r)*omega - (a*m - (a^2 + r^2)*omega)^2 + 
-            4*I*(-1 + r)*((-a)*m + (a^2 + r^2)*omega)) + r^2*(a^2 + (-2 + r)*r)^3*((m^2*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r))^2)/
-            ((a^2 + (-2 + r)*r)^2*(-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2)) + 
-            (2*m*r^2*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r))*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))*omega)/
-            ((a^2 + (-2 + r)*r)*(-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2)) + (r^4*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))^2*omega^2)/
-            (-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2) + 
-            I*(m*(-(((a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r))*(-2*r*(a^2 + (-2 + r)*r) - (-2 + 2*r)*(((-a)*En + Lz)^2 + r^2) - 4*En*r*(a*Lz - En*(a^2 + r^2))))/
-            (2*(a^2 + (-2 + r)*r)*(-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2)^(3/2))) + (-2*a*En - Lz*(-2 + 2*r))/((a^2 + (-2 + r)*r)*sqrt_term) - 
-            ((-2 + 2*r)*(a*(a*Lz - 2*En*r) - Lz*(a^2 + (-2 + r)*r)))/((a^2 + (-2 + r)*r)^2*sqrt_term)) - 
-            ((r^2*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)))*(-2*r*(a^2 + (-2 + r)*r) - (-2 + 2*r)*(((-a)*En + Lz)^2 + r^2) - 4*En*r*(a*Lz - En*(a^2 + r^2))))/
-            (2*(-((a^2 + (-2 + r)*r)*(((-a)*En + Lz)^2 + r^2)) + (a*Lz - En*(a^2 + r^2))^2)^(3/2)) - 
-            (r^2*((4*En)/(a^2 + (-2 + r)*r) - (2*(-2 + 2*r)*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r)^2) - (2*(a^2*En - a*Lz + En*r^2))/(r^2*(a^2 + (-2 + r)*r))))/sqrt_term - 
-            (2*r*(En + (2*(a^2*En - a*Lz + En*r^2))/(r*(a^2 + (-2 + r)*r))))/sqrt_term)*omega)))
+            -((-6*(2 - 2*r)*(-1 + r)*r^2*_Delta - 2*I*three_im_term*r*(3*a^4 + 2*a^2*r*(-7 + 4*r) + r^2*(16 - 18*r + 5*r^2))*_Delta - 2*(6*a^4 + a^2*r*(-30 + 17*r) + r^2*(40 - 48*r + 15*r^2))*_Delta + 
+            r^2*VT_related_term*_Delta - 9*(2 - 2*r)*r*_Delta^2 - 3*I*three_im_term*(2 - 2*r)*r^2*_Delta^2 + r^2*r_Delta_term*_Delta^3)/(r^5*_Delta^3))
         end
 
         return coefficient_for_scriptA0*scriptA0 + coefficient_for_scriptA1*scriptA1
