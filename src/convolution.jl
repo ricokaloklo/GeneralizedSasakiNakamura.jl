@@ -3,11 +3,11 @@ using FiniteDifferences
 
 include("kerr.jl")
 
-function Levin!(du, u, p, r)
+function Levin(u, p, r)
     # Compute q'(r) using finite differencing (5th order)
     qprime = central_fdm(5, 1)(p.q, r)
     # p'(r) = f(r) - A(r)p(r)
-    du[1] = p.f(r) - (1im*qprime)*u[1]
+    p.f(r) - (1im*qprime)*u
 end
 
 function convolution_integral(s::Int, a, R_homo, sourceterm_without_phasing, sourceterm_phasing, lower_limit, upper_limit; reltol=1e-10, abstol=1e-10)
@@ -65,12 +65,12 @@ function convolution_integral(s::Int, a, R_homo, sourceterm_without_phasing, sou
     f(r) = R_homo(r) * Delta(a, r)^s * sourceterm_without_phasing(r)
     q(r) = sourceterm_phasing(r)
 
-    u0 = [0.0+0.0im] # Complex output
+    u0 = 0.0+0.0im # Complex output
     rspan = (lower_limit, upper_limit)
     p = (f=f, q=q)
-    odeprob = ODEProblem(Levin!, u0, rspan, p)
-    odealgo = RK4() # Seems to be fine
-    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    odeprob = ODEProblem(Levin, u0, rspan, p)
+    odealgo = Tsit5() # Seems to be fine
+    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol, save_everystep=false, save_start=true, save_end=true)
 
-    return first(odesoln(last(rspan))) * exp(1im*sourceterm_phasing(last(rspan)))
+    return first(last(odesoln.u)) * exp(1im*sourceterm_phasing(last(odesoln.t)))
 end
