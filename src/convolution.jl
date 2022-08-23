@@ -3,7 +3,7 @@ using FiniteDifferences
 
 include("kerr.jl")
 
-function Levin(u, p, r)
+function Levin(u::ComplexF64, p, r)
     # Compute q'(r) using finite differencing (5th order)
     qprime = central_fdm(5, 1)(p.q, r)
     # p'(r) = f(r) - A(r)p(r)
@@ -69,7 +69,7 @@ function convolution_integral(s::Int, a, R_homo, sourceterm_without_phasing, sou
     rspan = (lower_limit, upper_limit)
     p = (f=f, q=q)
     odeprob = ODEProblem(Levin, u0, rspan, p)
-    odealgo = Tsit5() # Seems to be fine
+    odealgo = RK4() # Seems to be fine
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol, save_everystep=false, save_start=true, save_end=true)
 
     return first(last(odesoln.u)) * exp(1im*sourceterm_phasing(last(odesoln.t)))
