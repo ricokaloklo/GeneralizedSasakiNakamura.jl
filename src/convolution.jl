@@ -10,7 +10,7 @@ function Levin(u, p, r)
     p.f(r) - (1im*qprime)*u
 end
 
-function convolution_integral(s::Int, a, R_homo, sourceterm_without_phasing, sourceterm_phasing, lower_limit, upper_limit; reltol=1e-10, abstol=1e-10)
+function convolution_integral(s::Int, a, R_homo, sourceterm_without_phasing, sourceterm_phasing, lower_limit, upper_limit; reltol=1e-8, abstol=1e-8)
     #=
     Calculate the convolution integral
 
