@@ -1,4 +1,4 @@
-using DifferentialEquations
+using OrdinaryDiffEq
 
 include("kerr.jl")
 include("transformation.jl")
