@@ -13,7 +13,7 @@ SpinWeightedSpheroidalHarmonics = "680e17a6-2a17-48fd-ae01-e2b5a643bef0"
 [compat]
 Interpolations = "0.14"
 Roots = "2"
-julia = "1"
+julia = "1.7"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
