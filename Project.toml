@@ -11,6 +11,7 @@ Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 SpinWeightedSpheroidalHarmonics = "680e17a6-2a17-48fd-ae01-e2b5a643bef0"
 
 [compat]
+DifferentialEquations = "7"
 Interpolations = "0.14"
 Roots = "2"
 julia = "1"
