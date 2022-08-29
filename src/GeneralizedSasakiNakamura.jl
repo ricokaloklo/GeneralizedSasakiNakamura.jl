@@ -25,6 +25,7 @@ sourceterm_without_phasing_circularorbit = SourceTerms.sourceterm_without_phasin
 regularized_sourceterm_without_phasing_circularorbit = SourceTerms.regularized_sourceterm_without_phasing_circularorbit
 
 using .Regularization
+export sourceterm_regularization_ansatz_coefficients, nearhorizon_ansatz, lhs_without_phasing_ansatz
 
 using .Convolution
 export convolution_integral
