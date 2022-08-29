@@ -1,6 +1,7 @@
 module Regularization
 
 using SpinWeightedSpheroidalHarmonics
+using ..Kerr
 
 export sourceterm_regularization_ansatz_coefficients, nearhorizon_ansatz, lhs_without_phasing_ansatz
 
