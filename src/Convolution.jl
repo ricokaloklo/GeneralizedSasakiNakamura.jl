@@ -1,6 +1,7 @@
 module Convolution
 
 using QuadGK
+using ..Kerr
 
 function convolution_integral(s::Int, a, R_homo, sourceterm_without_phasing, sourceterm_phasing, lower_limit, upper_limit)
     f(r) = R_homo(r) * Delta(a, r)^s * sourceterm_without_phasing(r)
