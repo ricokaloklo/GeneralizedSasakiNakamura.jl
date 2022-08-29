@@ -2,7 +2,7 @@ module Regularization
 
 using SpinWeightedSpheroidalHarmonics
 
-export sourceterm_regularization_ansatz_coefficients, nearhorizon_ansatz
+export sourceterm_regularization_ansatz_coefficients, nearhorizon_ansatz, lhs_without_phasing_ansatz
 
 # Mathematica being Mathematica
 const Pi = pi
@@ -267,7 +267,7 @@ function sourceterm_regularization_ansatz_coefficients(s::Int, l::Int, m::Int, a
     end
 end
 
-function _lhs_without_phasing_ansatz(s::Int, l::Int, m::Int, a, omega, En, Lz, lambda, r, scriptA0, scriptA1)
+function lhs_without_phasing_ansatz(s::Int, l::Int, m::Int, a, omega, En, Lz, lambda, r, scriptA0, scriptA1)
     #=
     We have derived/shown the explicit expression for
     s = +2 ONLY
