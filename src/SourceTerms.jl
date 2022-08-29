@@ -1,7 +1,8 @@
-using SpinWeightedSpheroidalHarmonics
+module SourceTerms
 
-include("kerr.jl")
-include("regularization.jl")
+using SpinWeightedSpheroidalHarmonics
+using ..Kerr
+using ..Regularization
 
 # Mathematica being Mathematica
 const Pi = pi
@@ -141,4 +142,6 @@ function regularized_sourceterm_without_phasing_circularorbit(s::Int, l::Int, m:
         # Throw an error, this spin weight is not supported
         throw(DomainError(s, "Currently only spin weight s of +2 is supported"))
     end
+end
+
 end

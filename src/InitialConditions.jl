@@ -1,5 +1,9 @@
-include("kerr.jl")
-include("coordinates.jl")
+module InitialConditions
+
+using ..Kerr
+using ..Coordinates
+
+export Xinf_initialconditions, Xhor_initialconditions
 
 const I = 1im # Mathematica being Mathematica
 
@@ -132,4 +136,6 @@ function Xhor_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::I
     phase = exp(-1im * p * rsin)
 
     return phase*gansatz, phase*(-1im*p*gansatz)
+end
+
 end

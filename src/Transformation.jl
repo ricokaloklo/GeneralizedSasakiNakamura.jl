@@ -1,5 +1,9 @@
-include("kerr.jl")
-include("potentials.jl")
+module Transformation
+
+using ..Kerr
+using ..Potentials
+
+export alpha, alpha_prime, beta, beta_prime, eta, eta_prime
 
 const I = 1im # Mathematica being Mathematica
 
@@ -246,4 +250,6 @@ function eta_prime(s::Int, m::Int, a, omega, lambda, r)
         # Throw an error, this spin weight is not supported
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
     end
+end
+
 end

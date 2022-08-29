@@ -1,4 +1,8 @@
-include("kerr.jl")
+module Potentials
+
+using ..Kerr
+
+export sF, sU, VT
 
 const I = 1im # Mathematica being Mathematica
 
@@ -197,4 +201,6 @@ function VT(s::Int, m::Int, a, omega, lambda, r)
     _K = K(m, a, omega, r)
     _Delta = Delta(a, r)
     return lambda - 4im*s*omega*r - (_K^2 - 2im*s*(r-1)*_K)/_Delta
+end
+
 end

@@ -1,4 +1,8 @@
+module Regularization
+
 using SpinWeightedSpheroidalHarmonics
+
+export sourceterm_regularization_ansatz_coefficients, nearhorizon_ansatz
 
 # Mathematica being Mathematica
 const Pi = pi
@@ -311,4 +315,6 @@ function nearhorizon_ansatz(s::Int, l::Int, m::Int, a, omega, En, Lz, t, phi, r;
     _Delta = Delta(a, r)
 
     return ((scriptA0/(r * _Delta^2)) + (scriptA1/(r^3 * _Delta))) * phasing_term
+end
+
 end

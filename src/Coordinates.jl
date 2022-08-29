@@ -1,7 +1,10 @@
+module Coordinates
+
+using ..Kerr
 using Roots
 using Interpolations
 
-include("kerr.jl")
+export rstar_from_r, r_from_rstar
 
 function rstar_from_rp(a, r_from_rp)
     rp = r_plus(a)
@@ -41,4 +44,6 @@ end
 function build_r_from_rstar_interpolant(a, rsin, rsout; rsstep::Float64=0.01)
     rsgrid = collect(rsin:rsstep:rsout)
     return linear_interpolation(rsgrid, (x -> r_from_rstar(a, x)).(rsgrid))
+end
+
 end

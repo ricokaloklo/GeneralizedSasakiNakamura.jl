@@ -1,10 +1,11 @@
-using DifferentialEquations
+module Solutions
 
-include("kerr.jl")
-include("transformation.jl")
-include("coordinates.jl")
-include("potentials.jl")
-include("initialconditions.jl")
+using DifferentialEquations
+using ..Kerr
+using ..Transformation
+using ..Coordinates
+using ..Potentials
+using ..InitialConditions
 
 function generalized_sasaki_nakamura_equation!(du, u, p, rs)
     r = r_from_rstar(p.a, rs)
@@ -97,4 +98,6 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
     _interpolant_in_r(r) = Xsoln(rstar_from_r(a, r))
     Rsoln = (r -> overall_conversion_matrix(r) * _interpolant_in_r(r))
     return Rsoln
+end
+
 end
