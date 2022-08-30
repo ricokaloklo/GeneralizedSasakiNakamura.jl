@@ -13,6 +13,9 @@ include("Convolution.jl")
 using .Coordinates
 export r_from_rstar, rstar_from_r
 
+using .Potentials
+export d2Rdr2_from_Rsoln
+
 using .Solutions
 export solve_Xinf, solve_Xhor, Teukolsky_radial_function_from_Sasaki_Nakamura_function
 solve_Xinf = Solutions.solve_Xinf
