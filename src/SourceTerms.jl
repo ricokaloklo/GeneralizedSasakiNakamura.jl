@@ -54,22 +54,18 @@ function sourceterm_without_phasing_circularorbit(s::Int, l::Int, m::Int, a, ome
     elseif s == -2
         # s = -2
         return begin
-            -((((-a)*En + Lz)^2*r^2*(-(((2*a4Enterm*(-2 + 2*r)^2)/_Delta^3 - (2*a4Enterm)/_Delta^2 - 
+            -((1/(2*Pi*sqrtterm))*(((-a)*En + Lz)^2*r^2*
+            ((a^2 - 2*r + r^2)^2*(-(((2*a4Enterm*(-2 + 2*r)^2)/_Delta^3 - (2*a4Enterm)/_Delta^2 - 
             (2*(-2 + 2*r)*(-4*a*Lz + 3*a^2*En*r + 8*En*r^3 + a^2*En*(2 + 3*r)))/_Delta^2 + (6*a^2*En + 24*En*r^2)/_Delta)/
-            ((-a^2)*En + a4Enterm/_Delta)^2) + 
-            (2*(-((a4Enterm*(-2 + 2*r))/_Delta^2) + (-4*a*Lz + 3*a^2*En*r + 8*En*r^3 + a^2*En*(2 + 3*r))/_Delta)^2)/
-            ((-a^2)*En + a4Enterm/_Delta)^3)*(En + (2*a2Enterm)/(r*_Delta))*swsh_piover2)/(2*Pi*sqrtterm)) - 
-            (1/(Pi*((-a^2)*En + a4Enterm/_Delta)^2))*(((-a)*En + Lz)^2*(-((a4Enterm*(-2 + 2*r))/_Delta^2) + 
-            (-4*a*Lz + 3*a^2*En*r + 8*En*r^3 + a^2*En*(2 + 3*r))/_Delta)*
-            (-((r^2*(-((2*a2Enterm*(-2 + 2*r))/(r*_Delta^2)) + (4*En)/_Delta - (2*a2Enterm)/(r^2*_Delta)))/sqrtterm) - 
-            (2*r*(En + (2*a2Enterm)/(r*_Delta)))/sqrtterm + (I*m*r^2*(En + (2*a2Enterm)/(r*_Delta))*(a*(a*Lz - 2*En*r) - Lz*_Delta))/
-            (sqrtterm*_Delta) + (r^2*(En + (2*a2Enterm)/(r*_Delta))*(-((-2 + 2*r)*(((-a)*En + Lz)^2 + r^2)) - 
-            4*En*r*(a*Lz - En*(a^2 + r^2)) - 2*r*_Delta))/(2*sqrtterm^3) + (I*r^4*(En + (2*a2Enterm)/(r*_Delta))^2*omega)/sqrtterm)*
-            swsh_piover2) + (1/(2*Pi*((-a^2)*En + a4Enterm/_Delta)))*
-            (((-a)*En + Lz)^2*(-((4*r*(-((2*a2Enterm*(-2 + 2*r))/(r*_Delta^2)) + (4*En)/_Delta - (2*a2Enterm)/(r^2*_Delta)) + 
-            2*(En + (2*a2Enterm)/(r*_Delta)) + r^2*((a2Enterm*(4*r*((2*(-2 + 2*r)^2)/_Delta^3 - 2/_Delta^2) - (8*(-2 + 2*r))/_Delta^2))/
-            (2*r^2) + 2*(-(a2Enterm/r^3) + En/r)*(-((4*r*(-2 + 2*r))/_Delta^2) + 4/_Delta) + (4*((3*a2Enterm)/r^4 - (3*En)/r^2)*r)/
-            _Delta))/sqrtterm) + (m^2*r^2*(En + (2*a2Enterm)/(r*_Delta))*(a*(a*Lz - 2*En*r) - Lz*_Delta)^2)/(sqrtterm^3*_Delta^2) + 
+            ((-a^2)*En + a4Enterm/_Delta)^2) + (2*(-((a4Enterm*(-2 + 2*r))/_Delta^2) + (-4*a*Lz + 3*a^2*En*r + 8*En*r^3 + 
+            a^2*En*(2 + 3*r))/_Delta)^2)/((-a^2)*En + a4Enterm/_Delta)^3) + (2*(-2 + 2*r)^2 + 4*(a^2 - 2*r + r^2))/
+            ((-a^2)*En + a4Enterm/_Delta) - (4*(-2 + 2*r)*(a^2 - 2*r + r^2)*(-((a4Enterm*(-2 + 2*r))/_Delta^2) + 
+            (-4*a*Lz + 3*a^2*En*r + 8*En*r^3 + a^2*En*(2 + 3*r))/_Delta))/((-a^2)*En + a4Enterm/_Delta)^2)*(En + (2*a2Enterm)/(r*_Delta))*
+            swsh_piover2)) + (1/(2*Pi*((-a^2)*En + a4Enterm/_Delta)))*(((-a)*En + Lz)^2*(a^2 - 2*r + r^2)^2*
+            (-((4*r*(-((2*a2Enterm*(-2 + 2*r))/(r*_Delta^2)) + (4*En)/_Delta - (2*a2Enterm)/(r^2*_Delta)) + 2*(En + (2*a2Enterm)/(r*_Delta)) + 
+            r^2*((a2Enterm*(4*r*((2*(-2 + 2*r)^2)/_Delta^3 - 2/_Delta^2) - (8*(-2 + 2*r))/_Delta^2))/(2*r^2) + 
+            2*(-(a2Enterm/r^3) + En/r)*(-((4*r*(-2 + 2*r))/_Delta^2) + 4/_Delta) + (4*((3*a2Enterm)/r^4 - (3*En)/r^2)*r)/_Delta))/
+            sqrtterm) + (m^2*r^2*(En + (2*a2Enterm)/(r*_Delta))*(a*(a*Lz - 2*En*r) - Lz*_Delta)^2)/(sqrtterm^3*_Delta^2) + 
             ((r^2*(-((2*a2Enterm*(-2 + 2*r))/(r*_Delta^2)) + (4*En)/_Delta - (2*a2Enterm)/(r^2*_Delta)) + 2*r*(En + (2*a2Enterm)/(r*_Delta)))*
             (-((-2 + 2*r)*(((-a)*En + Lz)^2 + r^2)) - 4*En*r*(a*Lz - En*(a^2 + r^2)) - 2*r*_Delta))/sqrtterm^3 - 
             (2*I*m*(a*(a*Lz - 2*En*r) - Lz*_Delta)*(-((r^2*(-((2*a2Enterm*(-2 + 2*r))/(r*_Delta^2)) + (4*En)/_Delta - 
@@ -86,33 +82,43 @@ function sourceterm_without_phasing_circularorbit(s::Int, l::Int, m::Int, a, ome
             (2*a2Enterm)/(r^2*_Delta)))/sqrtterm) - (2*r*(En + (2*a2Enterm)/(r*_Delta)))/sqrtterm + 
             (r^2*(En + (2*a2Enterm)/(r*_Delta))*(-((-2 + 2*r)*(((-a)*En + Lz)^2 + r^2)) - 4*En*r*(a*Lz - En*(a^2 + r^2)) - 2*r*_Delta))/
             (2*sqrtterm^3))*omega)/sqrtterm + (r^6*(En + (2*a2Enterm)/(r*_Delta))^3*omega^2)/sqrtterm^3)*swsh_piover2) + 
+            2*(-((r^2*(-((2*a2Enterm*(-2 + 2*r))/(r*_Delta^2)) + (4*En)/_Delta - (2*a2Enterm)/(r^2*_Delta)))/sqrtterm) - 
+            (2*r*(En + (2*a2Enterm)/(r*_Delta)))/sqrtterm + (I*m*r^2*(En + (2*a2Enterm)/(r*_Delta))*(a*(a*Lz - 2*En*r) - Lz*_Delta))/
+            (sqrtterm*_Delta) + (r^2*(En + (2*a2Enterm)/(r*_Delta))*(-((-2 + 2*r)*(((-a)*En + Lz)^2 + r^2)) - 
+            4*En*r*(a*Lz - En*(a^2 + r^2)) - 2*r*_Delta))/(2*sqrtterm^3) + (I*r^4*(En + (2*a2Enterm)/(r*_Delta))^2*omega)/sqrtterm)*
+            ((((-a)*En + Lz)^2*(-2 + 2*r)*(a^2 - 2*r + r^2)*swsh_piover2)/(Pi*((-a^2)*En + a4Enterm/_Delta)) - 
+            (((-a)*En + Lz)^2*(a^2 - 2*r + r^2)^2*(-((a4Enterm*(-2 + 2*r))/_Delta^2) + (-4*a*Lz + 3*a^2*En*r + 8*En*r^3 + a^2*En*(2 + 3*r))/
+            _Delta)*swsh_piover2)/(2*Pi*((-a^2)*En + a4Enterm/_Delta)^2)) + 
             (-((r^2*(-((2*a2Enterm*(-2 + 2*r))/(r*_Delta^2)) + (4*En)/_Delta - (2*a2Enterm)/(r^2*_Delta)))/sqrtterm) - 
             (2*r*(En + (2*a2Enterm)/(r*_Delta)))/sqrtterm + (I*m*r^2*(En + (2*a2Enterm)/(r*_Delta))*(a*(a*Lz - 2*En*r) - Lz*_Delta))/
             (sqrtterm*_Delta) + (r^2*(En + (2*a2Enterm)/(r*_Delta))*(-((-2 + 2*r)*(((-a)*En + Lz)^2 + r^2)) - 
             4*En*r*(a*Lz - En*(a^2 + r^2)) - 2*r*_Delta))/(2*sqrtterm^3) + (I*r^4*(En + (2*a2Enterm)/(r*_Delta))^2*omega)/sqrtterm)*
-            ((((-a)*En + Lz)^2*(1/r + (I*((-a)*m + (a^2 + r^2)*omega))/_Delta)*swsh_piover2)/(Pi*((-a^2)*En + a4Enterm/_Delta)) - 
-            (I*(a*En - Lz)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*(psptheta_piover2 + (-m + a*omega)*swsh_piover2))/
-            (2*Pi*r^2*(En + (2*a2Enterm)/(r*_Delta))*_Delta)) - (1/sqrtterm)*(r^2*(En + (2*a2Enterm)/(r*_Delta))*
-            ((((-a)*En + Lz)^2*(-(1/r^2) + (2*I*r*omega)/_Delta - (I*(-2 + 2*r)*((-a)*m + (a^2 + r^2)*omega))/(a^2 - 2*r + r^2)^2)*swsh_piover2)/
-            (Pi*((-a^2)*En + a4Enterm/_Delta)) - (((-a)*En + Lz)^2*(-((a4Enterm*(-2 + 2*r))/_Delta^2) + 
-            (-4*a*Lz + 3*a^2*En*r + 8*En*r^3 + a^2*En*(2 + 3*r))/_Delta)*(1/r + (I*((-a)*m + (a^2 + r^2)*omega))/_Delta)*swsh_piover2)/
-            (Pi*((-a^2)*En + a4Enterm/_Delta)^2) + (I*(a*En - Lz)*(-2 + 2*r)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*
-            (psptheta_piover2 + (-m + a*omega)*swsh_piover2))/(2*Pi*r^2*(a^2 - 2*r + r^2)^2*(En + (2*a2Enterm)/(r*_Delta))) + 
-            (I*(a*En - Lz)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*(-((2*a2Enterm*(-2 + 2*r))/(r*_Delta^2)) + (4*En)/_Delta - 
-            (2*a2Enterm)/(r^2*_Delta))*(psptheta_piover2 + (-m + a*omega)*swsh_piover2))/(2*Pi*r^2*(En + (2*a2Enterm)/(r*_Delta))^2*_Delta) + 
-            (I*(a*En - Lz)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*(psptheta_piover2 + (-m + a*omega)*swsh_piover2))/
-            (Pi*r^3*(En + (2*a2Enterm)/(r*_Delta))*_Delta) - 
-            (I*(a*En - Lz)*(2*En*r - (-((-2 + 2*r)*(((-a)*En + Lz)^2 + r^2)) - 4*En*r*(a*Lz - En*(a^2 + r^2)) - 2*r*_Delta)/(2*sqrtterm))*
-            (psptheta_piover2 + (-m + a*omega)*swsh_piover2))/(2*Pi*r^2*(En + (2*a2Enterm)/(r*_Delta))*_Delta))) - 
+            ((((-a)*En + Lz)^2*(a^2 - 2*r + r^2)^2*(1/r + (I*((-a)*m + (a^2 + r^2)*omega))/_Delta)*swsh_piover2)/
+            (Pi*((-a^2)*En + a4Enterm/_Delta)) - (I*(a*En - Lz)*(a^2 - 2*r + r^2)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*
+            (psptheta_piover2 + (-m + a*omega)*swsh_piover2))/(2*Pi*r^2*(En + (2*a2Enterm)/(r*_Delta)))) - 
             (1/sqrtterm)*(r^2*(En + (2*a2Enterm)/(r*_Delta))*
-            ((((-a)*En + Lz)^2*((2*I*((-a)*m + (a^2 + r^2)*omega))/(r*_Delta) - ((-a)*m + (a^2 + r^2)*omega)^2/(a^2 - 2*r + r^2)^2 - 
-            I*((2*r*omega)/_Delta - ((-2 + 2*r)*((-a)*m + (a^2 + r^2)*omega))/(a^2 - 2*r + r^2)^2))*swsh_piover2)/
-            (2*Pi*((-a^2)*En + a4Enterm/_Delta)) - (I*(a*En - Lz)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*
-            (2/r + (I*((-a)*m + (a^2 + r^2)*omega))/_Delta)*(psptheta_piover2 + (-m + a*omega)*swsh_piover2))/(2*Pi*r^2*(En + (2*a2Enterm)/(r*_Delta))*
-            _Delta) + (((-a^2)*En + a*Lz - En*r^2 + sqrtterm)^2*((-psptheta_piover2)*r*(-m + a*omega) - r*(-m + a*omega)^2*swsh_piover2 + 
+            ((((-a)*En + Lz)^2*(a^2 - 2*r + r^2)^2*(-(1/r^2) + (2*I*r*omega)/_Delta - (I*(-2 + 2*r)*((-a)*m + (a^2 + r^2)*omega))/
+            (a^2 - 2*r + r^2)^2)*swsh_piover2)/(Pi*((-a^2)*En + a4Enterm/_Delta)) + 
+            (2*((-a)*En + Lz)^2*(-2 + 2*r)*(a^2 - 2*r + r^2)*(1/r + (I*((-a)*m + (a^2 + r^2)*omega))/_Delta)*swsh_piover2)/
+            (Pi*((-a^2)*En + a4Enterm/_Delta)) - (((-a)*En + Lz)^2*(a^2 - 2*r + r^2)^2*(-((a4Enterm*(-2 + 2*r))/_Delta^2) + 
+            (-4*a*Lz + 3*a^2*En*r + 8*En*r^3 + a^2*En*(2 + 3*r))/_Delta)*(1/r + (I*((-a)*m + (a^2 + r^2)*omega))/_Delta)*swsh_piover2)/
+            (Pi*((-a^2)*En + a4Enterm/_Delta)^2) + (I*(a*En - Lz)*(a^2 - 2*r + r^2)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*
+            (-((2*a2Enterm*(-2 + 2*r))/(r*_Delta^2)) + (4*En)/_Delta - (2*a2Enterm)/(r^2*_Delta))*(psptheta_piover2 + (-m + a*omega)*swsh_piover2))/
+            (2*Pi*r^2*(En + (2*a2Enterm)/(r*_Delta))^2) - (I*(a*En - Lz)*(-2 + 2*r)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*
+            (psptheta_piover2 + (-m + a*omega)*swsh_piover2))/(2*Pi*r^2*(En + (2*a2Enterm)/(r*_Delta))) + 
+            (I*(a*En - Lz)*(a^2 - 2*r + r^2)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*(psptheta_piover2 + (-m + a*omega)*swsh_piover2))/
+            (Pi*r^3*(En + (2*a2Enterm)/(r*_Delta))) - (I*(a*En - Lz)*(a^2 - 2*r + r^2)*
+            (2*En*r - (-((-2 + 2*r)*(((-a)*En + Lz)^2 + r^2)) - 4*En*r*(a*Lz - En*(a^2 + r^2)) - 2*r*_Delta)/(2*sqrtterm))*
+            (psptheta_piover2 + (-m + a*omega)*swsh_piover2))/(2*Pi*r^2*(En + (2*a2Enterm)/(r*_Delta))))) - 
+            (1/sqrtterm)*(r^2*(En + (2*a2Enterm)/(r*_Delta))*
+            ((((-a)*En + Lz)^2*(a^2 - 2*r + r^2)^2*((2*I*((-a)*m + (a^2 + r^2)*omega))/(r*_Delta) - ((-a)*m + (a^2 + r^2)*omega)^2/
+            (a^2 - 2*r + r^2)^2 - I*((2*r*omega)/_Delta - ((-2 + 2*r)*((-a)*m + (a^2 + r^2)*omega))/(a^2 - 2*r + r^2)^2))*swsh_piover2)/
+            (2*Pi*((-a^2)*En + a4Enterm/_Delta)) - (I*(a*En - Lz)*(a^2 - 2*r + r^2)*((-a)*Lz + En*(a^2 + r^2) - sqrtterm)*
+            (2/r + (I*((-a)*m + (a^2 + r^2)*omega))/_Delta)*(psptheta_piover2 + (-m + a*omega)*swsh_piover2))/(2*Pi*r^2*(En + (2*a2Enterm)/(r*_Delta))) + 
+            (((-a^2)*En + a*Lz - En*r^2 + sqrtterm)^2*((-psptheta_piover2)*r*(-m + a*omega) - r*(-m + a*omega)^2*swsh_piover2 + 
             (2*r - I*a*(-m + a*omega))*swsh_piover2 + r^4*((6*I*a*psptheta_piover2)/r^4 - p2sptheta2_piover2/r^3 + (12*a^2*swsh_piover2)/r^5) + 
             4*I*a*r^3*(-(psptheta_piover2/r^3) + (3*I*a*swsh_piover2)/r^4) + r^4*(-m + a*omega)*(-(psptheta_piover2/r^3) + (3*I*a*swsh_piover2)/r^4)))/
-            (4*Pi*r^3*(a^2 - 2*r + r^2)^2*(En + (2*a2Enterm)/(r*_Delta)))))
+            (4*Pi*r^3*(En + (2*a2Enterm)/(r*_Delta)))))
         end
     else
         # Throw an error, this spin weight is not supported
