@@ -217,3 +217,5 @@ function d2Rdr2_from_Rsoln(s::Int, m::Int, a, omega, lambda, Rsoln)
     d2Rdr2(r) = [VT(s, m, a, omega, lambda, r)/Delta(a, r) -(2*(s+1)*(r-1))/Delta(a, r)]*Rsoln(r)
     return d2Rdr2
 end
+
+end
