@@ -2,7 +2,7 @@ module Potentials
 
 using ..Kerr
 
-export sF, sU, VT
+export sF, sU, VT, radial_Teukolsky_equation, d2Rdr2_from_Rsoln
 
 const I = 1im # Mathematica being Mathematica
 
@@ -203,4 +203,17 @@ function VT(s::Int, m::Int, a, omega, lambda, r)
     return lambda - 4im*s*omega*r - (_K^2 - 2im*s*(r-1)*_K)/_Delta
 end
 
+function radial_Teukolsky_equation(s, m, a, omega, lambda, r, R, dRdr, d2Rdr2)
+    ((1 + s)*Delta(a ,r)^s*dRdr(r)*(2*(r-1)) + Delta(a, r)^(1 + s)*d2Rdr2(r))*(Delta(a,r)^(-s)) - VT(s, m, a, omega, lambda, r)*R(r)
+end
+
+function d2Rdr2_from_Rsoln(s::Int, m::Int, a, omega, lambda, Rsoln)
+    #=
+    Using the radial Teukolsky equation we can solve for d2Rdr2 from R and dRdr using
+
+        d2Rdr2 = VT/\Delta R - (2(s+1)(r-M)) dRdr
+    =#
+    # NOTE DO NOT USE THE DOT PRODUCT IN LINEAR ALGEBRA
+    d2Rdr2(r) = [VT(s, m, a, omega, lambda, r)/Delta(a, r) -(2*(s+1)*(r-1))/Delta(a, r)]*Rsoln(r)
+    return d2Rdr2
 end
