@@ -52,6 +52,30 @@ function solve_Xhor(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10,
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
+function Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
+    drstar_dr(r) = (r^2 + a^2)/Delta(a, r)
+    chi_conversion_factor(r) = (1.0/sqrt((r^2 + a^2) * (Delta(a, r)^s)))
+    dchi_conversion_factor_dr(r) = begin
+        ((-a^2)*(r - s + r*s) + r^2*(2 + s - r*(1 + s)))/
+        ((a^2 + (-2 + r)*r)*sqrt((a^2 + (-2 + r)*r)^s)*(a^2 + r^2)^(3/2))
+    end
+    _eta(r) = eta(s, m, a, omega, lambda, r)
+    _alpha(r) = alpha(s, m, a, omega, lambda, r)
+    _alpha_prime(r) = alpha_prime(s, m, a, omega, lambda, r)
+    _beta(r) = beta(s, m, a, omega, lambda, r)
+    _beta_prime(r) = beta_prime(s, m, a, omega, lambda, r)
+    _Delta(r) = Delta(a, r)
+    _VT(r) = VT(s, m, a, omega, lambda, r)
+    _1_over_eta(r) = 1.0/_eta(r)
+
+    conversion_matrix_from_X_dXdrs_to_X_dXdr(r) = [1 0 ; 0 drstar_dr(r)]
+    conversion_matrix_from_X_dXdr_to_chi_dchidr(r) = [chi_conversion_factor(r) 0 ; dchi_conversion_factor_dr(r) chi_conversion_factor(r)]
+    conversion_matrix_from_chi_dchidr_to_R_dRdr(r) = _1_over_eta(r) * [_alpha(r)+_beta_prime(r)*(_Delta(r)^(s+1)) -_beta(r)*(_Delta(r)^(s+1)) ; -(_alpha_prime(r)+_beta(r)*_VT(r)*(_Delta(r)^(s))) _alpha(r)]
+    # **Left multiplication**
+    overall_conversion_matrix = conversion_matrix_from_chi_dchidr_to_R_dRdr(r) * conversion_matrix_from_X_dXdr_to_chi_dchidr(r) * conversion_matrix_from_X_dXdrs_to_X_dXdr(r)
+    return overall_conversion_matrix
+end
+
 function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
     # Unpack the parameters
     s = Xsoln.prob.p.s
@@ -74,27 +98,7 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
     the multiplication of each conversion matrix
     =#
 
-    drstar_dr(r) = (r^2 + a^2)/Delta(a, r)
-    chi_conversion_factor(r) = (1.0/sqrt((r^2 + a^2) * (Delta(a, r)^s)))
-    dchi_conversion_factor_dr(r) = begin
-        ((-a^2)*(r - s + r*s) + r^2*(2 + s - r*(1 + s)))/
-        ((a^2 + (-2 + r)*r)*sqrt((a^2 + (-2 + r)*r)^s)*(a^2 + r^2)^(3/2))
-    end
-    _eta(r) = eta(s, m, a, omega, lambda, r)
-    _alpha(r) = alpha(s, m, a, omega, lambda, r)
-    _alpha_prime(r) = alpha_prime(s, m, a, omega, lambda, r)
-    _beta(r) = beta(s, m, a, omega, lambda, r)
-    _beta_prime(r) = beta_prime(s, m, a, omega, lambda, r)
-    _Delta(r) = Delta(a, r)
-    _VT(r) = VT(s, m, a, omega, lambda, r)
-    _1_over_eta(r) = 1.0/_eta(r)
-
-    conversion_matrix_from_X_dXdrs_to_X_dXdr(r) = [1 0 ; 0 drstar_dr(r)]
-    conversion_matrix_from_X_dXdr_to_chi_dchidr(r) = [chi_conversion_factor(r) 0 ; dchi_conversion_factor_dr(r) chi_conversion_factor(r)]
-    conversion_matrix_from_chi_dchidr_to_R_dRdr(r) = _1_over_eta(r) * [_alpha(r)+_beta_prime(r)*(_Delta(r)^(s+1)) -_beta(r)*(_Delta(r)^(s+1)) ; -(_alpha_prime(r)+_beta(r)*_VT(r)*(_Delta(r)^(s))) _alpha(r)]
-    # **Left multiplication**
-    overall_conversion_matrix(r) = conversion_matrix_from_chi_dchidr_to_R_dRdr(r) * conversion_matrix_from_X_dXdr_to_chi_dchidr(r) * conversion_matrix_from_X_dXdrs_to_X_dXdr(r)
-
+    overall_conversion_matrix(r) = Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
     _interpolant_in_r(r) = Xsoln(rstar_from_r(a, r))
     Rsoln = (r -> overall_conversion_matrix(r) * _interpolant_in_r(r))
     return Rsoln
