@@ -7,7 +7,7 @@ using ..Coordinates
 using ..Potentials
 using ..InitialConditions
 
-function generalized_sasaki_nakamura_equation!(du, u, p, rs)
+function generalized_Sasaki_Nakamura_equation!(du, u, p, rs)
     r = r_from_rstar(p.a, rs)
     _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
     _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
@@ -32,7 +32,7 @@ function solve_Xinf(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10,
     u0 = [Xinf_rsout; Xinfprime_rsout]
     rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(generalized_sasaki_nakamura_equation!, u0, rsspan, p)
+    odeprob = ODEProblem(generalized_Sasaki_Nakamura_equation!, u0, rsspan, p)
     odealgo = RK4()
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
@@ -47,7 +47,7 @@ function solve_Xhor(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10,
     u0 = [Xhor_rsin; Xhorprime_rsin]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(generalized_sasaki_nakamura_equation!, u0, rsspan, p)
+    odeprob = ODEProblem(generalized_Sasaki_Nakamura_equation!, u0, rsspan, p)
     odealgo = RK4()
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
