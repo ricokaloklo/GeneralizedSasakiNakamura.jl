@@ -111,4 +111,38 @@ function scaled_Wronskian(Rhor_soln, Rinf_soln, r, s, a)
     return Delta(a, r)^(s+1) * (Rhor*Rinf_prime - Rinf*Rhor_prime)
 end
 
+function _Bhole_from_Rhor(s, m, a, omega, Rhor_soln, rsin)
+    #=
+    We extract Bhole from a numerical solution of RH by directly evaluating
+    the asymptotic form of RH near r_+, which should goes like
+
+    RH ~ B^hole \Delta(r_+)^-s exp(-ipr_*(r_+))
+    =#
+    rin = r_from_rstar(a, rsin)
+    p = omega - m*omega_horizon(a)
+    RH = Rhor_soln(rin)[1]
+    return RH*(Delta(a, rin))^(s)*exp(1im*p*rsin)
+end
+
+function _Dinf_from_Rinf(s, m, a, omega, Rinf_soln, rsout)
+    #=
+    We extract Dinf from a numerical solution of Rinf by directly evaluating
+    the asymptotic form of Rinf near \infty, which goes like
+
+    Rinf ~ Dinf exp(i\omega r_*)/r^(2s+1)
+    =#
+    rout = r_from_rstar(a, rsout)
+    Rinf = Rinf_soln(rout)[1]
+    return Rinf*rout^(2*s+1)*exp(-1im*omega*rsout)
+end
+
+function normalize_to_unit_transmission_coefficient(s, m, a, omega, Rhor_soln, Rinf_soln, rsin, rsout)
+    #=
+    Normalize Rhor and Rinf by Bhole and Dinf respectively to have a unit transmission coefficient
+    =#
+    Bhole = _Bhole_from_Rhor(s, m, a, omega, Rhor_soln, rsin)
+    Dinf = _Dinf_from_Rinf(s, m, a, omega, Rinf_soln, rsout)
+    return (r -> Rhor_soln(r)/Bhole), (r -> Rinf_soln(r)/Dinf)
+end
+
 end
