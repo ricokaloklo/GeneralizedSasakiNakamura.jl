@@ -22,6 +22,9 @@ solve_Xinf = Solutions.solve_Xinf
 solve_Xhor = Solutions.solve_Xhor
 Teukolsky_radial_function_from_Sasaki_Nakamura_function = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function
 Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix
+export Bhole_from_Rhor, Dinf_from_Rinf
+Bhole_from_Rhor = Solutions.Bhole_from_Rhor
+Dinf_from_Rinf = Solutions.Dinf_from_Rinf
 
 using .SourceTerms
 export sourceterm_without_phasing_circularorbit, regularized_sourceterm_without_phasing_circularorbit
