@@ -104,4 +104,11 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
     return Rsoln
 end
 
+function scaled_Wronskian(Rhor_soln, Rinf_soln, r, s, a)
+    # The scaled Wronskian is given by W = Delta^{s+1} * det([Rhor Rinf; Rhor' Rinf'])
+    Rhor, Rhor_prime = Rhor_soln(r)
+    Rinf, Rinf_prime = Rinf_soln(r)
+    return Delta(a, r)^(s+1) * (Rhor*Rinf_prime - Rinf*Rhor_prime)
+end
+
 end
