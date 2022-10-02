@@ -92,7 +92,7 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
     [chi(r), dchi/dr(r)]^T = [chi_conversion_factor(r), 0 ; dchi_conversion_factor_dr, chi_conversion_factor] * [X(r), dX/dr(r)]^T
 
     After that we convert [chi(r), dchi/dr(r)] to [R(r), dR/dr(r)] by
-    [R(r), dR/dr(r)]^T = 1/eta(r) * [ alpha + beta_prime*Delta^(s+1), -beta*Delta^s ; -(alpha_prime + beta*VT*Delta^s), a ] *  [chi(r), dchi/dr(r)]^T
+    [R(r), dR/dr(r)]^T = 1/eta(r) * [ alpha + beta_prime*Delta^(s+1), -beta*Delta^(s+1) ; -(alpha_prime + beta*VT*Delta^s), alpha ] *  [chi(r), dchi/dr(r)]^T
 
     Therefore the overall conversion matrix is 'just' (one matrix for each r)
     the multiplication of each conversion matrix
