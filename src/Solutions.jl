@@ -104,6 +104,17 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
     return Rsoln
 end
 
+function d2Rdr2_from_Rsoln(s::Int, m::Int, a, omega, lambda, Rsoln, r)
+    #=
+    Using the radial Teukolsky equation we can solve for d2Rdr2 from R and dRdr using
+
+        d2Rdr2 = VT/\Delta R - (2(s+1)(r-M))/\Delta dRdr
+    =#
+    # NOTE DO NOT USE THE DOT PRODUCT IN LINEAR ALGEBRA
+    R, dRdr = Rsoln(r)
+    return (VT(s, m, a, omega, lambda, r)/Delta(a, r))*R - ((2*(s+1)*(r-1))/Delta(a,r))*dRdr
+end
+
 function scaled_Wronskian(Rhor_soln, Rinf_soln, r, s, a)
     # The scaled Wronskian is given by W = Delta^{s+1} * det([Rhor Rinf; Rhor' Rinf'])
     Rhor, Rhor_prime = Rhor_soln(r)

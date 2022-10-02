@@ -14,7 +14,6 @@ using .Coordinates
 export r_from_rstar, rstar_from_r
 
 using .Potentials
-export d2Rdr2_from_Rsoln
 
 using .Solutions
 export solve_Xinf, solve_Xhor, Teukolsky_radial_function_from_Sasaki_Nakamura_function, Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix
@@ -22,6 +21,8 @@ solve_Xinf = Solutions.solve_Xinf
 solve_Xhor = Solutions.solve_Xhor
 Teukolsky_radial_function_from_Sasaki_Nakamura_function = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function
 Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix
+export d2Rdr2_from_Rsoln
+d2Rdr2_from_Rsoln = Solutions.d2Rdr2_from_Rsoln
 export scaled_Wronskian
 scaled_Wronskian = Solutions.scaled_Wronskian
 export Bhole_from_Rhor, Dinf_from_Rinf
