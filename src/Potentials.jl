@@ -204,7 +204,7 @@ function VT(s::Int, m::Int, a, omega, lambda, r)
 end
 
 function radial_Teukolsky_equation(s, m, a, omega, lambda, r, R, dRdr, d2Rdr2)
-    ((1 + s)*Delta(a ,r)^s*dRdr(r)*(2*(r-1)) + Delta(a, r)^(1 + s)*d2Rdr2(r))*(Delta(a,r)^(-s)) - VT(s, m, a, omega, lambda, r)*R(r)
+    Delta(a, r)*d2Rdr2(r) + (2*(s+1)*(r-1))*dRdr(r) - VT(s, m, a, omega, lambda, r)*R(r)
 end
 
 end
