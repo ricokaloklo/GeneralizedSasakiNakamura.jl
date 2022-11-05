@@ -22,14 +22,14 @@ function generalized_Sasaki_Nakamura_equation!(du, u, p, rs)
     du[2] = _sF*u[2] + _sU*u[1]
 end
 
-function solve_Xinf(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
+function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
     end
     # Initial conditions at rs = rsout, the outer boundary
-    Xinf_rsout, Xinfprime_rsout = Xinf_initialconditions(s, m, a, omega, lambda, rsout)
-    u0 = [Xinf_rsout; Xinfprime_rsout]
+    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout)
+    u0 = [Xup_rsout; Xupprime_rsout]
     rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
     odeprob = ODEProblem(generalized_Sasaki_Nakamura_equation!, u0, rsspan, p)
@@ -37,14 +37,14 @@ function solve_Xinf(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10,
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
-function solve_Xhor(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
+function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
     end
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
-    Xhor_rsin, Xhorprime_rsin = Xhor_initialconditions(s, m, a, omega, lambda, rsin)
-    u0 = [Xhor_rsin; Xhorprime_rsin]
+    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin)
+    u0 = [Xin_rsin; Xinprime_rsin]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
     odeprob = ODEProblem(generalized_Sasaki_Nakamura_equation!, u0, rsspan, p)
