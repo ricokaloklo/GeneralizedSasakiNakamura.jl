@@ -8,7 +8,7 @@ export outgoing_coefficient_at_hor, ingoing_coefficient_at_hor
 
 const I = 1im # Mathematica being Mathematica
 
-function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int):
+function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int)
     #=
     We have derived/shown the explicit expression for
     different physically-relevant spin weight (s=0, \pm 1, \pm2)
@@ -160,7 +160,7 @@ function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::In
     end
 end
 
-function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int):
+function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int)
     #=
     We have derived/shown the explicit expression for
     different physically-relevant spin weight (s=0, \pm 1, \pm2)
@@ -300,7 +300,7 @@ function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int
     end
 end
 
-function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int):
+function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int)
     #=
     We have derived a similar recurrence relation for the expansion
     coefficients about the horizon. However the explicit expressions
@@ -318,7 +318,7 @@ function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::In
     end
 end
 
-function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int):
+function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int)
     #=
     We have derived a similar recurrence relation for the expansion
     coefficients about the horizon. However the explicit expressions
