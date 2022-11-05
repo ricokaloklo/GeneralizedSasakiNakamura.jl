@@ -1,4 +1,4 @@
-module AsymptoticSolutions
+module AsymptoticExpansionCoefficients
 
 using ..Kerr
 using ..Coordinates
