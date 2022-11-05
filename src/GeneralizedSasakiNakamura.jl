@@ -2,6 +2,7 @@ module GeneralizedSasakiNakamura
 
 include("Kerr.jl")
 include("Coordinates.jl")
+include("AsymptoticExpansionCoefficients.jl")
 include("InitialConditions.jl")
 include("Potentials.jl")
 include("Regularization.jl")
