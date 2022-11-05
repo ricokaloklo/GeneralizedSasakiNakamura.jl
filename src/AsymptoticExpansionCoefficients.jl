@@ -3,6 +3,9 @@ module AsymptoticExpansionCoefficients
 using ..Kerr
 using ..Coordinates
 
+export outgoing_coefficient_at_inf, ingoing_coefficient_at_inf
+export outgoing_coefficient_at_hor, ingoing_coefficient_at_hor
+
 const I = 1im # Mathematica being Mathematica
 
 function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int):
