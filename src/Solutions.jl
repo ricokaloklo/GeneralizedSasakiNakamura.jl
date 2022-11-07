@@ -7,6 +7,8 @@ using ..Coordinates
 using ..Potentials
 using ..InitialConditions
 
+const I = 1im # Mathematica being Mathematica
+
 function generalized_Sasaki_Nakamura_equation!(du, u, p, rs)
     r = r_from_rstar(p.a, rs)
     _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
@@ -53,6 +55,279 @@ function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, 
 end
 
 function Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
+    #=
+    Here we use explicit form for the conversion matrix to
+    faciliate cancellations
+    =#
+    M11 = M12 = M21 = M22 = 0.0
+    if s == 0
+        M11 = 1/sqrt(a^2 + r^2)
+        M21 = -(r/(a^2 + r^2)^(3/2))
+        M22 = sqrt(a^2 + r^2)/(a^2 + (-2 + r)*r)
+    elseif s == +1
+        M11 = begin
+            -((I*r*sqrt((a^2 + r^2)/(a^2 + (-2 + r)*r))*
+            ((-a^3)*m*r - a*m*r^3 + r^5*omega + 
+            a^4*(2*I + r*omega) + 2*a^2*r*(-2*I + I*r + 
+            r^2*omega)))/(sqrt(a^2 + r^2)*
+            sqrt((a^2 + (-2 + r)*r)*(a^2 + r^2))*
+            (-2*I*a^3*m*r - 2*I*a*m*r^3 + a^4*(1 + lambda) + 
+            r^4*(2 + lambda) + a^2*r*(2 + r*(3 + 2*lambda)))))
+        end
+        M12 = begin
+            (r^2*(a^2 + r^2)^(3/2)*
+            sqrt((a^2 + r^2)/(a^2 + (-2 + r)*r)))/
+            (sqrt((a^2 + (-2 + r)*r)*(a^2 + r^2))*
+            (-2*I*a^3*m*r - 2*I*a*m*r^3 + a^4*(1 + lambda) + 
+            r^4*(2 + lambda) + a^2*r*(2 + r*(3 + 2*lambda))))
+        end
+        M21 = begin
+            -((r*sqrt((a^2 + r^2)/(a^2 + (-2 + r)*r))*
+            (-2*a^7*m*(I + r*omega) + a^8*omega*(2*I + r*omega) + 
+            a^5*m*r*(2*I - I*r - 6*r^2*omega) + 
+            a*m*r^5*(-4*I + 3*I*r - 2*r^2*omega) - 
+            2*a^3*m*r^3*(I - 2*I*r + 3*r^2*omega) + 
+            r^6*(2*(2 + lambda) - r*(2 + lambda) - I*r^2*omega + 
+            r^3*omega^2) + a^6*(-4 + r*(1 + m^2 - lambda - 
+            2*I*omega) + 5*I*r^2*omega + 4*r^3*omega^2) + 
+            a^2*r^3*(4 + 4*r*lambda + r^2*(-3 + m^2 - 3*lambda - 
+            2*I*omega) - I*r^3*omega + 4*r^4*omega^2) + 
+            a^4*r*(8 + 2*r*(-4 + lambda) + 
+            r^2*(2*m^2 - 3*lambda - 4*I*omega) + 3*I*r^3*omega + 
+            6*r^4*omega^2)))/(sqrt(a^2 + r^2)*
+            ((a^2 + (-2 + r)*r)*(a^2 + r^2))^(3/2)*
+            (-2*I*a^3*m*r - 2*I*a*m*r^3 + a^4*(1 + lambda) + 
+            r^4*(2 + lambda) + a^2*r*(2 + r*(3 + 2*lambda)))))
+        end
+        M22 = begin
+            -((I*r^2*((a^2 + r^2)/(a^2 + (-2 + r)*r))^(3/2)*
+            ((-a^3)*m - a*m*r^2 + a^4*omega + r^3*(-I + r*omega) + 
+            a^2*(2*I - I*r + 2*r^2*omega)))/
+            (sqrt(a^2 + r^2)*sqrt((a^2 + (-2 + r)*r)*
+            (a^2 + r^2))*(-2*I*a^3*m*r - 2*I*a*m*r^3 + 
+            a^4*(1 + lambda) + r^4*(2 + lambda) + 
+            a^2*r*(2 + r*(3 + 2*lambda)))))
+        end
+    elseif s == -1
+        M11 = begin
+            (I*r*sqrt(a^2 + r^2)*((-a^3)*m*r - a*m*r^3 + 
+            r^5*omega + a^4*(-2*I + r*omega) + 
+            2*a^2*r*(2*I - I*r + r^2*omega)))/
+            (sqrt((a^2 + r^2)/(a^2 + (-2 + r)*r))*
+            sqrt((a^2 + (-2 + r)*r)*(a^2 + r^2))*
+            (2*I*a^3*m*r + 2*I*a*m*r^3 + a^4*(-1 + lambda) + 
+            r^4*lambda + a^2*r*(2 + r*(-1 + 2*lambda))))
+        end
+        M12 = begin
+            (r^2*sqrt(a^2 + r^2)*sqrt((a^2 + r^2)/
+            (a^2 + (-2 + r)*r))*sqrt((a^2 + (-2 + r)*r)*
+            (a^2 + r^2)))/(2*I*a^3*m*r + 2*I*a*m*r^3 + 
+            a^4*(-1 + lambda) + r^4*lambda + 
+            a^2*r*(2 + r*(-1 + 2*lambda)))
+        end
+        M21 = begin
+            (r*sqrt((a^2 + r^2)/(a^2 + (-2 + r)*r))*
+            (a^8*omega*(2*I - r*omega) + 2*a^7*m*(-I + r*omega) + 
+            a*m*r^5*(-2*I + I*r + 2*r^2*omega) + 
+            2*a^3*m*r^3*(I + 3*r^2*omega) + 
+            a^5*m*r*(4*I - 3*I*r + 6*r^2*omega) + 
+            a^6*r*(1 - m^2 + lambda - 4*I*omega + 7*I*r*omega - 
+            4*r^2*omega^2) - a^4*r^2*(2*(2 + lambda) + 
+            r*(-2 + 2*m^2 - 3*lambda + 10*I*omega) - 9*I*r^2*omega + 
+            6*r^3*omega^2) + a^2*r^3*(4 - 4*r*(1 + lambda) - 
+            r^2*(-1 + m^2 - 3*lambda + 8*I*omega) + 5*I*r^3*omega - 
+            4*r^4*omega^2) + r^6*((-2 + r)*lambda - 
+            r*omega*(2*I - I*r + r^2*omega))))/
+            ((a^2 + r^2)^(3/2)*sqrt((a^2 + (-2 + r)*r)*
+            (a^2 + r^2))*(2*I*a^3*m*r + 2*I*a*m*r^3 + 
+            a^4*(-1 + lambda) + r^4*lambda + 
+            a^2*r*(2 + r*(-1 + 2*lambda))))
+        end
+        M22 = begin
+            -((r^2*sqrt((a^2 + r^2)/(a^2 + (-2 + r)*r))*
+            sqrt((a^2 + (-2 + r)*r)*(a^2 + r^2))*
+            (-r - (I*(a^2 + r^2)*((-a)*m + (a^2 + r^2)*omega))/
+            (a^2 + (-2 + r)*r)))/(sqrt(a^2 + r^2)*
+            (2*I*a^3*m*r + 2*I*a*m*r^3 + a^4*(-1 + lambda) + 
+            r^4*lambda + a^2*r*(2 + r*(-1 + 2*lambda)))))
+        end
+    elseif s == +2
+        M11 = begin
+            (r^2*(a^2 + (-2 + r)*r)*(-4*a^5*m*r*(I + r*omega) - 
+            2*a^3*m*r^2*(-3*I + 2*I*r + 4*r^2*omega) + 
+            a*m*(2*I*r^4 - 4*r^6*omega) + 
+            2*a^6*(-5 + 2*I*r*omega + r^2*omega^2) + 
+            a^4*r*(32 + r*(-24 + 2*m^2 - lambda - 6*I*omega) + 
+            10*I*r^2*omega + 6*r^3*omega^2) + 
+            r^4*(-12 + 2*r*(9 + lambda) - 
+            r^2*(6 + lambda + 6*I*omega) + 2*I*r^3*omega + 
+            2*r^4*omega^2) + 2*a^2*r^2*(-12 + r*(23 + lambda) + 
+            r^2*(-10 + m^2 - lambda - 6*I*omega) + 4*I*r^3*omega + 
+            3*r^4*omega^2)))/
+            (((a^2 + (-2 + r)*r)^2*(a^2 + r^2))^(3/2)*
+            ((-r^4)*(24 + 10*lambda + lambda^2 + 12*I*omega) - 
+            24*a^3*m*r*(I + 2*r*omega) + 4*a*m*r^2*
+            (6*I + 2*I*r*(4 + lambda) - 3*r^2*omega) + 
+            12*a^4*(-1 + 2*I*r*omega + 2*r^2*omega^2) + 
+            4*a^2*r*(6 + r*(-3 + 6*m^2 - 6*I*omega) - 
+            2*I*r^2*(1 + lambda)*omega + 3*r^3*omega^2)))
+        end
+        M12 = begin
+            (2*r^3*(a^2 + (-2 + r)*r)*(a^2 + r^2)^2*
+            ((-I)*a*m*r + a^2*(-2 + I*r*omega) + 
+            r*(3 - r + I*r^2*omega)))/
+            (((a^2 + (-2 + r)*r)^2*(a^2 + r^2))^(3/2)*
+            ((-r^4)*(24 + 10*lambda + lambda^2 + 12*I*omega) - 
+            24*a^3*m*r*(I + 2*r*omega) + 4*a*m*r^2*
+            (6*I + 2*I*r*(4 + lambda) - 3*r^2*omega) + 
+            12*a^4*(-1 + 2*I*r*omega + 2*r^2*omega^2) + 
+            4*a^2*r*(6 + r*(-3 + 6*m^2 - 6*I*omega) - 
+            2*I*r^2*(1 + lambda)*omega + 3*r^3*omega^2)))
+        end
+        M21 = begin
+            -((I*r*(-2*a^7*m*r*(-2 + 4*I*r*omega + 3*r^2*omega^2) - 
+            2*a^5*m*r^2*(-4 + r*(3 + m^2 - lambda + 2*I*omega) + 
+            4*I*r^2*omega + 9*r^3*omega^2) + 
+            2*a*m*r^5*(-10 + r*(3 - 2*lambda) + 
+            r^2*(2 + lambda + 2*I*omega) + 4*I*r^3*omega - 
+            3*r^4*omega^2) - 2*a^3*m*r^3*
+            (12 + r^2*(3 + m^2 - 2*lambda) + r*(-17 + 2*lambda) - 
+            4*I*r^3*omega + 9*r^4*omega^2) + 
+            2*a^8*(-6*I - 2*r*omega + 2*I*r^2*omega^2 + 
+            r^3*omega^3) + 2*a^6*r*(16*I + 
+            I*r*(-9 + 2*m^2 - 2*lambda + 4*I*omega) + 
+            r^2*(-8 + 3*m^2 - lambda + I*omega)*omega + 
+            6*I*r^3*omega^2 + 4*r^4*omega^3) + 
+            r^6*(-4*I*lambda - 2*r^3*(4 + lambda + 5*I*omega)*omega + 
+            2*r^5*omega^3 - 12*r*(I + omega) + 
+            r^2*(6*I + I*lambda + 18*omega + 4*lambda*omega)) + 
+            a^4*r^2*(-16*I + 2*I*r*(10 + m^2 + 6*lambda - 
+            12*I*omega) + 2*r^3*(-14 + 6*m^2 - 3*lambda - 
+            3*I*omega)*omega + 12*I*r^4*omega^2 + 12*r^5*omega^3 + 
+            r^2*(-2*I - 4*I*m^2 - 7*I*lambda + 22*omega + 
+            4*lambda*omega)) + 2*a^2*r^4*(-4*I*lambda + 
+            I*r*(-4 + 3*m^2 + 6*lambda + 6*I*omega) + 
+            3*r^3*(-4 + m^2 - lambda - 3*I*omega)*omega + 
+            2*I*r^4*omega^2 + 4*r^5*omega^3 + 
+            r^2*(5*I - 4*I*m^2 - I*lambda + 24*omega + 
+            4*lambda*omega))))/
+            (((a^2 + (-2 + r)*r)^2*(a^2 + r^2))^(3/2)*
+            ((-r^4)*(24 + 10*lambda + lambda^2 + 12*I*omega) - 
+            24*a^3*m*r*(I + 2*r*omega) + 4*a*m*r^2*
+            (6*I + 2*I*r*(4 + lambda) - 3*r^2*omega) + 
+            12*a^4*(-1 + 2*I*r*omega + 2*r^2*omega^2) + 
+            4*a^2*r*(6 + r*(-3 + 6*m^2 - 6*I*omega) - 
+            2*I*r^2*(1 + lambda)*omega + 3*r^3*omega^2))))
+        end
+        M22 = begin
+            (r^2*(a^2 + r^2)^2*(-4*a^3*m*r*(I + r*omega) - 
+            2*a*m*r^2*(I - 3*I*r + 2*r^2*omega) + 
+            2*a^4*(-3 + 2*I*r*omega + r^2*omega^2) + 
+            r^3*(2*lambda - r*(2 + lambda + 10*I*omega) + 2*r^3*omega^2) + 
+            a^2*r*(8 + 2*m^2*r - r*lambda + 2*I*r*omega + 
+            4*I*r^2*omega + 4*r^3*omega^2)))/
+            (((a^2 + (-2 + r)*r)^2*(a^2 + r^2))^(3/2)*
+            ((-r^4)*(24 + 10*lambda + lambda^2 + 12*I*omega) - 
+            24*a^3*m*r*(I + 2*r*omega) + 4*a*m*r^2*
+            (6*I + 2*I*r*(4 + lambda) - 3*r^2*omega) + 
+            12*a^4*(-1 + 2*I*r*omega + 2*r^2*omega^2) + 
+            4*a^2*r*(6 + r*(-3 + 6*m^2 - 6*I*omega) - 
+            2*I*r^2*(1 + lambda)*omega + 3*r^3*omega^2)))
+        end
+    elseif s == -2
+        M11 = begin
+            (r^2*(-4*a^5*m*r*(-I + r*omega) - 
+            2*a*m*r^4*(I + 2*r^2*omega) - 2*a^3*m*r^2*
+            (3*I - 2*I*r + 4*r^2*omega) + 
+            2*a^6*(-5 - 2*I*r*omega + r^2*omega^2) + 
+            a^4*r*(32 + r*(-20 + 2*m^2 - lambda + 6*I*omega) - 
+            10*I*r^2*omega + 6*r^3*omega^2) + 
+            r^4*(-12 + 2*r*(5 + lambda) - 
+            r^2*(2 + lambda - 6*I*omega) - 2*I*r^3*omega + 
+            2*r^4*omega^2) + 2*a^2*r^2*(-12 + r*(19 + lambda) + 
+            r^2*(-6 + m^2 - lambda + 6*I*omega) - 4*I*r^3*omega + 
+            3*r^4*omega^2)))/((a^2 + (-2 + r)*r)^3*
+            ((a^2 + r^2)/(a^2 + (-2 + r)*r)^2)^(3/2)*
+            ((-r^4)*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*r*(I - 2*r*omega) - 4*a*m*r^2*
+            (6*I + 2*I*r*lambda + 3*r^2*omega) + 
+            12*a^4*(-1 - 2*I*r*omega + 2*r^2*omega^2) + 
+            4*a^2*r*(6 + r*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*r^2*(-3 + lambda)*omega + 3*r^3*omega^2)))
+        end
+        M12 = begin
+            (2*r^3*(a^2 + (-2 + r)*r)*
+            sqrt((a^2 + r^2)/(a^2 + (-2 + r)*r)^2)*
+            (I*a*m*r + a^2*(-2 - I*r*omega) + 
+            r*(3 - r - I*r^2*omega)))/
+            ((-r^4)*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*r*(I - 2*r*omega) - 
+            4*a*m*r^2*(6*I + 2*I*r*lambda + 3*r^2*omega) + 
+            12*a^4*(-1 - 2*I*r*omega + 2*r^2*omega^2) + 
+            4*a^2*r*(6 + r*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*r^2*(-3 + lambda)*omega + 3*r^3*omega^2))
+        end
+        M21 = begin
+            (I*r*sqrt((a^2 + r^2)/(a^2 + (-2 + r)*r)^2)*
+            (2*a^7*m*r*(2 + 4*I*r*omega - 3*r^2*omega^2) - 
+            2*a^5*m*r^2*(4 + r*(-1 + m^2 - lambda + 6*I*omega) - 
+            12*I*r^2*omega + 9*r^3*omega^2) - 
+            2*a^3*m*r^4*(-5 + 2*lambda + r*(3 + m^2 - 2*lambda + 
+            16*I*omega) - 12*I*r^2*omega + 9*r^3*omega^2) - 
+            2*a*m*r^5*(6 + r*(-7 + 2*lambda) + 
+            r^2*(2 - lambda + 10*I*omega) - 4*I*r^3*omega + 
+            3*r^4*omega^2) + 2*a^8*(6*I - 2*r*omega - 
+            2*I*r^2*omega^2 + r^3*omega^3) + 
+            2*a^6*r*(-36*I + r^2*(-12 + 3*m^2 - lambda + 3*I*omega)*
+            omega - 10*I*r^3*omega^2 + 4*r^4*omega^3 + 
+            r*(21*I - 2*I*m^2 + 2*I*lambda + 4*omega)) + 
+            r^5*(-48*I + 12*I*r*(6 + lambda) - 
+            12*I*r^2*(3 + lambda - 3*I*omega) - 
+            2*r^4*(4 + lambda - 9*I*omega)*omega - 8*I*r^5*omega^2 + 
+            2*r^6*omega^3 + r^3*(6*I + 3*I*lambda + 34*omega + 
+            4*lambda*omega)) + 2*a^2*r^3*(-48*I + 
+            4*I*r*(27 + 2*lambda) + I*r^2*(-72 + m^2 - 14*lambda + 
+            30*I*omega) + r^4*(-16 + 3*m^2 - 3*lambda + 
+            21*I*omega)*omega - 14*I*r^5*omega^2 + 4*r^6*omega^3 + 
+            r^3*(15*I + 5*I*lambda + 48*omega + 4*lambda*omega)) + 
+            a^4*r^2*(144*I + 2*I*r*(-90 + 3*m^2 - 8*lambda) + 
+            2*r^3*(-22 + 6*m^2 - 3*lambda + 15*I*omega)*omega - 
+            36*I*r^4*omega^2 + 12*r^5*omega^3 + 
+            r^2*(54*I - 4*I*m^2 + 11*I*lambda + 70*omega + 
+            4*lambda*omega))))/((a^2 + r^2)^2*
+            ((-r^4)*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*r*(I - 2*r*omega) - 4*a*m*r^2*
+            (6*I + 2*I*r*lambda + 3*r^2*omega) + 
+            12*a^4*(-1 - 2*I*r*omega + 2*r^2*omega^2) + 
+            4*a^2*r*(6 + r*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*r^2*(-3 + lambda)*omega + 3*r^3*omega^2)))
+        end
+        M22 = begin
+            (r^2*sqrt((a^2 + r^2)/(a^2 + (-2 + r)*r)^2)*
+            (-4*a^3*m*r*(-I + r*omega) - 2*a*m*r^2*
+            (3*I - I*r + 2*r^2*omega) + 
+            2*a^4*(-3 - 2*I*r*omega + r^2*omega^2) + 
+            a^2*r*(24 + r*(-12 + 2*m^2 - lambda + 6*I*omega) - 
+            12*I*r^2*omega + 4*r^3*omega^2) + 
+            r^2*(-24 + 2*r*(12 + lambda) - 
+            r^2*(6 + lambda - 18*I*omega) - 8*I*r^3*omega + 
+            2*r^4*omega^2)))/
+            ((-r^4)*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*r*(I - 2*r*omega) - 
+            4*a*m*r^2*(6*I + 2*I*r*lambda + 3*r^2*omega) + 
+            12*a^4*(-1 - 2*I*r*omega + 2*r^2*omega^2) + 
+            4*a^2*r*(6 + r*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*r^2*(-3 + lambda)*omega + 3*r^3*omega^2))
+        end
+    else
+        # No explicit form available; revert to general-s expression
+        return _Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix_general_s(s, m, a, omega, lambda, r)
+    end
+    
+    return [M11 M12; M21 M22]
+end
+
+function _Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix_general_s(s, m, a, omega, lambda, r)
     drstar_dr(r) = (r^2 + a^2)/Delta(a, r)
     chi_conversion_factor(r) = (1.0/sqrt((r^2 + a^2) * (Delta(a, r)^s)))
     dchi_conversion_factor_dr(r) = begin
