@@ -390,11 +390,11 @@ function d2Rdr2_from_Rsoln(s::Int, m::Int, a, omega, lambda, Rsoln, r)
     return (VT(s, m, a, omega, lambda, r)/Delta(a, r))*R - ((2*(s+1)*(r-1))/Delta(a,r))*dRdr
 end
 
-function scaled_Wronskian(Rhor_soln, Rinf_soln, r, s, a)
-    # The scaled Wronskian is given by W = Delta^{s+1} * det([Rhor Rinf; Rhor' Rinf'])
-    Rhor, Rhor_prime = Rhor_soln(r)
-    Rinf, Rinf_prime = Rinf_soln(r)
-    return Delta(a, r)^(s+1) * (Rhor*Rinf_prime - Rinf*Rhor_prime)
+function scaled_Wronskian(Rin_soln, Rup_soln, r, s, a)
+    # The scaled Wronskian is given by W = Delta^{s+1} * det([Rin Rup; Rin' Rup'])
+    Rin, Rin_prime = Rin_soln(r)
+    Rup, Rup_prime = Rup_soln(r)
+    return Delta(a, r)^(s+1) * (Rin*Rup_prime - Rup*Rin_prime)
 end
 
 end
