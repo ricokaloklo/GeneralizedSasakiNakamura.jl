@@ -5,6 +5,7 @@ using ..Kerr
 using ..Transformation
 using ..Coordinates
 using ..Potentials
+using ..AsymptoticExpansionCoefficients
 using ..InitialConditions
 using ..ConversionFactors
 
@@ -415,13 +416,34 @@ function CupCref_SN_from_Xup(Xupsoln, rsin)
     return Cup_SN, Cref_SN
 end
 
+function _correction_factor(func, omega_times_r, order)
+    # This is an internal helper function
+    _cf = 0.0
+    for j in collect(0:1:order)
+        _cf += func(j)/((omega_times_r)^j)
+    end
+    return _cf
+end
+
 function BrefBinc_SN_from_Xin(Xinsoln, rsout)
-    # Extract oscillation variable from Xinsoln
+    # Unpack the parameters
+    s = Xinsoln.prob.p.s
+    m = Xinsoln.prob.p.m
+    a = Xinsoln.prob.p.a
     omega = Xinsoln.prob.p.omega
+    lambda = Xinsoln.prob.p.lambda
 
     Bref_SN = _extract_asymptotic_amplitude_from_Xsoln(omega, 1, Xinsoln, rsout)
     Binc_SN = _extract_asymptotic_amplitude_from_Xsoln(omega, -1, Xinsoln, rsout)
-    return Bref_SN, Binc_SN
+
+    # Compute the high-order correction factors
+    _r = r_from_rstar(a, rsout)
+    _outgoing_coefficient_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    _ingoing_coefficient_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    cf_outgoing = _correction_factor(_outgoing_coefficient_func, omega*_r, 3)
+    cf_ingoing = _correction_factor(_ingoing_coefficient_func, omega*_r, 3)
+
+    return Bref_SN/cf_outgoing, Binc_SN/cf_ingoing
 end
 
 end
