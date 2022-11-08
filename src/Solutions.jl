@@ -398,5 +398,30 @@ function scaled_Wronskian(Rin_soln, Rup_soln, r, s, a)
     return Delta(a, r)^(s+1) * (Rin*Rup_prime - Rup*Rin_prime)
 end
 
+function _extract_asymptotic_amplitude_from_Xsoln(osc_variable, sign, Xsoln, rs_extraction)
+    # This is an internal template function
+    return ((exp((-1*sign)*1im*osc_variable*rs_extraction)/(2*1im*osc_variable))*(1im*osc_variable*Xsoln(rs_extraction)[1] + sign*Xsoln(rs_extraction)[2]))
+end
+
+function CupCref_SN_from_Xup(Xupsoln, rsin)
+    # Extract oscillation variable from Xupsoln
+    m = Xupsoln.prob.p.m
+    a = Xupsoln.prob.p.a
+    omega = Xupsoln.prob.p.omega
+    p = omega - m*omega_horizon(a)
+
+    Cup_SN = _extract_asymptotic_amplitude_from_Xsoln(p, 1, Xupsoln, rsin)
+    Cref_SN = _extract_asymptotic_amplitude_from_Xsoln(p, -1, Xupsoln, rsin)
+    return Cup_SN, Cref_SN
+end
+
+function BrefBinc_SN_from_Xin(Xinsoln, rsout)
+    # Extract oscillation variable from Xinsoln
+    omega = Xinsoln.prob.p.omega
+
+    Bref_SN = _extract_asymptotic_amplitude_from_Xsoln(omega, 1, Xinsoln, rsout)
+    Binc_SN = _extract_asymptotic_amplitude_from_Xsoln(omega, -1, Xinsoln, rsout)
+    return Bref_SN, Binc_SN
+end
 
 end

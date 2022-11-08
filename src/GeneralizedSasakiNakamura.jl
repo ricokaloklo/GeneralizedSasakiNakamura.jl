@@ -27,6 +27,9 @@ export d2Rdr2_from_Rsoln
 d2Rdr2_from_Rsoln = Solutions.d2Rdr2_from_Rsoln
 export scaled_Wronskian
 scaled_Wronskian = Solutions.scaled_Wronskian
+export CupCref_SN_from_Xup, BrefBinc_SN_from_Xin
+CupCref_SN_from_Xup = Solutions.CupCref_SN_from_Xup
+BrefBinc_SN_from_Xin = Solutions.BrefBinc_SN_from_Xin
 
 using .SourceTerms
 export sourceterm_without_phasing_circularorbit, regularized_sourceterm_without_phasing_circularorbit
