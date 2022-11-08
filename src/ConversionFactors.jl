@@ -140,4 +140,15 @@ function Cup(s::Int, m::Int, a, omega, lambda)
     end
 end
 
+# These functions are redundant and are defined for convenience
+# The conversion factor for Cref is identical to Btrans
+function Cref(s::Int, m::Int, a, omega, lambda)
+    return Btrans(s, m, a, omega, lambda)
+end
+
+# The conversion factor for Bref is identical to Ctrans
+function Bref(s::Int, m::Int, a, omega, lambda)
+    return Ctrans(s, m, a, omega, lambda)
+end
+
 end
