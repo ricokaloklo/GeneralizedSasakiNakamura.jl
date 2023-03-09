@@ -6,11 +6,8 @@ include("AsymptoticExpansionCoefficients.jl")
 include("InitialConditions.jl")
 include("ConversionFactors.jl")
 include("Potentials.jl")
-include("Regularization.jl")
 include("Transformation.jl")
-include("SourceTerms.jl")
 include("Solutions.jl")
-include("Convolution.jl")
 
 using .Coordinates
 export r_from_rstar, rstar_from_r
@@ -30,17 +27,5 @@ scaled_Wronskian = Solutions.scaled_Wronskian
 export CupCref_SN_from_Xup, BrefBinc_SN_from_Xin
 CupCref_SN_from_Xup = Solutions.CupCref_SN_from_Xup
 BrefBinc_SN_from_Xin = Solutions.BrefBinc_SN_from_Xin
-
-using .SourceTerms
-export sourceterm_without_phasing_circularorbit, regularized_sourceterm_without_phasing_circularorbit
-sourceterm_without_phasing_circularorbit = SourceTerms.sourceterm_without_phasing_circularorbit
-regularized_sourceterm_without_phasing_circularorbit = SourceTerms.regularized_sourceterm_without_phasing_circularorbit
-
-using .Regularization
-export sourceterm_regularization_ansatz_coefficients, nearhorizon_ansatz, lhs_without_phasing_ansatz
-
-using .Convolution
-export convolution_integral
-convolution_integral = Convolution.convolution_integral
 
 end
