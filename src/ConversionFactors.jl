@@ -96,7 +96,7 @@ function Btrans(s::Int, m::Int, a, omega, lambda)
     end
 end
 
-function Cup(s::Int, m::Int, a, omega, lambda)
+function Cinc(s::Int, m::Int, a, omega, lambda)
     if s == 0
         return 1/(sqrt(2)*sqrt(1 + sqrt(1 - a^2)))
     elseif s == +1
