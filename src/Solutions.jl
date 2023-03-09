@@ -404,7 +404,7 @@ function _extract_asymptotic_amplitude_from_Xsoln(osc_variable, sign, Xsoln, rs_
     return ((exp((-1*sign)*1im*osc_variable*rs_extraction)/(2*1im*osc_variable))*(1im*osc_variable*Xsoln(rs_extraction)[1] + sign*Xsoln(rs_extraction)[2]))
 end
 
-function CincCref_SN_from_Xup(Xupsoln, rsin)
+function CrefCinc_SN_from_Xup(Xupsoln, rsin)
     # Extract oscillation variable from Xupsoln
     m = Xupsoln.prob.p.m
     a = Xupsoln.prob.p.a
@@ -413,7 +413,7 @@ function CincCref_SN_from_Xup(Xupsoln, rsin)
 
     Cinc_SN = _extract_asymptotic_amplitude_from_Xsoln(p, 1, Xupsoln, rsin)
     Cref_SN = _extract_asymptotic_amplitude_from_Xsoln(p, -1, Xupsoln, rsin)
-    return Cinc_SN, Cref_SN
+    return Cref_SN, Cinc_SN
 end
 
 function _correction_factor(func, omega_times_r, order)

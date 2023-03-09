@@ -24,8 +24,8 @@ export d2Rdr2_from_Rsoln
 d2Rdr2_from_Rsoln = Solutions.d2Rdr2_from_Rsoln
 export scaled_Wronskian
 scaled_Wronskian = Solutions.scaled_Wronskian
-export CincCref_SN_from_Xup, BrefBinc_SN_from_Xin
-CincCref_SN_from_Xup = Solutions.CincCref_SN_from_Xup
+export CrefCinc_SN_from_Xup, BrefBinc_SN_from_Xin
+CrefCinc_SN_from_Xup = Solutions.CrefCinc_SN_from_Xup
 BrefBinc_SN_from_Xin = Solutions.BrefBinc_SN_from_Xin
 
 end
