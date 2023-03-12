@@ -11,19 +11,43 @@ using ..ConversionFactors
 
 const I = 1im # Mathematica being Mathematica
 
-function generalized_Sasaki_Nakamura_equation!(du, u, p, rs)
+function X0X1_from_XXprime(X, Xprime)
+    X0 = atan(imag(X), real(X))
+    X1 = -0.5*log(real(X)^2 + imag(X)^2)
+
+    X0prime = imag(Xprime/X)
+    X1prime = -real(Xprime/X)
+
+    return X0, X1, X0prime, X1prime
+end
+
+function XXprime_from_X0X1soln(Xsoln)
+    X(rs) = exp(1im*(Xsoln(rs)[1] + 1im*Xsoln(rs)[2]))
+    Xprime(rs) = X(rs)*(1im*Xsoln(rs)[3] - Xsoln(rs)[4])
+
+    return X, Xprime
+end
+
+function GSN_magn_phase_eqns!(du, u, p, rs)
     r = r_from_rstar(p.a, rs)
     _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
     _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
+    
     #=
-    Using the convention for DifferentialEquations
-    u[1] = X(rs)
-    u[2] = dX/drs = X'
-    therefore
-    X'' - sF X' - sU X = 0 => u[2]' - sF u[2] - sU u[1] = 0 => u[2]' = sF u[2] + sU u[1]
+    We write X = exp(I*(X0 + I*X1)) = exp(-X1) exp(I*X0)
+    Therefore X0 is the phase and exp(-X1) is the magnitude
+    Substitute X in this form into the GSN equation will give
+    two coupled *non-linear* ODE
+
+    u[1] = X0
+    u[2] = X1
+    u[3] = X0' = u[1]'
+    u[4] = X1' = u[2]'
     =#
-    du[1] = u[2]
-    du[2] = _sF*u[2] + _sU*u[1]
+    du[1] = u[3]
+    du[2] = u[4]
+    du[3] = 2*u[3]*u[4] + real(_sF)*u[3] - imag(_sF)*u[4] + imag(_sU)
+    du[4] = -u[3]^2 + u[4]^2 + real(_sF)*u[4] + imag(_sF)*u[3] - real(_sU)
 end
 
 function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
@@ -33,11 +57,13 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, 
     end
     # Initial conditions at rs = rsout, the outer boundary
     Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout)
-    u0 = [Xup_rsout; Xupprime_rsout]
+    # Convert initial conditions for Xup for X0 X1
+    X0, X1, X0prime, X1prime = X0X1_from_XXprime(Xup_rsout, Xupprime_rsout)
+    u0 = [X0; X1; X0prime; X1prime]
     rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(generalized_Sasaki_Nakamura_equation!, u0, rsspan, p)
-    odealgo = RK4()
+    odeprob = ODEProblem(GSN_magn_phase_eqns!, u0, rsspan, p)
+    odealgo = Vern9()
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
@@ -48,11 +74,13 @@ function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, 
     end
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
     Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin)
-    u0 = [Xin_rsin; Xinprime_rsin]
+    # Convert initial conditions for Xin for X0 X1
+    X0, X1, X0prime, X1prime = X0X1_from_XXprime(Xin_rsin, Xinprime_rsin)
+    u0 = [X0; X1; X0prime; X1prime]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(generalized_Sasaki_Nakamura_equation!, u0, rsspan, p)
-    odealgo = RK4()
+    odeprob = ODEProblem(GSN_magn_phase_eqns!, u0, rsspan, p)
+    odealgo = Vern9()
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
@@ -376,8 +404,9 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
     =#
 
     overall_conversion_matrix(r) = Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
-    _interpolant_in_r(r) = Xsoln(rstar_from_r(a, r))
-    Rsoln = (r -> overall_conversion_matrix(r) * _interpolant_in_r(r))
+    # Reconstruct X, Xprime from X0X1 solution
+    X, Xprime = XXprime_from_X0X1soln(Xsoln)
+    Rsoln = (r -> overall_conversion_matrix(r) * [X(rstar_from_r(a, r)); Xprime(rstar_from_r(a, r))])
     return Rsoln
 end
 
@@ -400,8 +429,9 @@ function scaled_Wronskian(Rin_soln, Rup_soln, r, s, a)
 end
 
 function _extract_asymptotic_amplitude_from_Xsoln(osc_variable, sign, Xsoln, rs_extraction)
+    X, Xprime = XXprime_from_X0X1soln(Xsoln)
     # This is an internal template function
-    return ((exp((-1*sign)*1im*osc_variable*rs_extraction)/(2*1im*osc_variable))*(1im*osc_variable*Xsoln(rs_extraction)[1] + sign*Xsoln(rs_extraction)[2]))
+    return ((exp((-1*sign)*1im*osc_variable*rs_extraction)/(2*1im*osc_variable))*(1im*osc_variable*X(rs_extraction) + sign*Xprime(rs_extraction)))
 end
 
 function CrefCinc_SN_from_Xup(Xupsoln, rsin)
