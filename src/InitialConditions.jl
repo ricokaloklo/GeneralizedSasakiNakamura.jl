@@ -45,7 +45,7 @@ function Xin_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::In
     Write Xin = \sum_j C^{H}_{-} (r - r_+)^j
 
     =#
-    _default_order = 0
+    _default_order = 3
     order = (order == -1 ? _default_order : order)
 
     coeffs = zeros(ComplexF64, order+1)
@@ -57,7 +57,7 @@ function Xin_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::In
     function gansatz(r)
         ans = 0.0
         for i in 0:order
-            ans += coeffs[i+1]*(r-rin)^i
+            ans += coeffs[i+1]*(r-r_plus(a))^i
         end
         return ans
     end
