@@ -448,14 +448,8 @@ function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int
         _Q(x) = QminusH_r_minus_rp_sq(s, m, a, omega, lambda, x)
 
         for i in _start_order:order
-            println("Expanding $_start_order")
-            println(Pcoeffs)
-            println(Qcoeffs)
             append!(Pcoeffs, nth_derivative(_P, i)(0)/factorial(i))
-            append!(Qcoeffs, nth_derivative(_Q, i)(0)/factorial(i))
-            println("Expansion done!")
-            println(Pcoeffs)
-            println(Qcoeffs)           
+            append!(Qcoeffs, nth_derivative(_Q, i)(0)/factorial(i))       
         end
     end
     # Define the indicial polynomial
