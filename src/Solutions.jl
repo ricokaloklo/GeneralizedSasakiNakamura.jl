@@ -10,6 +10,7 @@ using ..InitialConditions
 using ..ConversionFactors
 
 const I = 1im # Mathematica being Mathematica
+_DEFAULTDATATYPE = Float64 # Double precision by default
 
 function X0X1_from_XXprime(X, Xprime)
     X0 = atan(imag(X), real(X))
@@ -50,7 +51,7 @@ function GSN_magn_phase_eqns!(du, u, p, rs)
     du[4] = -u[3]^2 + u[4]^2 + real(_sF)*u[4] + imag(_sF)*u[3] - real(_sU)
 end
 
-function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
+function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-10, abstol=1e-10)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
@@ -59,15 +60,14 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, 
     Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout)
     # Convert initial conditions for Xup for X0 X1
     X0, X1, X0prime, X1prime = X0X1_from_XXprime(Xup_rsout, Xupprime_rsout)
-    u0 = [X0; X1; X0prime; X1prime]
-    rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
+    u0 = [dtype(X0); dtype(X1); dtype(X0prime); dtype(X1prime)]
+    rsspan = (dtype(rsout), dtype(rsin)) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
     odeprob = ODEProblem(GSN_magn_phase_eqns!, u0, rsspan, p)
-    odealgo = Vern9()
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
-function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
+function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-10, abstol=1e-10)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
@@ -76,11 +76,10 @@ function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, 
     Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin)
     # Convert initial conditions for Xin for X0 X1
     X0, X1, X0prime, X1prime = X0X1_from_XXprime(Xin_rsin, Xinprime_rsin)
-    u0 = [X0; X1; X0prime; X1prime]
-    rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
+    u0 = [dtype(X0); dtype(X1); dtype(X0prime); dtype(X1prime)]
+    rsspan = (dtype(rsin), dtype(rsout)) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
     odeprob = ODEProblem(GSN_magn_phase_eqns!, u0, rsspan, p)
-    odealgo = Vern9()
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
