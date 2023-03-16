@@ -45,7 +45,7 @@ function Xin_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::In
     Write Xin = \sum_j C^{H}_{-} (r - r_+)^j
 
     =#
-    _default_order = 3
+    _default_order = 1
     order = (order == -1 ? _default_order : order)
 
     coeffs = zeros(ComplexF64, order+1)
