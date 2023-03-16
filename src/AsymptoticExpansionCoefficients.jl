@@ -76,8 +76,8 @@ end
 
 # Cache mechanism for the ingoing coefficients at infinity
 # Initialize the cache with a set of fiducial parameters
-_cached_ingoing_coefficients_at_inf_params = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_ingoing_coefficients_at_inf = (
+_cached_ingoing_coefficients_at_inf_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, Float64, Float64, ComplexF64}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
+_cached_ingoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{ComplexF64}, Vector{ComplexF64}, Vector{ComplexF64}}} = (
     expansion_coeffs = [ComplexF64(1.0)], 
     Pcoeffs = [ComplexF64(0.0)],
     Qcoeffs = [ComplexF64(0.0)]
@@ -351,8 +351,8 @@ end
 
 # Cache mechanism for the outgoing coefficients at infinity
 # Initialize the cache with a set of fiducial parameters
-_cached_outgoing_coefficients_at_inf_params = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_outgoing_coefficients_at_inf = (
+_cached_outgoing_coefficients_at_inf_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, Float64, Float64, ComplexF64}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
+_cached_outgoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{ComplexF64}, Vector{ComplexF64}, Vector{ComplexF64}}} = (
     expansion_coeffs = [ComplexF64(1.0)], 
     Pcoeffs = [ComplexF64(0.0)],
     Qcoeffs = [ComplexF64(0.0)]
@@ -635,8 +635,8 @@ end
 
 # Cache mechanism for the ingoing coefficients at horizon
 # Initialize the cache with a set of fiducial parameters
-_cached_ingoing_coefficients_at_hor_params = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_ingoing_coefficients_at_hor = (
+_cached_ingoing_coefficients_at_hor_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, Float64, Float64, ComplexF64}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
+_cached_ingoing_coefficients_at_hor::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{ComplexF64}, Vector{ComplexF64}, Vector{ComplexF64}}} = (
     expansion_coeffs = [ComplexF64(1.0)], 
     Pcoeffs = [ComplexF64(0.0)],
     Qcoeffs = [ComplexF64(0.0)]
