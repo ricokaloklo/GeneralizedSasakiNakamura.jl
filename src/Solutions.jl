@@ -454,7 +454,7 @@ function _correction_factor(func, omega_times_r, order)
     return _cf
 end
 
-function BrefBinc_SN_from_Xin(Xinsoln, rsout)
+function BrefBinc_SN_from_Xin(Xinsoln, rsout; order=3)
     # Unpack the parameters
     s = Xinsoln.prob.p.s
     m = Xinsoln.prob.p.m
@@ -469,8 +469,8 @@ function BrefBinc_SN_from_Xin(Xinsoln, rsout)
     _r = r_from_rstar(a, rsout)
     _outgoing_coefficient_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
     _ingoing_coefficient_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
-    cf_outgoing = _correction_factor(_outgoing_coefficient_func, omega*_r, 3)
-    cf_ingoing = _correction_factor(_ingoing_coefficient_func, omega*_r, 3)
+    cf_outgoing = _correction_factor(_outgoing_coefficient_func, omega*_r, order)
+    cf_ingoing = _correction_factor(_ingoing_coefficient_func, omega*_r, order)
 
     return Bref_SN/cf_outgoing, Binc_SN/cf_ingoing
 end
