@@ -51,7 +51,7 @@ function GSN_magn_phase_eqns!(du, u, p, rs)
     du[4] = -u[3]^2 + u[4]^2 + real(_sF)*u[4] + imag(_sF)*u[3] - real(_sU)
 end
 
-function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-10, abstol=1e-10)
+function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
@@ -67,7 +67,7 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULT
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
-function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-10, abstol=1e-10)
+function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
