@@ -22,9 +22,9 @@ function PhiRePhiIm_from_XXprime(X, Xprime)
     return PhiRe, PhiIm, PhiReprime, PhiImprime
 end
 
-function XXprime_from_PhiRePhiImsoln(Xsoln)
-    X(rs) = exp(1im*(Xsoln(rs)[1] + 1im*Xsoln(rs)[2]))
-    Xprime(rs) = X(rs)*(1im*Xsoln(rs)[3] - Xsoln(rs)[4])
+function XXprime_from_PhiRePhiImsoln(Phisoln)
+    X(rs) = exp(1im*(Phisoln(rs)[1] + 1im*Phisoln(rs)[2]))
+    Xprime(rs) = X(rs)*(1im*Phisoln(rs)[3] - Phisoln(rs)[4])
 
     return X, Xprime
 end
@@ -382,13 +382,13 @@ function _Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_mat
     return overall_conversion_matrix
 end
 
-function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
+function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Phisoln)
     # Unpack the parameters
-    s = Xsoln.prob.p.s
-    m = Xsoln.prob.p.m
-    a = Xsoln.prob.p.a
-    omega = Xsoln.prob.p.omega
-    lambda = Xsoln.prob.p.lambda
+    s = Phisoln.prob.p.s
+    m = Phisoln.prob.p.m
+    a = Phisoln.prob.p.a
+    omega = Phisoln.prob.p.omega
+    lambda = Phisoln.prob.p.lambda
 
     #=
     First convert [X(rs), dX/drs(rs)] to [X(r), dX/dr(r)], this is done by
@@ -406,7 +406,7 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
 
     overall_conversion_matrix(r) = Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
     # Reconstruct X, Xprime from PhiRePhiIm solution
-    X, Xprime = XXprime_from_PhiRePhiImsoln(Xsoln)
+    X, Xprime = XXprime_from_PhiRePhiImsoln(Phisoln)
     Rsoln = (r -> overall_conversion_matrix(r) * [X(rstar_from_r(a, r)); Xprime(rstar_from_r(a, r))])
     return Rsoln
 end
@@ -429,8 +429,8 @@ function scaled_Wronskian(Rin_soln, Rup_soln, r, s, a)
     return Delta(a, r)^(s+1) * (Rin*Rup_prime - Rup*Rin_prime)
 end
 
-function _extract_asymptotic_amplitude_from_Xsoln(osc_variable, sign, Xsoln, rs_extraction)
-    X, Xprime = XXprime_from_PhiRePhiImsoln(Xsoln)
+function _extract_asymptotic_amplitude_from_Phisoln(osc_variable, sign, Phisoln, rs_extraction)
+    X, Xprime = XXprime_from_PhiRePhiImsoln(Phisoln)
     # This is an internal template function
     return ((exp((-1*sign)*1im*osc_variable*rs_extraction)/(2*1im*osc_variable))*(1im*osc_variable*X(rs_extraction) + sign*Xprime(rs_extraction)))
 end
@@ -442,8 +442,8 @@ function CrefCinc_SN_from_Xup(Xupsoln, rsin)
     omega = Xupsoln.prob.p.omega
     p = omega - m*omega_horizon(a)
 
-    Cinc_SN = _extract_asymptotic_amplitude_from_Xsoln(p, 1, Xupsoln, rsin)
-    Cref_SN = _extract_asymptotic_amplitude_from_Xsoln(p, -1, Xupsoln, rsin)
+    Cinc_SN = _extract_asymptotic_amplitude_from_Phisoln(p, 1, Xupsoln, rsin)
+    Cref_SN = _extract_asymptotic_amplitude_from_Phisoln(p, -1, Xupsoln, rsin)
     return Cref_SN, Cinc_SN
 end
 
@@ -464,8 +464,8 @@ function BrefBinc_SN_from_Xin(Xinsoln, rsout; order=3)
     omega = Xinsoln.prob.p.omega
     lambda = Xinsoln.prob.p.lambda
 
-    Bref_SN = _extract_asymptotic_amplitude_from_Xsoln(omega, 1, Xinsoln, rsout)
-    Binc_SN = _extract_asymptotic_amplitude_from_Xsoln(omega, -1, Xinsoln, rsout)
+    Bref_SN = _extract_asymptotic_amplitude_from_Phisoln(omega, 1, Xinsoln, rsout)
+    Binc_SN = _extract_asymptotic_amplitude_from_Phisoln(omega, -1, Xinsoln, rsout)
 
     # Compute the high-order correction factors
     _r = r_from_rstar(a, rsout)
