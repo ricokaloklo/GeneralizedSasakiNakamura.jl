@@ -65,6 +65,7 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULT
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
     odeprob = ODEProblem(GSN_magn_phase_eqns!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    return odesoln
 end
 
 function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
@@ -81,6 +82,7 @@ function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULT
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
     odeprob = ODEProblem(GSN_magn_phase_eqns!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    return odesoln
 end
 
 function Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
