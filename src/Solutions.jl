@@ -29,7 +29,7 @@ function XXprime_from_PhiRePhiImsoln(Phisoln)
     return X, Xprime
 end
 
-function GSN_magn_phase_eqns!(du, u, p, rs)
+function GSN_PhiRePhiIm_eqns!(du, u, p, rs)
     r = r_from_rstar(p.a, rs)
     _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
     _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
@@ -63,7 +63,7 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULT
     u0 = [dtype(PhiRe); dtype(PhiIm); dtype(PhiReprime); dtype(PhiImprime)]
     rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(GSN_magn_phase_eqns!, u0, rsspan, p)
+    odeprob = ODEProblem(GSN_PhiRePhiIm_eqns!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
     return odesoln
 end
@@ -80,7 +80,7 @@ function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULT
     u0 = [dtype(PhiRe); dtype(PhiIm); dtype(PhiReprime); dtype(PhiImprime)]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(GSN_magn_phase_eqns!, u0, rsspan, p)
+    odeprob = ODEProblem(GSN_PhiRePhiIm_eqns!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
     return odesoln
 end
