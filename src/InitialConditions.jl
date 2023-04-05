@@ -10,7 +10,7 @@ export fansatz, gansatz
 
 const I = 1im # Mathematica being Mathematica
 
-function fansatz(func, order, omega, r)
+function fansatz(func, omega, r; order=3)
     # A template function that gives the asymptotic expansion at infinity
     ans = 0.0
     for i in 0:order
@@ -19,7 +19,7 @@ function fansatz(func, order, omega, r)
     return ans
 end
 
-function gansatz(func, order, a, r)
+function gansatz(func, a, r; order=0)
     # A template function that gives the asymptotic expansion at horizon
     ans = 0.0
     for i in 0:order
@@ -37,7 +37,7 @@ function Xup_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::I
     order = (order == -1 ? _default_order : order)
 
     outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
-    fout_ansatz(r) = fansatz(outgoing_coeff_func, order, omega, r)
+    fout_ansatz(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
     dfout_ansatz_dr(r) = ForwardDiff.derivative(fout_ansatz, r)
     rout = r_from_rstar(a, rsout)
 
@@ -55,11 +55,11 @@ function Xin_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::In
     Write Xin = \sum_j C^{H}_{-} (r - r_+)^j
 
     =#
-    _default_order = 1
+    _default_order = 0
     order = (order == -1 ? _default_order : order)
 
     ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
-    gin_ansatz(r) = gansatz(ingoing_coeff_func, order, a, r)
+    gin_ansatz(r) = gansatz(ingoing_coeff_func, a, r; order=order)
     dgin_ansatz_dr(r) = ForwardDiff.derivative(gin_ansatz, r)
     rin = r_from_rstar(a, rsin)
 
