@@ -1,7 +1,6 @@
 module Solutions
 
 using DifferentialEquations
-using ForwardDiff
 using ..Kerr
 using ..Transformation
 using ..Coordinates
@@ -467,6 +466,15 @@ function CrefCinc_SN_from_Xup(Xupsoln, rsin; order=0)
     return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
 end
 
+function _correction_factor(func, omega_times_r, order)
+    # This is an internal helper function
+    _cf = 0.0
+    for j in collect(0:1:order)
+        _cf += func(j)/((omega_times_r)^j)
+    end
+    return _cf
+end
+
 function BrefBinc_SN_from_Xin(Xinsoln, rsout; order=3)
     # Unpack the parameters
     s = Xinsoln.prob.p.s
@@ -475,32 +483,17 @@ function BrefBinc_SN_from_Xin(Xinsoln, rsout; order=3)
     omega = Xinsoln.prob.p.omega
     lambda = Xinsoln.prob.p.lambda
 
-    rout = r_from_rstar(a, rsout)
-    # Computing A1, A2, A3, A4
-    fin(r) = fansatz(
-        ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
-        omega,
-        r;
-        order=order
-    )
-    A1 = fin(rout) * exp(-1im*omega*rsout)
-    fout(r) = fansatz(
-        ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
-        omega,
-        r;
-        order=order
-    )
-    A2 = fout(rout) * exp(1im*omega*rsout)
+    Bref_SN = _extract_asymptotic_amplitude_from_Phisoln(omega, 1, Xinsoln, rsout)
+    Binc_SN = _extract_asymptotic_amplitude_from_Phisoln(omega, -1, Xinsoln, rsout)
 
-    _DeltaOverr2pa2 = Delta(a, rout)/(rout^2 + a^2)
-    A3 = (_DeltaOverr2pa2 * ForwardDiff.derivative(fin, rout) - 1im*omega*fin(rout)) * exp(-1im*omega*rsout)
-    A4 = (_DeltaOverr2pa2 * ForwardDiff.derivative(fout, rout) + 1im*omega*fout(rout)) * exp(1im*omega*rsout)
+    # Compute the high-order correction factors
+    _r = r_from_rstar(a, rsout)
+    _outgoing_coefficient_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    _ingoing_coefficient_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    cf_outgoing = _correction_factor(_outgoing_coefficient_func, omega*_r, order)
+    cf_ingoing = _correction_factor(_ingoing_coefficient_func, omega*_r, order)
 
-    X, Xprime = XXprime_from_PhiRePhiImsoln(Xinsoln)
-    C1 = X(rsout)
-    C2 = Xprime(rsout)
-
-    return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
+    return Bref_SN/cf_outgoing, Binc_SN/cf_ingoing
 end
 
 end
