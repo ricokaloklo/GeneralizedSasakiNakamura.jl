@@ -37,12 +37,12 @@ function Xup_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::I
     order = (order == -1 ? _default_order : order)
 
     outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
-    fout_ansatz(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
-    dfout_ansatz_dr(r) = ForwardDiff.derivative(fout_ansatz, r)
+    fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
+    dfout_dr(r) = ForwardDiff.derivative(fout, r)
     rout = r_from_rstar(a, rsout)
 
-    _fansatz = fout_ansatz(rout)
-    _dfansatz_dr = dfout_ansatz_dr(rout)
+    _fansatz = fout(rout)
+    _dfansatz_dr = dfout_dr(rout)
     phase = exp(1im * omega * rsout)
 
     return phase*_fansatz, phase*(1im*omega*_fansatz + (Delta(a, rout)/(rout^2 + a^2))*_dfansatz_dr)
@@ -59,12 +59,12 @@ function Xin_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::In
     order = (order == -1 ? _default_order : order)
 
     ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
-    gin_ansatz(r) = gansatz(ingoing_coeff_func, a, r; order=order)
-    dgin_ansatz_dr(r) = ForwardDiff.derivative(gin_ansatz, r)
+    gin(r) = gansatz(ingoing_coeff_func, a, r; order=order)
+    dgin_dr(r) = ForwardDiff.derivative(gin, r)
     rin = r_from_rstar(a, rsin)
 
-    _gansatz = gin_ansatz(rin)
-    _dgansatz_dr = dgin_ansatz_dr(rin)
+    _gansatz = gin(rin)
+    _dgansatz_dr = dgin_dr(rin)
     p = omega - m*omega_horizon(a)
     phase = exp(-1im * p * rsin)
 
