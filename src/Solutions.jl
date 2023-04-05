@@ -464,7 +464,7 @@ function CrefCinc_SN_from_Xup(Xupsoln, rsin; order=0)
     C1 = X(rsin)
     C2 = Xprime(rsin)
 
-    return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
+    return -(A4*C1 - A2*C2)/(A2*A3 - A1*A4), -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4)
 end
 
 function BrefBinc_SN_from_Xin(Xinsoln, rsout; order=3)
