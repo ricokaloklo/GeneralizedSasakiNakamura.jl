@@ -6,8 +6,27 @@ using ..Coordinates
 using ..AsymptoticExpansionCoefficients
 
 export Xup_initialconditions, Xin_initialconditions
+export fansatz, gansatz
 
 const I = 1im # Mathematica being Mathematica
+
+function fansatz(func, order, omega, r)
+    # A template function that gives the asymptotic expansion at infinity
+    ans = 0.0
+    for i in 0:order
+        ans += func(i)/((omega*r)^i)
+    end
+    return ans
+end
+
+function gansatz(func, order, a, r)
+    # A template function that gives the asymptotic expansion at horizon
+    ans = 0.0
+    for i in 0:order
+        ans += func(i)*(r-r_plus(a))^i
+    end
+    return ans
+end
 
 function Xup_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::Int=-1)
     #=
@@ -17,22 +36,13 @@ function Xup_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::I
     _default_order = 3
     order = (order == -1 ? _default_order : order)
 
-    coeffs = zeros(ComplexF64, order+1)
-    for i in 0:order
-        coeffs[i+1] = outgoing_coefficient_at_inf(s, m, a, omega, lambda, i)
-    end
-
+    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    fout_ansatz(r) = fansatz(outgoing_coeff_func, order, omega, r)
+    dfout_ansatz_dr(r) = ForwardDiff.derivative(fout_ansatz, r)
     rout = r_from_rstar(a, rsout)
-    function fansatz(r)
-        ans = 0.0
-        for i in 0:order
-            ans += coeffs[i+1]/((omega*r)^i)
-        end
-        return ans
-    end
-    dfansatz_dr(r) = ForwardDiff.derivative(fansatz, r)
-    _fansatz = fansatz(rout)
-    _dfansatz_dr = dfansatz_dr(rout)
+
+    _fansatz = fout_ansatz(rout)
+    _dfansatz_dr = dfout_ansatz_dr(rout)
     phase = exp(1im * omega * rsout)
 
     return phase*_fansatz, phase*(1im*omega*_fansatz + (Delta(a, rout)/(rout^2 + a^2))*_dfansatz_dr)
@@ -48,22 +58,13 @@ function Xin_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::In
     _default_order = 1
     order = (order == -1 ? _default_order : order)
 
-    coeffs = zeros(ComplexF64, order+1)
-    for i in 0:order
-        coeffs[i+1] = ingoing_coefficient_at_hor(s, m, a, omega, lambda, i)
-    end
-
+    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+    gin_ansatz(r) = gansatz(ingoing_coeff_func, order, a, r)
+    dgin_ansatz_dr(r) = ForwardDiff.derivative(gin_ansatz, r)
     rin = r_from_rstar(a, rsin)
-    function gansatz(r)
-        ans = 0.0
-        for i in 0:order
-            ans += coeffs[i+1]*(r-r_plus(a))^i
-        end
-        return ans
-    end
-    dgansatz_dr(r) = ForwardDiff.derivative(gansatz, r)
-    _gansatz = gansatz(rin)
-    _dgansatz_dr = dgansatz_dr(rin)
+
+    _gansatz = gin_ansatz(rin)
+    _dgansatz_dr = dgin_ansatz_dr(rin)
     p = omega - m*omega_horizon(a)
     phase = exp(-1im * p * rsin)
 
