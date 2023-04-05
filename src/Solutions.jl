@@ -430,41 +430,22 @@ function scaled_Wronskian(Rin_soln, Rup_soln, r, s, a)
     return Delta(a, r)^(s+1) * (Rin*Rup_prime - Rup*Rin_prime)
 end
 
-function CrefCinc_SN_from_Xup(Xupsoln, rsin; order=0)
-    # Unpack the parameters
-    s = Xupsoln.prob.p.s
+function _extract_asymptotic_amplitude_from_Phisoln(osc_variable, sign, Phisoln, rs_extraction)
+    X, Xprime = XXprime_from_PhiRePhiImsoln(Phisoln)
+    # This is an internal template function
+    return ((exp((-1*sign)*1im*osc_variable*rs_extraction)/(2*1im*osc_variable))*(1im*osc_variable*X(rs_extraction) + sign*Xprime(rs_extraction)))
+end
+
+function CrefCinc_SN_from_Xup(Xupsoln, rsin)
+    # Extract oscillation variable from Xupsoln
     m = Xupsoln.prob.p.m
     a = Xupsoln.prob.p.a
     omega = Xupsoln.prob.p.omega
-    lambda = Xupsoln.prob.p.lambda
     p = omega - m*omega_horizon(a)
 
-    rin = r_from_rstar(a, rsin)
-    # Computing A1, A2, A3, A4
-    gin(r) = gansatz(
-        ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
-        a,
-        r;
-        order=order
-    )
-    A1 = gin(rin) * exp(-1im*p*rsin)
-    gout(r) = gansatz(
-        ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
-        a,
-        r;
-        order=order
-    )
-    A2 = gout(rin) * exp(1im*p*rsin)
-
-    _DeltaOverr2pa2 = Delta(a, rin)/(rin^2 + a^2)
-    A3 = (_DeltaOverr2pa2 * ForwardDiff.derivative(gin, rin) - 1im*p*gin(rin)) * exp(-1im*p*rsin)
-    A4 = (_DeltaOverr2pa2 * ForwardDiff.derivative(gout, rin) + 1im*p*gout(rin)) * exp(1im*p*rsin)
-
-    X, Xprime = XXprime_from_PhiRePhiImsoln(Xupsoln)
-    C1 = X(rsin)
-    C2 = Xprime(rsin)
-
-    return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
+    Cinc_SN = _extract_asymptotic_amplitude_from_Phisoln(p, 1, Xupsoln, rsin)
+    Cref_SN = _extract_asymptotic_amplitude_from_Phisoln(p, -1, Xupsoln, rsin)
+    return Cref_SN, Cinc_SN
 end
 
 function BrefBinc_SN_from_Xin(Xinsoln, rsout; order=3)
