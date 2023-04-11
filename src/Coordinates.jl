@@ -36,8 +36,8 @@ function r_from_rstar(a, rstar)
         =#
         return rp + find_zero(f, (0, 1.4))
     else
-        # Use secant method instead; for large rstar, rstar \approx r
-        return rp + find_zero(f, rstar)
+        # Use Newton method instead; for large rstar, rstar \approx r
+        return rp + find_zero((f, x -> ((rp + x)^2 + a^2)/Delta(a, rp+x)), rstar, Roots.Newton())
     end
 end
 
