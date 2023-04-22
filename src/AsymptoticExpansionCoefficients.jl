@@ -715,7 +715,7 @@ function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::In
         for i in length(expansion_coeffs):order
             sum = 0.0
             for r in 0:i-1
-                sum += expansion_coeffs[r+1]*(r*Pcoeffs[i-r+1] + Qcoeffs[i-r+1])
+                sum += expansion_coeffs[r+1]*(r*Pcoeffs[i-r+1] + Qcoeffs[i-r+1])/factorial(i-r)
             end
             append!(expansion_coeffs, -sum/indicial(i))
         end
@@ -902,7 +902,7 @@ function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int
         for i in length(expansion_coeffs):order
             sum = 0.0
             for r in 0:i-1
-                sum += expansion_coeffs[r+1]*(r*Pcoeffs[i-r+1] + Qcoeffs[i-r+1])
+                sum += expansion_coeffs[r+1]*(r*Pcoeffs[i-r+1] + Qcoeffs[i-r+1])/factorial(i-r)
             end
             append!(expansion_coeffs, -sum/indicial(i))
         end
