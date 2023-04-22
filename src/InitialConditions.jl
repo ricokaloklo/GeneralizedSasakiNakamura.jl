@@ -19,7 +19,7 @@ function fansatz(func, omega, r; order=3)
     return ans
 end
 
-function gansatz(func, a, r; order=0)
+function gansatz(func, a, r; order=1)
     # A template function that gives the asymptotic expansion at horizon
     ans = 0.0
     for i in 0:order

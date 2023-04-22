@@ -544,56 +544,123 @@ function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::In
     end
 end
 
-function PplusH_r_minus_rp(s::Int, m::Int, a, omega, lambda, x)
+function PplusH(s::Int, m::Int, a, omega, lambda, x)
     if s == -2
         return begin
-            (1/(2*sqrt(1 - a^2) + x))*((a^2 + (1 + sqrt(1 - a^2) + x)^2)*(-((2*x*(1 + sqrt(1 - a^2) + x)*(2*sqrt(1 - a^2) + x))/(2*(1 + sqrt(1 - a^2)) + 2*(1 + sqrt(1 - a^2))*x + x^2)^2) + 
-            (2*(sqrt(1 - a^2) + x))/(a^2 + (1 + sqrt(1 - a^2) + x)^2) + 2*I*(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega) - 
-            (8*a*x*(2*sqrt(1 - a^2) + x)*((-I)*m*(1 + sqrt(1 - a^2) + x)^2*(6 + (1 + sqrt(1 - a^2) + x)*lambda) + 3*a^2*m*(1 + sqrt(1 - a^2) + x)*(3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + 
-            a*(1 + sqrt(1 - a^2) + x)*(9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/
-            ((1 + sqrt(1 - a^2) + x)*(a^2 + (1 + sqrt(1 - a^2) + x)^2)*((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 
-            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 3*(1 + sqrt(1 - a^2) + x)^2*omega) + a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 
-            4*a^2*(1 + sqrt(1 - a^2) + x)*(6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*omega^2)))))
+            (1/(2*sqrt(1 - a^2) + x))*((a^2 + (1 + sqrt(1 - a^2) + x)^2)*
+            (-((2*x*(1 + sqrt(1 - a^2) + x)*(2*sqrt(1 - a^2) + x))/
+            (2*(1 + sqrt(1 - a^2)) + 2*(1 + sqrt(1 - a^2))*x + x^2)^2) + 
+            (2*(sqrt(1 - a^2) + x))/(a^2 + (1 + sqrt(1 - a^2) + x)^2) + 
+            2*I*(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega) - 
+            (8*a*x*(2*sqrt(1 - a^2) + x)*((-I)*m*(1 + sqrt(1 - a^2) + x)^2*
+            (6 + (1 + sqrt(1 - a^2) + x)*lambda) + 3*a^2*m*(1 + sqrt(1 - a^2) + x)*
+            (3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + a*(1 + sqrt(1 - a^2) + x)*
+            (9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + I*(1 + sqrt(1 - a^2) + x)^2*
+            (-3 + lambda)*omega) + a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 
+            6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/((1 + sqrt(1 - a^2) + x)*
+            (a^2 + (1 + sqrt(1 - a^2) + x)^2)*((1 + sqrt(1 - a^2) + x)^4*
+            (2*lambda + lambda^2 - 12*I*omega) + 24*a^3*m*(1 + sqrt(1 - a^2) + x)*
+            (-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 4*a*m*(1 + sqrt(1 - a^2) + x)^2*
+            (6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 3*(1 + sqrt(1 - a^2) + x)^2*omega) + 
+            a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 
+            4*a^2*(1 + sqrt(1 - a^2) + x)*(6 + (1 + sqrt(1 - a^2) + x)*
+            (-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 
+            3*(1 + sqrt(1 - a^2) + x)^3*omega^2)))))
         end
     else
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
     end
 end
 
-function QplusH_r_minus_rp_sq(s::Int, m::Int, a, omega, lambda, x)
+function QplusH(s::Int, m::Int, a, omega, lambda, x)
     if s == -2
         return begin
-            (1/(2*sqrt(1 - a^2) + x)^2)*((a^2 + (1 + sqrt(1 - a^2) + x)^2)^2*(-(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega)^2 - 
-            (8*I*a*x*(2*sqrt(1 - a^2) + x)*(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega)*((-I)*m*(1 + sqrt(1 - a^2) + x)^2*(6 + (1 + sqrt(1 - a^2) + x)*lambda) + 3*a^2*m*(1 + sqrt(1 - a^2) + x)*(3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + 
-            a*(1 + sqrt(1 - a^2) + x)*(9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/
-            ((1 + sqrt(1 - a^2) + x)*(a^2 + (1 + sqrt(1 - a^2) + x)^2)*((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 
-            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 3*(1 + sqrt(1 - a^2) + x)^2*omega) + a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 
-            4*a^2*(1 + sqrt(1 - a^2) + x)*(6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*omega^2))) - 
-            (1/(a^2 + (1 + sqrt(1 - a^2) + x)^2)^4)*((a^2*(-1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^3)^2 + x*(2*sqrt(1 - a^2) + x)*(-a^4 - 8*a^2*(1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^4) + 
-            (8*a*x*(2*sqrt(1 - a^2) + x)*(a^2 + (1 + sqrt(1 - a^2) + x)^2)*(a^2*(-1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^3)*((-I)*m*(1 + sqrt(1 - a^2) + x)^2*(6 + (1 + sqrt(1 - a^2) + x)*lambda) + 
-            3*a^2*m*(1 + sqrt(1 - a^2) + x)*(3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + a*(1 + sqrt(1 - a^2) + x)*(9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + 
-            a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/((1 + sqrt(1 - a^2) + x)*((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 
-            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 3*(1 + sqrt(1 - a^2) + x)^2*omega) + 
-            a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 4*a^2*(1 + sqrt(1 - a^2) + x)*(6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 
-            3*(1 + sqrt(1 - a^2) + x)^3*omega^2))) - ((a^2 + (1 + sqrt(1 - a^2) + x)^2)^2*(-24*a^7*m*(1 + sqrt(1 - a^2) + x)^2*omega*(-3 + 3*I*(1 + sqrt(1 - a^2) + x)*omega + 4*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 
-            2*a^3*m*(1 + sqrt(1 - a^2) + x)^3*(72*I - 4*I*(1 + sqrt(1 - a^2) + x)*(15 + 9*m^2 - 13*lambda) + 4*(1 + sqrt(1 - a^2) + x)^2*(I*m^2*(6 + lambda) - I*(3 + lambda^2 + lambda*(9 + 16*I*omega) + 24*I*omega)) + 
-            (1 + sqrt(1 - a^2) + x)^3*(-36 + 30*m^2 - 44*lambda - lambda^2 - 36*I*omega)*omega + 4*I*(1 + sqrt(1 - a^2) + x)^4*(3 + 4*lambda)*omega^2 + 48*(1 + sqrt(1 - a^2) + x)^5*omega^3) + 
-            12*a^8*(-2 - 3*(1 + sqrt(1 - a^2) + x)^2*omega^2 + 2*I*(1 + sqrt(1 - a^2) + x)^3*omega^3 + 2*(1 + sqrt(1 - a^2) + x)^4*omega^4) + 4*a^6*(1 + sqrt(1 - a^2) + x)*(12 - 3*(1 + sqrt(1 - a^2) + x)*(-4 + 3*m^2 + 6*I*omega) + 
-            (1 + sqrt(1 - a^2) + x)^3*(-39 + 36*m^2 - 8*lambda - 18*I*omega)*omega^2 + 2*I*(1 + sqrt(1 - a^2) + x)^4*(3 + lambda)*omega^3 + 15*(1 + sqrt(1 - a^2) + x)^5*omega^4 + 2*(1 + sqrt(1 - a^2) + x)^2*omega*(24*I + 9*I*m^2 - 4*I*lambda + 15*omega)) - 
-            4*a^5*m*(1 + sqrt(1 - a^2) + x)^2*(-18*I + 2*(1 + sqrt(1 - a^2) + x)^2*(-36 + 12*m^2 - 8*lambda - 27*I*omega)*omega + 6*I*(1 + sqrt(1 - a^2) + x)^3*(4 + lambda)*omega^2 + 45*(1 + sqrt(1 - a^2) + x)^4*omega^3 + 
-            2*(1 + sqrt(1 - a^2) + x)*(9*I + 3*I*m^2 - 4*I*lambda + 30*omega)) - 2*a*m*(1 + sqrt(1 - a^2) + x)^4*(-48*I - 24*I*(1 + sqrt(1 - a^2) + x)*(-2 + lambda) + 4*I*(1 + sqrt(1 - a^2) + x)^2*(7*lambda + 2*lambda^2 + 6*I*omega) - 
-            (1 + sqrt(1 - a^2) + x)^4*(12*lambda + lambda^2 - 24*I*omega)*omega + 4*I*(1 + sqrt(1 - a^2) + x)^5*lambda*omega^2 + 6*(1 + sqrt(1 - a^2) + x)^6*omega^3 - 4*I*(1 + sqrt(1 - a^2) + x)^3*(lambda + lambda^2 + 6*I*omega + 5*I*lambda*omega)) + 
-            a^4*(1 + sqrt(1 - a^2) + x)^3*(24*m^4*(1 + sqrt(1 - a^2) + x) + 48*(-4 + 3*I*omega) + 8*(1 + sqrt(1 - a^2) + x)*(9 + lambda^2 + lambda*(2 + 13*I*omega) - 72*I*omega) - (1 + sqrt(1 - a^2) + x)^3*(60 + 54*lambda + lambda^2 + 36*I*omega)*omega^2 + 
-            8*I*(1 + sqrt(1 - a^2) + x)^4*(-3 + 2*lambda)*omega^3 + 48*(1 + sqrt(1 - a^2) + x)^5*omega^4 + 8*(1 + sqrt(1 - a^2) + x)^2*omega*(24*I - 6*I*lambda - I*lambda^2 + 18*omega + 8*lambda*omega) + 
-            4*m^2*(30 - (1 + sqrt(1 - a^2) + x)*(33 + 8*lambda + 54*I*omega) + 6*I*(1 + sqrt(1 - a^2) + x)^2*(5 + lambda)*omega + 45*(1 + sqrt(1 - a^2) + x)^3*omega^2)) + 
-            (1 + sqrt(1 - a^2) + x)^6*((-1 + sqrt(1 - a^2) + x)*(1 + sqrt(1 - a^2) + x)*lambda^3 + lambda^2*(12 - 12*(1 + sqrt(1 - a^2) + x) + 2*(1 + sqrt(1 - a^2) + x)^2 - (1 + sqrt(1 - a^2) + x)^4*omega^2) + 
-            12*I*omega*(-12 + 8*(1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^4*omega^2) - 2*lambda*(-12 + 4*(1 + sqrt(1 - a^2) + x)*(2 - 3*I*omega) + 6*I*(1 + sqrt(1 - a^2) + x)^2*omega + (1 + sqrt(1 - a^2) + x)^4*omega^2)) + 
-            a^2*(1 + sqrt(1 - a^2) + x)^4*(96 + 8*(1 + sqrt(1 - a^2) + x)*(m^2*(6 + 8*lambda) - 3*(2 + lambda^2 + lambda*(2 + 2*I*omega) - 22*I*omega)) - 96*I*omega + 2*(1 + sqrt(1 - a^2) + x)^4*(6 + 24*m^2 - 12*lambda - lambda^2 + 24*I*omega)*omega^2 + 
-            8*I*(1 + sqrt(1 - a^2) + x)^5*(-3 + lambda)*omega^3 + 12*(1 + sqrt(1 - a^2) + x)^6*omega^4 + (1 + sqrt(1 - a^2) + x)^2*(lambda^3 + lambda*(24 - 34*m^2 - 4*I*omega) + lambda^2*(14 - m^2 + 16*I*omega) - 12*I*(22 + 3*m^2 - 4*I*omega)*omega) + 
-            8*(1 + sqrt(1 - a^2) + x)^3*omega*((-I)*lambda^2 + 2*I*m^2*(3 + lambda) + 3*omega + lambda*(2*I + 5*omega)))))/((1 + sqrt(1 - a^2) + x)^2*((-(1 + sqrt(1 - a^2) + x)^4)*(2*lambda + lambda^2 - 12*I*omega) + 
-            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(I - 2*(1 + sqrt(1 - a^2) + x)*omega) - 4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 3*(1 + sqrt(1 - a^2) + x)^2*omega) + 
-            12*a^4*(-1 - 2*I*(1 + sqrt(1 - a^2) + x)*omega + 2*(1 + sqrt(1 - a^2) + x)^2*omega^2) + 4*a^2*(1 + sqrt(1 - a^2) + x)*(6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 
-            3*(1 + sqrt(1 - a^2) + x)^3*omega^2))))))
+            (1/(2*sqrt(1 - a^2) + x)^2)*((a^2 + (1 + sqrt(1 - a^2) + x)^2)^2*
+            (-(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega)^2 - 
+            (8*I*a*x*(2*sqrt(1 - a^2) + x)*(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega)*
+            ((-I)*m*(1 + sqrt(1 - a^2) + x)^2*(6 + (1 + sqrt(1 - a^2) + x)*lambda) + 
+            3*a^2*m*(1 + sqrt(1 - a^2) + x)*(3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + 
+            a*(1 + sqrt(1 - a^2) + x)*(9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + 
+            a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/
+            ((1 + sqrt(1 - a^2) + x)*(a^2 + (1 + sqrt(1 - a^2) + x)^2)*
+            ((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 
+            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 
+            3*(1 + sqrt(1 - a^2) + x)^2*omega) + a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 
+            24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 4*a^2*(1 + sqrt(1 - a^2) + x)*
+            (6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*
+            omega^2))) - (1/(a^2 + (1 + sqrt(1 - a^2) + x)^2)^4)*
+            ((a^2*(-1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^3)^2 + 
+            x*(2*sqrt(1 - a^2) + x)*(-a^4 - 8*a^2*(1 + sqrt(1 - a^2) + x) + 
+            (1 + sqrt(1 - a^2) + x)^4) + (8*a*x*(2*sqrt(1 - a^2) + x)*
+            (a^2 + (1 + sqrt(1 - a^2) + x)^2)*(a^2*(-1 + sqrt(1 - a^2) + x) + 
+            (1 + sqrt(1 - a^2) + x)^3)*((-I)*m*(1 + sqrt(1 - a^2) + x)^2*
+            (6 + (1 + sqrt(1 - a^2) + x)*lambda) + 3*a^2*m*(1 + sqrt(1 - a^2) + x)*
+            (3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + a*(1 + sqrt(1 - a^2) + x)*
+            (9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + 
+            a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/
+            ((1 + sqrt(1 - a^2) + x)*((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 
+            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 
+            3*(1 + sqrt(1 - a^2) + x)^2*omega) + a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 
+            24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 4*a^2*(1 + sqrt(1 - a^2) + x)*
+            (6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*
+            omega^2))) - ((a^2 + (1 + sqrt(1 - a^2) + x)^2)^2*
+            (-24*a^7*m*(1 + sqrt(1 - a^2) + x)^2*omega*(-3 + 3*I*(1 + sqrt(1 - a^2) + x)*omega + 
+            4*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 2*a^3*m*(1 + sqrt(1 - a^2) + x)^3*
+            (72*I - 4*I*(1 + sqrt(1 - a^2) + x)*(15 + 9*m^2 - 13*lambda) + 
+            4*(1 + sqrt(1 - a^2) + x)^2*(I*m^2*(6 + lambda) - I*(3 + lambda^2 + lambda*
+            (9 + 16*I*omega) + 24*I*omega)) + (1 + sqrt(1 - a^2) + x)^3*
+            (-36 + 30*m^2 - 44*lambda - lambda^2 - 36*I*omega)*omega + 4*I*(1 + sqrt(1 - a^2) + x)^4*
+            (3 + 4*lambda)*omega^2 + 48*(1 + sqrt(1 - a^2) + x)^5*omega^3) + 
+            12*a^8*(-2 - 3*(1 + sqrt(1 - a^2) + x)^2*omega^2 + 2*I*(1 + sqrt(1 - a^2) + x)^3*
+            omega^3 + 2*(1 + sqrt(1 - a^2) + x)^4*omega^4) + 4*a^6*(1 + sqrt(1 - a^2) + x)*
+            (12 - 3*(1 + sqrt(1 - a^2) + x)*(-4 + 3*m^2 + 6*I*omega) + 
+            (1 + sqrt(1 - a^2) + x)^3*(-39 + 36*m^2 - 8*lambda - 18*I*omega)*omega^2 + 
+            2*I*(1 + sqrt(1 - a^2) + x)^4*(3 + lambda)*omega^3 + 15*(1 + sqrt(1 - a^2) + x)^5*
+            omega^4 + 2*(1 + sqrt(1 - a^2) + x)^2*omega*(24*I + 9*I*m^2 - 4*I*lambda + 15*omega)) - 
+            4*a^5*m*(1 + sqrt(1 - a^2) + x)^2*(-18*I + 2*(1 + sqrt(1 - a^2) + x)^2*
+            (-36 + 12*m^2 - 8*lambda - 27*I*omega)*omega + 6*I*(1 + sqrt(1 - a^2) + x)^3*(4 + lambda)*
+            omega^2 + 45*(1 + sqrt(1 - a^2) + x)^4*omega^3 + 2*(1 + sqrt(1 - a^2) + x)*
+            (9*I + 3*I*m^2 - 4*I*lambda + 30*omega)) - 2*a*m*(1 + sqrt(1 - a^2) + x)^4*
+            (-48*I - 24*I*(1 + sqrt(1 - a^2) + x)*(-2 + lambda) + 
+            4*I*(1 + sqrt(1 - a^2) + x)^2*(7*lambda + 2*lambda^2 + 6*I*omega) - 
+            (1 + sqrt(1 - a^2) + x)^4*(12*lambda + lambda^2 - 24*I*omega)*omega + 
+            4*I*(1 + sqrt(1 - a^2) + x)^5*lambda*omega^2 + 6*(1 + sqrt(1 - a^2) + x)^6*omega^3 - 
+            4*I*(1 + sqrt(1 - a^2) + x)^3*(lambda + lambda^2 + 6*I*omega + 5*I*lambda*omega)) + 
+            a^4*(1 + sqrt(1 - a^2) + x)^3*(24*m^4*(1 + sqrt(1 - a^2) + x) + 
+            48*(-4 + 3*I*omega) + 8*(1 + sqrt(1 - a^2) + x)*(9 + lambda^2 + lambda*(2 + 13*I*omega) - 
+            72*I*omega) - (1 + sqrt(1 - a^2) + x)^3*(60 + 54*lambda + lambda^2 + 36*I*omega)*omega^2 + 
+            8*I*(1 + sqrt(1 - a^2) + x)^4*(-3 + 2*lambda)*omega^3 + 48*(1 + sqrt(1 - a^2) + x)^5*
+            omega^4 + 8*(1 + sqrt(1 - a^2) + x)^2*omega*(24*I - 6*I*lambda - I*lambda^2 + 18*omega + 
+            8*lambda*omega) + 4*m^2*(30 - (1 + sqrt(1 - a^2) + x)*(33 + 8*lambda + 54*I*omega) + 
+            6*I*(1 + sqrt(1 - a^2) + x)^2*(5 + lambda)*omega + 45*(1 + sqrt(1 - a^2) + x)^3*
+            omega^2)) + (1 + sqrt(1 - a^2) + x)^6*((-1 + sqrt(1 - a^2) + x)*
+            (1 + sqrt(1 - a^2) + x)*lambda^3 + lambda^2*(12 - 12*(1 + sqrt(1 - a^2) + x) + 
+            2*(1 + sqrt(1 - a^2) + x)^2 - (1 + sqrt(1 - a^2) + x)^4*omega^2) + 
+            12*I*omega*(-12 + 8*(1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^4*omega^2) - 
+            2*lambda*(-12 + 4*(1 + sqrt(1 - a^2) + x)*(2 - 3*I*omega) + 
+            6*I*(1 + sqrt(1 - a^2) + x)^2*omega + (1 + sqrt(1 - a^2) + x)^4*omega^2)) + 
+            a^2*(1 + sqrt(1 - a^2) + x)^4*(96 + 8*(1 + sqrt(1 - a^2) + x)*
+            (m^2*(6 + 8*lambda) - 3*(2 + lambda^2 + lambda*(2 + 2*I*omega) - 22*I*omega)) - 96*I*omega + 
+            2*(1 + sqrt(1 - a^2) + x)^4*(6 + 24*m^2 - 12*lambda - lambda^2 + 24*I*omega)*omega^2 + 
+            8*I*(1 + sqrt(1 - a^2) + x)^5*(-3 + lambda)*omega^3 + 12*(1 + sqrt(1 - a^2) + x)^6*
+            omega^4 + (1 + sqrt(1 - a^2) + x)^2*(lambda^3 + lambda*(24 - 34*m^2 - 4*I*omega) + 
+            lambda^2*(14 - m^2 + 16*I*omega) - 12*I*(22 + 3*m^2 - 4*I*omega)*omega) + 
+            8*(1 + sqrt(1 - a^2) + x)^3*omega*((-I)*lambda^2 + 2*I*m^2*(3 + lambda) + 3*omega + 
+            lambda*(2*I + 5*omega)))))/((1 + sqrt(1 - a^2) + x)^2*
+            ((-(1 + sqrt(1 - a^2) + x)^4)*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(I - 2*(1 + sqrt(1 - a^2) + x)*omega) - 
+            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 
+            3*(1 + sqrt(1 - a^2) + x)^2*omega) + 12*a^4*(-1 - 2*I*(1 + sqrt(1 - a^2) + x)*
+            omega + 2*(1 + sqrt(1 - a^2) + x)^2*omega^2) + 4*a^2*(1 + sqrt(1 - a^2) + x)*
+            (6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*
+            omega^2))))))
         end
     else
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
@@ -626,14 +693,14 @@ function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::In
     else
         # Cannot re-use the cached results, re-compute from zero
         expansion_coeffs = [ComplexF64(1.0)] # order 0
-        Pcoeffs = [ComplexF64(PplusH_r_minus_rp(s, m, a, omega, lambda, 0))] # order 0
+        Pcoeffs = [ComplexF64(PplusH(s, m, a, omega, lambda, 0))] # order 0
         Qcoeffs = [ComplexF64(0.0)] # order 0
     end
 
     if order > 0
         # Compute series expansion coefficients for P and Q
-        _P(x) = PplusH_r_minus_rp(s, m, a, omega, lambda, x)
-        _Q(x) = QplusH_r_minus_rp_sq(s, m, a, omega, lambda, x)
+        _P(x) = PplusH(s, m, a, omega, lambda, x)
+        _Q(x) = QplusH(s, m, a, omega, lambda, x)
 
         for i in length(Pcoeffs):order
             append!(Pcoeffs, nth_derivative(_P, i)(0)/factorial(i))
@@ -664,71 +731,123 @@ function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::In
     return expansion_coeffs[order+1]
 end
 
-function PminusH_r_minus_rp(s::Int, m::Int, a, omega, lambda, x)
+function PminusH(s::Int, m::Int, a, omega, lambda, x)
     if s == -2
         return begin
             (1/(2*sqrt(1 - a^2) + x))*((a^2 + (1 + sqrt(1 - a^2) + x)^2)*
-            (-((2*x*(1 + sqrt(1 - a^2) + x)*(2*sqrt(1 - a^2) + x))/(2*(1 + sqrt(1 - a^2)) + 2*(1 + sqrt(1 - a^2))*x + x^2)^2) + 
-            (2*(sqrt(1 - a^2) + x))/(a^2 + (1 + sqrt(1 - a^2) + x)^2) + I*((a*m)/(1 + sqrt(1 - a^2)) - 2*omega) - 
-            (8*a*x*(2*sqrt(1 - a^2) + x)*((-I)*m*(1 + sqrt(1 - a^2) + x)^2*(6 + (1 + sqrt(1 - a^2) + x)*lambda) + 3*a^2*m*(1 + sqrt(1 - a^2) + x)*
-            (3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + a*(1 + sqrt(1 - a^2) + x)*(9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + 
-            a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/((1 + sqrt(1 - a^2) + x)*(a^2 + (1 + sqrt(1 - a^2) + x)^2)*
-            ((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 
-            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 3*(1 + sqrt(1 - a^2) + x)^2*omega) + 
-            a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 4*a^2*(1 + sqrt(1 - a^2) + x)*
-            (6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*omega^2)))))
+            (-((2*x*(1 + sqrt(1 - a^2) + x)*(2*sqrt(1 - a^2) + x))/
+            (2*(1 + sqrt(1 - a^2)) + 2*(1 + sqrt(1 - a^2))*x + x^2)^2) + 
+            (2*(sqrt(1 - a^2) + x))/(a^2 + (1 + sqrt(1 - a^2) + x)^2) + 
+            I*((a*m)/(1 + sqrt(1 - a^2)) - 2*omega) - 
+            (8*a*x*(2*sqrt(1 - a^2) + x)*((-I)*m*(1 + sqrt(1 - a^2) + x)^2*
+            (6 + (1 + sqrt(1 - a^2) + x)*lambda) + 3*a^2*m*(1 + sqrt(1 - a^2) + x)*
+            (3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + a*(1 + sqrt(1 - a^2) + x)*
+            (9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + I*(1 + sqrt(1 - a^2) + x)^2*
+            (-3 + lambda)*omega) + a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 
+            6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/((1 + sqrt(1 - a^2) + x)*
+            (a^2 + (1 + sqrt(1 - a^2) + x)^2)*((1 + sqrt(1 - a^2) + x)^4*
+            (2*lambda + lambda^2 - 12*I*omega) + 24*a^3*m*(1 + sqrt(1 - a^2) + x)*
+            (-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 4*a*m*(1 + sqrt(1 - a^2) + x)^2*
+            (6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 3*(1 + sqrt(1 - a^2) + x)^2*omega) + 
+            a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 
+            4*a^2*(1 + sqrt(1 - a^2) + x)*(6 + (1 + sqrt(1 - a^2) + x)*
+            (-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 
+            3*(1 + sqrt(1 - a^2) + x)^3*omega^2)))))
         end
     else
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
     end
 end
 
-function QminusH_r_minus_rp_sq(s::Int, m::Int, a, omega, lambda, x)
+function QminusH(s::Int, m::Int, a, omega, lambda, x)
     if s == -2
         return begin
-            (1/(2*sqrt(1 - a^2) + x)^2)*((a^2 + (1 + sqrt(1 - a^2) + x)^2)^2*(-(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega)^2 + 
-            (8*I*a*x*(2*sqrt(1 - a^2) + x)*(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega)*((-I)*m*(1 + sqrt(1 - a^2) + x)^2*(6 + (1 + sqrt(1 - a^2) + x)*lambda) + 
-            3*a^2*m*(1 + sqrt(1 - a^2) + x)*(3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + a*(1 + sqrt(1 - a^2) + x)*(9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
-            I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/
-            ((1 + sqrt(1 - a^2) + x)*(a^2 + (1 + sqrt(1 - a^2) + x)^2)*((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 
-            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 
-            3*(1 + sqrt(1 - a^2) + x)^2*omega) + a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 
-            4*a^2*(1 + sqrt(1 - a^2) + x)*(6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 
-            3*(1 + sqrt(1 - a^2) + x)^3*omega^2))) - (1/(a^2 + (1 + sqrt(1 - a^2) + x)^2)^4)*((a^2*(-1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^3)^2 + 
-            x*(2*sqrt(1 - a^2) + x)*(-a^4 - 8*a^2*(1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^4) + 
-            (8*a*x*(2*sqrt(1 - a^2) + x)*(a^2 + (1 + sqrt(1 - a^2) + x)^2)*(a^2*(-1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^3)*
-            ((-I)*m*(1 + sqrt(1 - a^2) + x)^2*(6 + (1 + sqrt(1 - a^2) + x)*lambda) + 3*a^2*m*(1 + sqrt(1 - a^2) + x)*(3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + 
-            a*(1 + sqrt(1 - a^2) + x)*(9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + 
-            a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/((1 + sqrt(1 - a^2) + x)*((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 
-            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 
-            3*(1 + sqrt(1 - a^2) + x)^2*omega) + a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 
-            4*a^2*(1 + sqrt(1 - a^2) + x)*(6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 
-            3*(1 + sqrt(1 - a^2) + x)^3*omega^2))) - ((a^2 + (1 + sqrt(1 - a^2) + x)^2)^2*(-24*a^7*m*(1 + sqrt(1 - a^2) + x)^2*omega*
-            (-3 + 3*I*(1 + sqrt(1 - a^2) + x)*omega + 4*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 2*a^3*m*(1 + sqrt(1 - a^2) + x)^3*
-            (72*I - 4*I*(1 + sqrt(1 - a^2) + x)*(15 + 9*m^2 - 13*lambda) + 4*(1 + sqrt(1 - a^2) + x)^2*(I*m^2*(6 + lambda) - I*(3 + lambda^2 + lambda*(9 + 16*I*omega) + 24*I*omega)) + 
-            (1 + sqrt(1 - a^2) + x)^3*(-36 + 30*m^2 - 44*lambda - lambda^2 - 36*I*omega)*omega + 4*I*(1 + sqrt(1 - a^2) + x)^4*(3 + 4*lambda)*omega^2 + 48*(1 + sqrt(1 - a^2) + x)^5*omega^3) + 
-            12*a^8*(-2 - 3*(1 + sqrt(1 - a^2) + x)^2*omega^2 + 2*I*(1 + sqrt(1 - a^2) + x)^3*omega^3 + 2*(1 + sqrt(1 - a^2) + x)^4*omega^4) + 
-            4*a^6*(1 + sqrt(1 - a^2) + x)*(12 - 3*(1 + sqrt(1 - a^2) + x)*(-4 + 3*m^2 + 6*I*omega) + (1 + sqrt(1 - a^2) + x)^3*(-39 + 36*m^2 - 8*lambda - 18*I*omega)*omega^2 + 
-            2*I*(1 + sqrt(1 - a^2) + x)^4*(3 + lambda)*omega^3 + 15*(1 + sqrt(1 - a^2) + x)^5*omega^4 + 2*(1 + sqrt(1 - a^2) + x)^2*omega*(24*I + 9*I*m^2 - 4*I*lambda + 15*omega)) - 
-            4*a^5*m*(1 + sqrt(1 - a^2) + x)^2*(-18*I + 2*(1 + sqrt(1 - a^2) + x)^2*(-36 + 12*m^2 - 8*lambda - 27*I*omega)*omega + 6*I*(1 + sqrt(1 - a^2) + x)^3*(4 + lambda)*omega^2 + 
-            45*(1 + sqrt(1 - a^2) + x)^4*omega^3 + 2*(1 + sqrt(1 - a^2) + x)*(9*I + 3*I*m^2 - 4*I*lambda + 30*omega)) - 2*a*m*(1 + sqrt(1 - a^2) + x)^4*
-            (-48*I - 24*I*(1 + sqrt(1 - a^2) + x)*(-2 + lambda) + 4*I*(1 + sqrt(1 - a^2) + x)^2*(7*lambda + 2*lambda^2 + 6*I*omega) - (1 + sqrt(1 - a^2) + x)^4*(12*lambda + lambda^2 - 24*I*omega)*
-            omega + 4*I*(1 + sqrt(1 - a^2) + x)^5*lambda*omega^2 + 6*(1 + sqrt(1 - a^2) + x)^6*omega^3 - 4*I*(1 + sqrt(1 - a^2) + x)^3*(lambda + lambda^2 + 6*I*omega + 5*I*lambda*omega)) + 
-            a^4*(1 + sqrt(1 - a^2) + x)^3*(24*m^4*(1 + sqrt(1 - a^2) + x) + 48*(-4 + 3*I*omega) + 8*(1 + sqrt(1 - a^2) + x)*(9 + lambda^2 + lambda*(2 + 13*I*omega) - 72*I*omega) - 
-            (1 + sqrt(1 - a^2) + x)^3*(60 + 54*lambda + lambda^2 + 36*I*omega)*omega^2 + 8*I*(1 + sqrt(1 - a^2) + x)^4*(-3 + 2*lambda)*omega^3 + 48*(1 + sqrt(1 - a^2) + x)^5*omega^4 + 
-            8*(1 + sqrt(1 - a^2) + x)^2*omega*(24*I - 6*I*lambda - I*lambda^2 + 18*omega + 8*lambda*omega) + 4*m^2*(30 - (1 + sqrt(1 - a^2) + x)*(33 + 8*lambda + 54*I*omega) + 
-            6*I*(1 + sqrt(1 - a^2) + x)^2*(5 + lambda)*omega + 45*(1 + sqrt(1 - a^2) + x)^3*omega^2)) + (1 + sqrt(1 - a^2) + x)^6*
-            ((-1 + sqrt(1 - a^2) + x)*(1 + sqrt(1 - a^2) + x)*lambda^3 + lambda^2*(12 - 12*(1 + sqrt(1 - a^2) + x) + 2*(1 + sqrt(1 - a^2) + x)^2 - 
-            (1 + sqrt(1 - a^2) + x)^4*omega^2) + 12*I*omega*(-12 + 8*(1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^4*omega^2) - 
-            2*lambda*(-12 + 4*(1 + sqrt(1 - a^2) + x)*(2 - 3*I*omega) + 6*I*(1 + sqrt(1 - a^2) + x)^2*omega + (1 + sqrt(1 - a^2) + x)^4*omega^2)) + 
-            a^2*(1 + sqrt(1 - a^2) + x)^4*(96 + 8*(1 + sqrt(1 - a^2) + x)*(m^2*(6 + 8*lambda) - 3*(2 + lambda^2 + lambda*(2 + 2*I*omega) - 22*I*omega)) - 96*I*omega + 
-            2*(1 + sqrt(1 - a^2) + x)^4*(6 + 24*m^2 - 12*lambda - lambda^2 + 24*I*omega)*omega^2 + 8*I*(1 + sqrt(1 - a^2) + x)^5*(-3 + lambda)*omega^3 + 12*(1 + sqrt(1 - a^2) + x)^6*omega^4 + 
-            (1 + sqrt(1 - a^2) + x)^2*(lambda^3 + lambda*(24 - 34*m^2 - 4*I*omega) + lambda^2*(14 - m^2 + 16*I*omega) - 12*I*(22 + 3*m^2 - 4*I*omega)*omega) + 
-            8*(1 + sqrt(1 - a^2) + x)^3*omega*((-I)*lambda^2 + 2*I*m^2*(3 + lambda) + 3*omega + lambda*(2*I + 5*omega)))))/((1 + sqrt(1 - a^2) + x)^2*
-            ((-(1 + sqrt(1 - a^2) + x)^4)*(2*lambda + lambda^2 - 12*I*omega) + 24*a^3*m*(1 + sqrt(1 - a^2) + x)*(I - 2*(1 + sqrt(1 - a^2) + x)*omega) - 
-            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 3*(1 + sqrt(1 - a^2) + x)^2*omega) + 
-            12*a^4*(-1 - 2*I*(1 + sqrt(1 - a^2) + x)*omega + 2*(1 + sqrt(1 - a^2) + x)^2*omega^2) + 4*a^2*(1 + sqrt(1 - a^2) + x)*
-            (6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*omega^2))))))
+            (1/(2*sqrt(1 - a^2) + x)^2)*((a^2 + (1 + sqrt(1 - a^2) + x)^2)^2*
+            (-(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega)^2 + 
+            (8*I*a*x*(2*sqrt(1 - a^2) + x)*(-((a*m)/(2*(1 + sqrt(1 - a^2)))) + omega)*
+            ((-I)*m*(1 + sqrt(1 - a^2) + x)^2*(6 + (1 + sqrt(1 - a^2) + x)*lambda) + 
+            3*a^2*m*(1 + sqrt(1 - a^2) + x)*(3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + 
+            a*(1 + sqrt(1 - a^2) + x)*(9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + 
+            a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/
+            ((1 + sqrt(1 - a^2) + x)*(a^2 + (1 + sqrt(1 - a^2) + x)^2)*
+            ((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 
+            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 
+            3*(1 + sqrt(1 - a^2) + x)^2*omega) + a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 
+            24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 4*a^2*(1 + sqrt(1 - a^2) + x)*
+            (6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*
+            omega^2))) - (1/(a^2 + (1 + sqrt(1 - a^2) + x)^2)^4)*
+            ((a^2*(-1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^3)^2 + 
+            x*(2*sqrt(1 - a^2) + x)*(-a^4 - 8*a^2*(1 + sqrt(1 - a^2) + x) + 
+            (1 + sqrt(1 - a^2) + x)^4) + (8*a*x*(2*sqrt(1 - a^2) + x)*
+            (a^2 + (1 + sqrt(1 - a^2) + x)^2)*(a^2*(-1 + sqrt(1 - a^2) + x) + 
+            (1 + sqrt(1 - a^2) + x)^3)*((-I)*m*(1 + sqrt(1 - a^2) + x)^2*
+            (6 + (1 + sqrt(1 - a^2) + x)*lambda) + 3*a^2*m*(1 + sqrt(1 - a^2) + x)*
+            (3*I - 4*(1 + sqrt(1 - a^2) + x)*omega) + a*(1 + sqrt(1 - a^2) + x)*
+            (9 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega) + 
+            a^3*(-6 - 9*I*(1 + sqrt(1 - a^2) + x)*omega + 6*(1 + sqrt(1 - a^2) + x)^2*omega^2)))/
+            ((1 + sqrt(1 - a^2) + x)*((1 + sqrt(1 - a^2) + x)^4*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(-I + 2*(1 + sqrt(1 - a^2) + x)*omega) + 
+            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 
+            3*(1 + sqrt(1 - a^2) + x)^2*omega) + a^4*(12 + 24*I*(1 + sqrt(1 - a^2) + x)*omega - 
+            24*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 4*a^2*(1 + sqrt(1 - a^2) + x)*
+            (6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*
+            omega^2))) - ((a^2 + (1 + sqrt(1 - a^2) + x)^2)^2*
+            (-24*a^7*m*(1 + sqrt(1 - a^2) + x)^2*omega*(-3 + 3*I*(1 + sqrt(1 - a^2) + x)*omega + 
+            4*(1 + sqrt(1 - a^2) + x)^2*omega^2) - 2*a^3*m*(1 + sqrt(1 - a^2) + x)^3*
+            (72*I - 4*I*(1 + sqrt(1 - a^2) + x)*(15 + 9*m^2 - 13*lambda) + 
+            4*(1 + sqrt(1 - a^2) + x)^2*(I*m^2*(6 + lambda) - I*(3 + lambda^2 + lambda*
+            (9 + 16*I*omega) + 24*I*omega)) + (1 + sqrt(1 - a^2) + x)^3*
+            (-36 + 30*m^2 - 44*lambda - lambda^2 - 36*I*omega)*omega + 4*I*(1 + sqrt(1 - a^2) + x)^4*
+            (3 + 4*lambda)*omega^2 + 48*(1 + sqrt(1 - a^2) + x)^5*omega^3) + 
+            12*a^8*(-2 - 3*(1 + sqrt(1 - a^2) + x)^2*omega^2 + 2*I*(1 + sqrt(1 - a^2) + x)^3*
+            omega^3 + 2*(1 + sqrt(1 - a^2) + x)^4*omega^4) + 4*a^6*(1 + sqrt(1 - a^2) + x)*
+            (12 - 3*(1 + sqrt(1 - a^2) + x)*(-4 + 3*m^2 + 6*I*omega) + 
+            (1 + sqrt(1 - a^2) + x)^3*(-39 + 36*m^2 - 8*lambda - 18*I*omega)*omega^2 + 
+            2*I*(1 + sqrt(1 - a^2) + x)^4*(3 + lambda)*omega^3 + 15*(1 + sqrt(1 - a^2) + x)^5*
+            omega^4 + 2*(1 + sqrt(1 - a^2) + x)^2*omega*(24*I + 9*I*m^2 - 4*I*lambda + 15*omega)) - 
+            4*a^5*m*(1 + sqrt(1 - a^2) + x)^2*(-18*I + 2*(1 + sqrt(1 - a^2) + x)^2*
+            (-36 + 12*m^2 - 8*lambda - 27*I*omega)*omega + 6*I*(1 + sqrt(1 - a^2) + x)^3*(4 + lambda)*
+            omega^2 + 45*(1 + sqrt(1 - a^2) + x)^4*omega^3 + 2*(1 + sqrt(1 - a^2) + x)*
+            (9*I + 3*I*m^2 - 4*I*lambda + 30*omega)) - 2*a*m*(1 + sqrt(1 - a^2) + x)^4*
+            (-48*I - 24*I*(1 + sqrt(1 - a^2) + x)*(-2 + lambda) + 
+            4*I*(1 + sqrt(1 - a^2) + x)^2*(7*lambda + 2*lambda^2 + 6*I*omega) - 
+            (1 + sqrt(1 - a^2) + x)^4*(12*lambda + lambda^2 - 24*I*omega)*omega + 
+            4*I*(1 + sqrt(1 - a^2) + x)^5*lambda*omega^2 + 6*(1 + sqrt(1 - a^2) + x)^6*omega^3 - 
+            4*I*(1 + sqrt(1 - a^2) + x)^3*(lambda + lambda^2 + 6*I*omega + 5*I*lambda*omega)) + 
+            a^4*(1 + sqrt(1 - a^2) + x)^3*(24*m^4*(1 + sqrt(1 - a^2) + x) + 
+            48*(-4 + 3*I*omega) + 8*(1 + sqrt(1 - a^2) + x)*(9 + lambda^2 + lambda*(2 + 13*I*omega) - 
+            72*I*omega) - (1 + sqrt(1 - a^2) + x)^3*(60 + 54*lambda + lambda^2 + 36*I*omega)*omega^2 + 
+            8*I*(1 + sqrt(1 - a^2) + x)^4*(-3 + 2*lambda)*omega^3 + 48*(1 + sqrt(1 - a^2) + x)^5*
+            omega^4 + 8*(1 + sqrt(1 - a^2) + x)^2*omega*(24*I - 6*I*lambda - I*lambda^2 + 18*omega + 
+            8*lambda*omega) + 4*m^2*(30 - (1 + sqrt(1 - a^2) + x)*(33 + 8*lambda + 54*I*omega) + 
+            6*I*(1 + sqrt(1 - a^2) + x)^2*(5 + lambda)*omega + 45*(1 + sqrt(1 - a^2) + x)^3*
+            omega^2)) + (1 + sqrt(1 - a^2) + x)^6*((-1 + sqrt(1 - a^2) + x)*
+            (1 + sqrt(1 - a^2) + x)*lambda^3 + lambda^2*(12 - 12*(1 + sqrt(1 - a^2) + x) + 
+            2*(1 + sqrt(1 - a^2) + x)^2 - (1 + sqrt(1 - a^2) + x)^4*omega^2) + 
+            12*I*omega*(-12 + 8*(1 + sqrt(1 - a^2) + x) + (1 + sqrt(1 - a^2) + x)^4*omega^2) - 
+            2*lambda*(-12 + 4*(1 + sqrt(1 - a^2) + x)*(2 - 3*I*omega) + 
+            6*I*(1 + sqrt(1 - a^2) + x)^2*omega + (1 + sqrt(1 - a^2) + x)^4*omega^2)) + 
+            a^2*(1 + sqrt(1 - a^2) + x)^4*(96 + 8*(1 + sqrt(1 - a^2) + x)*
+            (m^2*(6 + 8*lambda) - 3*(2 + lambda^2 + lambda*(2 + 2*I*omega) - 22*I*omega)) - 96*I*omega + 
+            2*(1 + sqrt(1 - a^2) + x)^4*(6 + 24*m^2 - 12*lambda - lambda^2 + 24*I*omega)*omega^2 + 
+            8*I*(1 + sqrt(1 - a^2) + x)^5*(-3 + lambda)*omega^3 + 12*(1 + sqrt(1 - a^2) + x)^6*
+            omega^4 + (1 + sqrt(1 - a^2) + x)^2*(lambda^3 + lambda*(24 - 34*m^2 - 4*I*omega) + 
+            lambda^2*(14 - m^2 + 16*I*omega) - 12*I*(22 + 3*m^2 - 4*I*omega)*omega) + 
+            8*(1 + sqrt(1 - a^2) + x)^3*omega*((-I)*lambda^2 + 2*I*m^2*(3 + lambda) + 3*omega + 
+            lambda*(2*I + 5*omega)))))/((1 + sqrt(1 - a^2) + x)^2*
+            ((-(1 + sqrt(1 - a^2) + x)^4)*(2*lambda + lambda^2 - 12*I*omega) + 
+            24*a^3*m*(1 + sqrt(1 - a^2) + x)*(I - 2*(1 + sqrt(1 - a^2) + x)*omega) - 
+            4*a*m*(1 + sqrt(1 - a^2) + x)^2*(6*I + 2*I*(1 + sqrt(1 - a^2) + x)*lambda + 
+            3*(1 + sqrt(1 - a^2) + x)^2*omega) + 12*a^4*(-1 - 2*I*(1 + sqrt(1 - a^2) + x)*
+            omega + 2*(1 + sqrt(1 - a^2) + x)^2*omega^2) + 4*a^2*(1 + sqrt(1 - a^2) + x)*
+            (6 + (1 + sqrt(1 - a^2) + x)*(-3 + 6*m^2 + 6*I*omega) + 
+            2*I*(1 + sqrt(1 - a^2) + x)^2*(-3 + lambda)*omega + 3*(1 + sqrt(1 - a^2) + x)^3*
+            omega^2))))))
         end
     else
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
@@ -761,14 +880,14 @@ function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int
     else
         # Cannot re-use the cached results, re-compute from zero
         expansion_coeffs = [ComplexF64(1.0)] # order 0
-        Pcoeffs = [ComplexF64(PminusH_r_minus_rp(s, m, a, omega, lambda, 0))] # order 0
+        Pcoeffs = [ComplexF64(PminusH(s, m, a, omega, lambda, 0))] # order 0
         Qcoeffs = [ComplexF64(0.0)] # order 0
     end
 
     if order > 0
         # Compute series expansion coefficients for P and Q
-        _P(x) = PminusH_r_minus_rp(s, m, a, omega, lambda, x)
-        _Q(x) = QminusH_r_minus_rp_sq(s, m, a, omega, lambda, x)
+        _P(x) = PminusH(s, m, a, omega, lambda, x)
+        _Q(x) = QminusH(s, m, a, omega, lambda, x)
 
         for i in length(Pcoeffs):order
             append!(Pcoeffs, nth_derivative(_P, i)(0)/factorial(i))
