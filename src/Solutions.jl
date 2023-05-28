@@ -11,79 +11,121 @@ using ..InitialConditions
 using ..ConversionFactors
 
 const I = 1im # Mathematica being Mathematica
-_DEFAULTDATATYPE = Float64 # Double precision by default
+_DEFAULTDATATYPE = ComplexF64 # Double precision by default
 
-function PhiRePhiIm_from_XXprime(X, Xprime)
-    PhiRe = atan(imag(X), real(X))
-    PhiIm = -0.5*log(real(X)^2 + imag(X)^2)
-
-    PhiReprime = imag(Xprime/X)
-    PhiImprime = -real(Xprime/X)
-
-    return PhiRe, PhiIm, PhiReprime, PhiImprime
-end
-
-function XXprime_from_PhiRePhiImsoln(Phisoln)
-    X(rs) = exp(1im*(Phisoln(rs)[1] + 1im*Phisoln(rs)[2]))
-    Xprime(rs) = X(rs)*(1im*Phisoln(rs)[3] - Phisoln(rs)[4])
-
-    return X, Xprime
-end
-
-function GSN_PhiRePhiIm_eqns!(du, u, p, rs)
+# First-order non-linear ODE form of the GSN equation
+function GSN_Riccati_eqn!(du, u, p, rs)
     r = r_from_rstar(p.a, rs)
     _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
     _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
     
     #=
-    We write X = exp(I*(PhiRe + I*PhiIm)) = exp(-PhiIm) exp(I*PhiRe)
-    Therefore PhiRe is the phase and exp(-PhiIm) is the magnitude
+    We write X = exp(I*Phi)
     Substitute X in this form into the GSN equation will give
-    two coupled *non-linear* ODE
+    a Riccati equation, a first-order non-linear equation
 
-    u[1] = PhiRe
-    u[2] = PhiIm
-    u[3] = PhiRe' = u[1]'
-    u[4] = PhiIm' = u[2]'
+    u[1] = Phi
+    u[2] = dPhidrs
     =#
-    du[1] = u[3]
-    du[2] = u[4]
-    du[3] = 2*u[3]*u[4] + real(_sF)*u[3] - imag(_sF)*u[4] + imag(_sU)
-    du[4] = -u[3]^2 + u[4]^2 + real(_sF)*u[4] + imag(_sF)*u[3] - real(_sU)
+    du[1] = u[2]
+    du[2] = -1im*_sU + _sF*u[2] - 1im*u[2]*u[2]
 end
 
-function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
+# Second-order linear ODE form of the GSN equation
+function GSN_linear_eqn!(du, u, p, rs)
+    r = r_from_rstar(p.a, rs)
+    _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
+    _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
+
+    #=
+    Using the convention for DifferentialEquations
+    u[1] = X(rs)
+    u[2] = dX/drs = X'
+    therefore
+    X'' - sF X' - sU X = 0 => u[2]' - sF u[2] - sU u[1] = 0 => u[2]' = sF u[2] + sU u[1]
+    =#
+    du[1] = u[2]
+    du[2] = _sF*u[2] + _sU*u[1]
+end
+
+function PhiPhiprime_from_XXprime(X, Xprime)
+    Phi = -1im*log(X)
+    Phiprime = -1im*Xprime/X
+
+    return Phi, Phiprime
+end
+
+function XXprime_from_PhiPhiprime(Phi, Phiprime)
+    X = exp(1im*Phi)
+    Xprime = 1im*X*Phiprime
+
+    return X, Xprime
+end
+
+function Xsoln_from_Phisoln(Phisoln)
+    return rs -> XXprime_from_PhiPhiprime(Phisoln(rs)[1], Phisoln(rs)[2])
+end
+
+function solve_Phiup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
     end
     # Initial conditions at rs = rsout, the outer boundary
-    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout)
-    # Convert initial conditions for Xup for PhiRe PhiIm
-    PhiRe, PhiIm, PhiReprime, PhiImprime = PhiRePhiIm_from_XXprime(Xup_rsout, Xupprime_rsout)
-    u0 = [dtype(PhiRe); dtype(PhiIm); dtype(PhiReprime); dtype(PhiImprime)]
+    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order)
+    # Convert initial conditions for Xup for Phi
+    Phi, Phiprime = PhiPhiprime_from_XXprime(Xup_rsout, Xupprime_rsout)
+    u0 = [dtype(Phi); dtype(Phiprime)]
     rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(GSN_PhiRePhiIm_eqns!, u0, rsspan, p)
+    odeprob = ODEProblem(GSN_Riccati_eqn!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
     return odesoln
 end
 
-function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
+function solve_Phiin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
     end
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
-    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin)
+    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order)
     # Convert initial conditions for Xin for PhiRe PhiIm
-    PhiRe, PhiIm, PhiReprime, PhiImprime = PhiRePhiIm_from_XXprime(Xin_rsin, Xinprime_rsin)
-    u0 = [dtype(PhiRe); dtype(PhiIm); dtype(PhiReprime); dtype(PhiImprime)]
+    Phi, Phiprime = PhiPhiprime_from_XXprime(Xin_rsin, Xinprime_rsin)
+    u0 = [dtype(Phi); dtype(Phiprime)]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(GSN_PhiRePhiIm_eqns!, u0, rsspan, p)
+    odeprob = ODEProblem(GSN_Riccati_eqn!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
     return odesoln
+end
+
+function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
+    # Sanity check
+    if rsin > rsout
+        throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
+    end
+    # Initial conditions at rs = rsout, the outer boundary
+    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order)
+    u0 = [dtype(Xup_rsout); dtype(Xupprime_rsout)]
+    rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
+    p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
+    odeprob = ODEProblem(GSN_linear_eqn!, u0, rsspan, p)
+    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+end
+
+function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
+    # Sanity check
+    if rsin > rsout
+        throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
+    end
+    # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
+    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order)
+    u0 = [dtype(Xin_rsin); dtype(Xinprime_rsin)]
+    rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
+    p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
+    odeprob = ODEProblem(GSN_linear_eqn!, u0, rsspan, p)
+    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
 function Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
@@ -352,45 +394,13 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matr
             2*I*r^2*(-3 + lambda)*omega + 3*r^3*omega^2))
         end
     else
-        # No explicit form available; revert to general-s expression
-        return _Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix_general_s(s, m, a, omega, lambda, r)
-    end
-    
+        # Throw an error, this spin weight is not supported
+        throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
+    end 
     return [M11 M12; M21 M22]
 end
 
-function _Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix_general_s(s, m, a, omega, lambda, r)
-    drstar_dr(r) = (r^2 + a^2)/Delta(a, r)
-    chi_conversion_factor(r) = (1.0/sqrt((r^2 + a^2) * (Delta(a, r)^s)))
-    dchi_conversion_factor_dr(r) = begin
-        ((-a^2)*(r - s + r*s) + r^2*(2 + s - r*(1 + s)))/
-        ((a^2 + (-2 + r)*r)*sqrt((a^2 + (-2 + r)*r)^s)*(a^2 + r^2)^(3/2))
-    end
-    _eta(r) = eta(s, m, a, omega, lambda, r)
-    _alpha(r) = alpha(s, m, a, omega, lambda, r)
-    _alpha_prime(r) = alpha_prime(s, m, a, omega, lambda, r)
-    _beta(r) = beta(s, m, a, omega, lambda, r)
-    _beta_prime(r) = beta_prime(s, m, a, omega, lambda, r)
-    _Delta(r) = Delta(a, r)
-    _VT(r) = VT(s, m, a, omega, lambda, r)
-    _1_over_eta(r) = 1.0/_eta(r)
-
-    conversion_matrix_from_X_dXdrs_to_X_dXdr(r) = [1 0 ; 0 drstar_dr(r)]
-    conversion_matrix_from_X_dXdr_to_chi_dchidr(r) = [chi_conversion_factor(r) 0 ; dchi_conversion_factor_dr(r) chi_conversion_factor(r)]
-    conversion_matrix_from_chi_dchidr_to_R_dRdr(r) = _1_over_eta(r) * [_alpha(r)+_beta_prime(r)*(_Delta(r)^(s+1)) -_beta(r)*(_Delta(r)^(s+1)) ; -(_alpha_prime(r)+_beta(r)*_VT(r)*(_Delta(r)^(s))) _alpha(r)]
-    # **Left multiplication**
-    overall_conversion_matrix = conversion_matrix_from_chi_dchidr_to_R_dRdr(r) * conversion_matrix_from_X_dXdr_to_chi_dchidr(r) * conversion_matrix_from_X_dXdrs_to_X_dXdr(r)
-    return overall_conversion_matrix
-end
-
-function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Phisoln)
-    # Unpack the parameters
-    s = Phisoln.prob.p.s
-    m = Phisoln.prob.p.m
-    a = Phisoln.prob.p.a
-    omega = Phisoln.prob.p.omega
-    lambda = Phisoln.prob.p.lambda
-
+function Teukolsky_radial_function_from_Sasaki_Nakamura_function(s::Int, m::Int, a, omega, lambda, Xsoln)
     #=
     First convert [X(rs), dX/drs(rs)] to [X(r), dX/dr(r)], this is done by
     [X(r), dX/dr(r)]^T = [1, 0; 0, drstar/dr ] * [X(rs), dX/drs(rs)]^T
@@ -406,8 +416,8 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Phisoln)
     =#
 
     overall_conversion_matrix(r) = Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
-    # Reconstruct X, Xprime from PhiRePhiIm solution
-    X, Xprime = XXprime_from_PhiRePhiImsoln(Phisoln)
+    X(rs) = Xsoln(rs)[1]
+    Xprime(rs) = Xsoln(rs)[2]
     Rsoln = (r -> overall_conversion_matrix(r) * [X(rstar_from_r(a, r)); Xprime(rstar_from_r(a, r))])
     return Rsoln
 end
@@ -430,13 +440,7 @@ function scaled_Wronskian(Rin_soln, Rup_soln, r, s, a)
     return Delta(a, r)^(s+1) * (Rin*Rup_prime - Rup*Rin_prime)
 end
 
-function CrefCinc_SN_from_Xup(Xupsoln, rsin; order=0)
-    # Unpack the parameters
-    s = Xupsoln.prob.p.s
-    m = Xupsoln.prob.p.m
-    a = Xupsoln.prob.p.a
-    omega = Xupsoln.prob.p.omega
-    lambda = Xupsoln.prob.p.lambda
+function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; order=0)
     p = omega - m*omega_horizon(a)
 
     rin = r_from_rstar(a, rsin)
@@ -460,21 +464,15 @@ function CrefCinc_SN_from_Xup(Xupsoln, rsin; order=0)
     A3 = (_DeltaOverr2pa2 * ForwardDiff.derivative(gin, rin) - 1im*p*gin(rin)) * exp(-1im*p*rsin)
     A4 = (_DeltaOverr2pa2 * ForwardDiff.derivative(gout, rin) + 1im*p*gout(rin)) * exp(1im*p*rsin)
 
-    X, Xprime = XXprime_from_PhiRePhiImsoln(Xupsoln)
+    X(rs) = Xupsoln(rs)[1]
+    Xprime(rs) = Xupsoln(rs)[2]
     C1 = X(rsin)
     C2 = Xprime(rsin)
 
     return -(A4*C1 - A2*C2)/(A2*A3 - A1*A4), -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4)
 end
 
-function BrefBinc_SN_from_Xin(Xinsoln, rsout; order=3)
-    # Unpack the parameters
-    s = Xinsoln.prob.p.s
-    m = Xinsoln.prob.p.m
-    a = Xinsoln.prob.p.a
-    omega = Xinsoln.prob.p.omega
-    lambda = Xinsoln.prob.p.lambda
-
+function BrefBinc_SN_from_Xin(s::Int, m::Int, a, omega, lambda, Xinsoln, rsout; order=3)
     rout = r_from_rstar(a, rsout)
     # Computing A1, A2, A3, A4
     fin(r) = fansatz(
@@ -496,7 +494,8 @@ function BrefBinc_SN_from_Xin(Xinsoln, rsout; order=3)
     A3 = (_DeltaOverr2pa2 * ForwardDiff.derivative(fin, rout) - 1im*omega*fin(rout)) * exp(-1im*omega*rsout)
     A4 = (_DeltaOverr2pa2 * ForwardDiff.derivative(fout, rout) + 1im*omega*fout(rout)) * exp(1im*omega*rsout)
 
-    X, Xprime = XXprime_from_PhiRePhiImsoln(Xinsoln)
+    X(rs) = Xinsoln(rs)[1]
+    Xprime(rs) = Xinsoln(rs)[2]
     C1 = X(rsout)
     C2 = Xprime(rsout)
 
