@@ -25,8 +25,9 @@ Teukolsky_radial_function_from_Sasaki_Nakamura_function = Solutions.Teukolsky_ra
 Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix
 export d2Rdr2_from_Rsoln
 d2Rdr2_from_Rsoln = Solutions.d2Rdr2_from_Rsoln
-export scaled_Wronskian
+export scaled_Wronskian_Teukolsky, scaled_Wronskian_GSN
 scaled_Wronskian = Solutions.scaled_Wronskian
+scaled_Wronskian_GSN = Solutions.scaled_Wronskian_GSN
 export CrefCinc_SN_from_Xup, BrefBinc_SN_from_Xin
 CrefCinc_SN_from_Xup = Solutions.CrefCinc_SN_from_Xup
 BrefBinc_SN_from_Xin = Solutions.BrefBinc_SN_from_Xin
