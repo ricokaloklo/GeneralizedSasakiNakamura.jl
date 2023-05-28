@@ -12,6 +12,8 @@ using ..ConversionFactors
 
 const I = 1im # Mathematica being Mathematica
 _DEFAULTDATATYPE = ComplexF64 # Double precision by default
+_DEFAULTSOLVER = Vern9()
+_DEFAULTTOLERANCE = 1e-12
 
 # First-order non-linear ODE form of the GSN equation
 function GSN_Riccati_eqn!(du, u, p, rs)
@@ -66,7 +68,7 @@ function Xsoln_from_Phisoln(Phisoln)
     return rs -> XXprime_from_PhiPhiprime(Phisoln(rs)[1], Phisoln(rs)[2])
 end
 
-function solve_Phiup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
+function solve_Phiup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
@@ -83,7 +85,7 @@ function solve_Phiup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialcondi
     return odesoln
 end
 
-function solve_Phiin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
+function solve_Phiin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
@@ -100,7 +102,7 @@ function solve_Phiin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialcondi
     return odesoln
 end
 
-function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
+function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
@@ -114,7 +116,7 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditi
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
-function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=Vern9(), reltol=1e-12, abstol=1e-12)
+function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
