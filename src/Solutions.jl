@@ -444,8 +444,8 @@ end
 
 function scaled_Wronskian_GSN(Xin_soln, Xup_soln, rs, s, m, a, omega, lambda)
     r = r_from_rstar(a, rs)
-    Xin, dXindrs = Xinsoln(rs)
-    Xup, dXupdrs = Xupsoln(rs)
+    Xin, dXindrs = Xin_soln(rs)
+    Xup, dXupdrs = Xup_soln(rs)
     _eta = eta(s, m, a, omega, lambda, r)
 
     return (Xin*dXupdrs - dXindrs*Xup)/_eta
