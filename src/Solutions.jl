@@ -435,11 +435,20 @@ function d2Rdr2_from_Rsoln(s::Int, m::Int, a, omega, lambda, Rsoln, r)
     return (VT(s, m, a, omega, lambda, r)/Delta(a, r))*R - ((2*(s+1)*(r-1))/Delta(a,r))*dRdr
 end
 
-function scaled_Wronskian(Rin_soln, Rup_soln, r, s, a)
+function scaled_Wronskian_Teukolsky(Rin_soln, Rup_soln, r, s, a)
     # The scaled Wronskian is given by W = Delta^{s+1} * det([Rin Rup; Rin' Rup'])
     Rin, Rin_prime = Rin_soln(r)
     Rup, Rup_prime = Rup_soln(r)
     return Delta(a, r)^(s+1) * (Rin*Rup_prime - Rup*Rin_prime)
+end
+
+function scaled_Wronskian_GSN(Xin_soln, Xup_soln, rs, s, m, a, omega, lambda)
+    r = r_from_rstar(a, rs)
+    Xin, dXindrs = Xinsoln(rs)
+    Xup, dXupdrs = Xupsoln(rs)
+    _eta = eta(s, m, a, omega, lambda, r)
+
+    return (Xin*dXupdrs - dXindrs*Xup)/_eta
 end
 
 function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; order=0)
