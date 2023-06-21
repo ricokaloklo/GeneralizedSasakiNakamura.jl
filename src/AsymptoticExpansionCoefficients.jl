@@ -1,6 +1,6 @@
 module AsymptoticExpansionCoefficients
 
-using ForwardDiff
+using TaylorSeries
 using ..Kerr
 using ..Coordinates
 
@@ -8,19 +8,6 @@ export outgoing_coefficient_at_inf, ingoing_coefficient_at_inf
 export outgoing_coefficient_at_hor, ingoing_coefficient_at_hor
 
 const I = 1im # Mathematica being Mathematica
-
-# A helper function to evaluate nth derivative using AD with recursion
-function nth_derivative(f, n::Int)
-    if n > 1
-        _ith_derivative(x) = ForwardDiff.derivative(nth_derivative(f, n-1), x)
-    elseif n == 1
-        # Stop the recursion, evaluate (1st order) derivative normally
-        return x -> ForwardDiff.derivative(f, x)
-    else
-        throw(DomainError(n, "Does not understand the order n"))
-    end
-    return _ith_derivative
-end
 
 function PminusInf_z(s::Int, m::Int, a, omega, lambda, z)
     if s == -2
@@ -233,30 +220,20 @@ function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int
         end
     else
         # Evaluate higher order corrections using AD
-
-        _this_params = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-        # Check if we can use the cached results
-        if _cached_ingoing_coefficients_at_inf_params == _this_params
-            expansion_coeffs = _cached_ingoing_coefficients_at_inf.expansion_coeffs
-            Pcoeffs = _cached_ingoing_coefficients_at_inf.Pcoeffs
-            Qcoeffs = _cached_ingoing_coefficients_at_inf.Qcoeffs
-        else
-            # Cannot re-use the cached results, re-compute from zero
-            expansion_coeffs = [ComplexF64(1.0)] # order 0
-            Pcoeffs = [ComplexF64(PminusInf_z(s, m, a, omega, lambda, 0))] # order 0
-            Qcoeffs = [ComplexF64(0.0), ComplexF64(0.0)] # the recurrence relation takes Q_{r+1}
-        end
+        # Specifically we use TaylorSeries.jl for a much more performant AD
 
         # Compute Pcoeffs to the necessary order
         _P(z) = PminusInf_z(s, m, a, omega, lambda, z)
+        _P_taylor = taylor_expand(_P, 0, order) # FIXME This is not the most efficient way to do this
         for i in length(Pcoeffs):order
-            append!(Pcoeffs, nth_derivative(_P, i)(0)/factorial(i))
+            append!(Pcoeffs, getcoeff(_P_taylor, i))
         end
 
         # Compute Qcoeffs to the necessary order (to current order + 1)
         _Q(z) = QminusInf_z(s, m, a, omega, lambda, z)
+        _Q_taylor = taylor_expand(_Q, 0, order+1)
         for i in length(Qcoeffs):order+1
-            append!(Qcoeffs, nth_derivative(_Q, i)(0)/factorial(i))
+            append!(Qcoeffs, getcoeff(_Q_taylor, i))
         end
 
         # Note that the expansion coefficients we store is scaled by \omega^{i}
@@ -512,14 +489,16 @@ function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::In
 
         # Compute Pcoeffs to the necessary order
         _P(z) = PplusInf_z(s, m, a, omega, lambda, z)
+        _P_taylor = taylor_expand(_P, 0, order)
         for i in length(Pcoeffs):order
-            append!(Pcoeffs, nth_derivative(_P, i)(0)/factorial(i))
+            append!(Pcoeffs, getcoeff(_P_taylor, i))
         end
 
         # Compute Qcoeffs to the necessary order (to current order + 1)
         _Q(z) = QplusInf_z(s, m, a, omega, lambda, z)
+        _Q_taylor = taylor_expand(_Q, 0, order+1)
         for i in length(Qcoeffs):order+1
-            append!(Qcoeffs, nth_derivative(_Q, i)(0)/factorial(i))
+            append!(Qcoeffs, getcoeff(_Q_taylor, i))
         end
 
         # Note that the expansion coefficients we store is scaled by \omega^{i}
@@ -701,10 +680,12 @@ function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::In
         # Compute series expansion coefficients for P and Q
         _P(x) = PplusH(s, m, a, omega, lambda, x)
         _Q(x) = QplusH(s, m, a, omega, lambda, x)
+        _P_taylor = taylor_expand(_P, 0, order)
+        _Q_taylor = taylor_expand(_Q, 0, order)
 
         for i in length(Pcoeffs):order
-            append!(Pcoeffs, nth_derivative(_P, i)(0)/factorial(i))
-            append!(Qcoeffs, nth_derivative(_Q, i)(0)/factorial(i))       
+            append!(Pcoeffs, getcoeff(_P_taylor, i))
+            append!(Qcoeffs, getcoeff(_Q_taylor, i))       
         end
     end
     # Define the indicial polynomial
@@ -888,10 +869,12 @@ function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int
         # Compute series expansion coefficients for P and Q
         _P(x) = PminusH(s, m, a, omega, lambda, x)
         _Q(x) = QminusH(s, m, a, omega, lambda, x)
+        _P_taylor = taylor_expand(_P, 0, order)
+        _Q_taylor = taylor_expand(_Q, 0, order)
 
         for i in length(Pcoeffs):order
-            append!(Pcoeffs, nth_derivative(_P, i)(0)/factorial(i))
-            append!(Qcoeffs, nth_derivative(_Q, i)(0)/factorial(i))       
+            append!(Pcoeffs, getcoeff(_P_taylor, i))
+            append!(Qcoeffs, getcoeff(_Q_taylor, i))       
         end
     end
     # Define the indicial polynomial
