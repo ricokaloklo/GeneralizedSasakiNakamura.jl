@@ -224,14 +224,14 @@ function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int
 
         # Compute Pcoeffs to the necessary order
         _P(z) = PminusInf_z(s, m, a, omega, lambda, z)
-        _P_taylor = taylor_expand(_P, 0, order) # FIXME This is not the most efficient way to do this
+        _P_taylor = taylor_expand(_P, 0, order=order) # FIXME This is not the most efficient way to do this
         for i in length(Pcoeffs):order
             append!(Pcoeffs, getcoeff(_P_taylor, i))
         end
 
         # Compute Qcoeffs to the necessary order (to current order + 1)
         _Q(z) = QminusInf_z(s, m, a, omega, lambda, z)
-        _Q_taylor = taylor_expand(_Q, 0, order+1)
+        _Q_taylor = taylor_expand(_Q, 0, order=order+1)
         for i in length(Qcoeffs):order+1
             append!(Qcoeffs, getcoeff(_Q_taylor, i))
         end
@@ -489,14 +489,14 @@ function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::In
 
         # Compute Pcoeffs to the necessary order
         _P(z) = PplusInf_z(s, m, a, omega, lambda, z)
-        _P_taylor = taylor_expand(_P, 0, order)
+        _P_taylor = taylor_expand(_P, 0, order=order)
         for i in length(Pcoeffs):order
             append!(Pcoeffs, getcoeff(_P_taylor, i))
         end
 
         # Compute Qcoeffs to the necessary order (to current order + 1)
         _Q(z) = QplusInf_z(s, m, a, omega, lambda, z)
-        _Q_taylor = taylor_expand(_Q, 0, order+1)
+        _Q_taylor = taylor_expand(_Q, 0, order=order+1)
         for i in length(Qcoeffs):order+1
             append!(Qcoeffs, getcoeff(_Q_taylor, i))
         end
@@ -680,8 +680,8 @@ function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::In
         # Compute series expansion coefficients for P and Q
         _P(x) = PplusH(s, m, a, omega, lambda, x)
         _Q(x) = QplusH(s, m, a, omega, lambda, x)
-        _P_taylor = taylor_expand(_P, 0, order)
-        _Q_taylor = taylor_expand(_Q, 0, order)
+        _P_taylor = taylor_expand(_P, 0, order=order)
+        _Q_taylor = taylor_expand(_Q, 0, order=order)
 
         for i in length(Pcoeffs):order
             append!(Pcoeffs, getcoeff(_P_taylor, i))
@@ -869,8 +869,8 @@ function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int
         # Compute series expansion coefficients for P and Q
         _P(x) = PminusH(s, m, a, omega, lambda, x)
         _Q(x) = QminusH(s, m, a, omega, lambda, x)
-        _P_taylor = taylor_expand(_P, 0, order)
-        _Q_taylor = taylor_expand(_Q, 0, order)
+        _P_taylor = taylor_expand(_P, 0, order=order)
+        _Q_taylor = taylor_expand(_Q, 0, order=order)
 
         for i in length(Pcoeffs):order
             append!(Pcoeffs, getcoeff(_P_taylor, i))
