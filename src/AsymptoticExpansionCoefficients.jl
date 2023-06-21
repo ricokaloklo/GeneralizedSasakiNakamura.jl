@@ -222,6 +222,19 @@ function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int
         # Evaluate higher order corrections using AD
         # Specifically we use TaylorSeries.jl for a much more performant AD
 
+        _this_params = (s=s, m=m, a=a, omega=omega, lambda=lambda)
+        # Check if we can use the cached results
+        if _cached_ingoing_coefficients_at_inf_params == _this_params
+            expansion_coeffs = _cached_ingoing_coefficients_at_inf.expansion_coeffs
+            Pcoeffs = _cached_ingoing_coefficients_at_inf.Pcoeffs
+            Qcoeffs = _cached_ingoing_coefficients_at_inf.Qcoeffs
+        else
+            # Cannot re-use the cached results, re-compute from zero
+            expansion_coeffs = [ComplexF64(1.0)] # order 0
+            Pcoeffs = [ComplexF64(PminusInf_z(s, m, a, omega, lambda, 0))] # order 0
+            Qcoeffs = [ComplexF64(0.0), ComplexF64(0.0)] # the recurrence relation takes Q_{r+1}
+        end
+
         # Compute Pcoeffs to the necessary order
         _P(z) = PminusInf_z(s, m, a, omega, lambda, z)
         _P_taylor = taylor_expand(_P, 0, order=order) # FIXME This is not the most efficient way to do this
