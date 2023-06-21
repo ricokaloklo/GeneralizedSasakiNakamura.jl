@@ -451,6 +451,57 @@ function scaled_Wronskian_GSN(Xin_soln, Xup_soln, rs, s, m, a, omega, lambda)
     return (Xin*dXupdrs - dXindrs*Xup)/_eta
 end
 
+function scaled_Wronskian_from_Phisolns(Phiin_soln, Phiup_soln, rs, s, m, a, omega, lambda)
+    r = r_from_rstar(a, rs)
+    Xin = exp(1im*Phiin_soln(rs)[1])
+    dXindrs = 1im*exp(1im*Phiinsoln(rs)[1])*Phiinsoln(rs)[2]
+    Xup = exp(1im*Phiup_soln(rs)[1])
+    dXupdrs = 1im*exp(1im*Phiupsoln(rs)[1])*Phiupsoln(rs)[2]
+    _eta = eta(s, m, a, omega, lambda, r)
+
+    return (Xin*dXupdrs - dXindrs*Xup)/_eta
+end
+
+function residual_from_Xsoln(Xsoln)
+    # Compute the second derivative using autodiff instead of finite diff
+    X(rs) = Xsoln(rs)[1]
+    first_deriv(rs) = Xsoln(rs)[2]
+    second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
+
+    params = Xsoln.prob.p
+    _sF(rs) = sF(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+    _sU(rs) = sU(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+
+    return rs -> second_deriv(rs) - _sF(rs)*first_deriv(rs) - _sU(rs)*X(rs)
+end
+
+function residual_RiccatiEqn_from_Phisoln(Phisoln)
+    Phi(rs) = Phisoln(rs)[1] # Does not matter actually!
+    first_deriv(rs) = Phisoln(rs)[2]
+    second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
+
+    params = Phisoln.prob.p
+    _sF(rs) = sF(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+    _sU(rs) = sU(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+
+    return rs -> second_deriv(rs) + 1im*_sU(rs) - _sF(rs)*first_deriv(rs) + 1im*(first_deriv(rs))^2
+end
+
+function residual_GSNEqn_from_Phisoln(Phisoln)
+    # Compute the second derivative using autodiff instead of finite diff
+    X = (rs -> exp(1im*Phisoln(rs)[1]))
+    first_deriv = (rs -> 1im*exp(1im*Phisoln(rs)[1])*Phisoln(rs)[2])
+    second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
+
+    params = Phisoln.prob.p
+    _sF(rs) = sF(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+    _sU(rs) = sU(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+
+    return rs -> second_deriv(rs) - _sF(rs)*first_deriv(rs) - _sU(rs)*X(rs)
+end
+
+
+
 function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; order=0)
     p = omega - m*omega_horizon(a)
 
