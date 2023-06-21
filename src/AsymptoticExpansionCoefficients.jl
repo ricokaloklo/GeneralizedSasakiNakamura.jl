@@ -8,6 +8,7 @@ export outgoing_coefficient_at_inf, ingoing_coefficient_at_inf
 export outgoing_coefficient_at_hor, ingoing_coefficient_at_hor
 
 const I = 1im # Mathematica being Mathematica
+_DEFAULTDATATYPE = ComplexF64 # Double precision by default
 
 function PminusInf_z(s::Int, m::Int, a, omega, lambda, z)
     if s == -2
@@ -63,11 +64,11 @@ end
 
 # Cache mechanism for the ingoing coefficients at infinity
 # Initialize the cache with a set of fiducial parameters
-_cached_ingoing_coefficients_at_inf_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, Float64, ComplexF64, ComplexF64}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_ingoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{ComplexF64}, Vector{ComplexF64}, Vector{ComplexF64}}} = (
-    expansion_coeffs = [ComplexF64(1.0)], 
-    Pcoeffs = [ComplexF64(0.0)],
-    Qcoeffs = [ComplexF64(0.0)]
+_cached_ingoing_coefficients_at_inf_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, _DEFAULTDATATYPE, _DEFAULTDATATYPE, _DEFAULTDATATYPE}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
+_cached_ingoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}}} = (
+    expansion_coeffs = [_DEFAULTDATATYPE(1.0)], 
+    Pcoeffs = [_DEFAULTDATATYPE(0.0)],
+    Qcoeffs = [_DEFAULTDATATYPE(0.0)]
 )
 
 function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int)
@@ -230,9 +231,9 @@ function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int
             Qcoeffs = _cached_ingoing_coefficients_at_inf.Qcoeffs
         else
             # Cannot re-use the cached results, re-compute from zero
-            expansion_coeffs = [ComplexF64(1.0)] # order 0
-            Pcoeffs = [ComplexF64(PminusInf_z(s, m, a, omega, lambda, 0))] # order 0
-            Qcoeffs = [ComplexF64(0.0), ComplexF64(0.0)] # the recurrence relation takes Q_{r+1}
+            expansion_coeffs = [_DEFAULTDATATYPE(1.0)] # order 0
+            Pcoeffs = [_DEFAULTDATATYPE(PminusInf_z(s, m, a, omega, lambda, 0))] # order 0
+            Qcoeffs = [_DEFAULTDATATYPE(0.0), _DEFAULTDATATYPE(0.0)] # the recurrence relation takes Q_{r+1}
         end
 
         # Compute Pcoeffs to the necessary order
@@ -341,11 +342,11 @@ end
 
 # Cache mechanism for the outgoing coefficients at infinity
 # Initialize the cache with a set of fiducial parameters
-_cached_outgoing_coefficients_at_inf_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, Float64, ComplexF64, ComplexF64}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_outgoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{ComplexF64}, Vector{ComplexF64}, Vector{ComplexF64}}} = (
-    expansion_coeffs = [ComplexF64(1.0)], 
-    Pcoeffs = [ComplexF64(0.0)],
-    Qcoeffs = [ComplexF64(0.0)]
+_cached_outgoing_coefficients_at_inf_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, _DEFAULTDATATYPE, _DEFAULTDATATYPE, _DEFAULTDATATYPE}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
+_cached_outgoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}}} = (
+    expansion_coeffs = [_DEFAULTDATATYPE(1.0)], 
+    Pcoeffs = [_DEFAULTDATATYPE(0.0)],
+    Qcoeffs = [_DEFAULTDATATYPE(0.0)]
 )
 
 function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int)
@@ -495,9 +496,9 @@ function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::In
             Qcoeffs = _cached_outgoing_coefficients_at_inf.Qcoeffs
         else
             # Cannot re-use the cached results, re-compute from zero
-            expansion_coeffs = [ComplexF64(1.0)] # order 0
-            Pcoeffs = [ComplexF64(PplusInf_z(s, m, a, omega, lambda, 0))] # order 0
-            Qcoeffs = [ComplexF64(0.0), ComplexF64(0.0)] # the recurrence relation takes Q_{r+1}
+            expansion_coeffs = [_DEFAULTDATATYPE(1.0)] # order 0
+            Pcoeffs = [_DEFAULTDATATYPE(PplusInf_z(s, m, a, omega, lambda, 0))] # order 0
+            Qcoeffs = [_DEFAULTDATATYPE(0.0), _DEFAULTDATATYPE(0.0)] # the recurrence relation takes Q_{r+1}
         end
 
         # Compute Pcoeffs to the necessary order
@@ -661,11 +662,11 @@ end
 
 # Cache mechanism for the outgoing coefficients at horizon
 # Initialize the cache with a set of fiducial parameters
-_cached_outgoing_coefficients_at_hor_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, Float64, ComplexF64, ComplexF64}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_outgoing_coefficients_at_hor::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{ComplexF64}, Vector{ComplexF64}, Vector{ComplexF64}}} = (
-    expansion_coeffs = [ComplexF64(1.0)], 
-    Pcoeffs = [ComplexF64(0.0)],
-    Qcoeffs = [ComplexF64(0.0)]
+_cached_outgoing_coefficients_at_hor_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, _DEFAULTDATATYPE, _DEFAULTDATATYPE, _DEFAULTDATATYPE}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
+_cached_outgoing_coefficients_at_hor::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}}} = (
+    expansion_coeffs = [_DEFAULTDATATYPE(1.0)], 
+    Pcoeffs = [_DEFAULTDATATYPE(0.0)],
+    Qcoeffs = [_DEFAULTDATATYPE(0.0)]
 )
 
 function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int)
@@ -684,9 +685,9 @@ function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::In
         Qcoeffs = _cached_outgoing_coefficients_at_hor.Qcoeffs
     else
         # Cannot re-use the cached results, re-compute from zero
-        expansion_coeffs = [ComplexF64(1.0)] # order 0
-        Pcoeffs = [ComplexF64(PplusH(s, m, a, omega, lambda, 0))] # order 0
-        Qcoeffs = [ComplexF64(0.0)] # order 0
+        expansion_coeffs = [_DEFAULTDATATYPE(1.0)] # order 0
+        Pcoeffs = [_DEFAULTDATATYPE(PplusH(s, m, a, omega, lambda, 0))] # order 0
+        Qcoeffs = [_DEFAULTDATATYPE(0.0)] # order 0
     end
 
     if order > 0
@@ -850,11 +851,11 @@ end
 
 # Cache mechanism for the ingoing coefficients at horizon
 # Initialize the cache with a set of fiducial parameters
-_cached_ingoing_coefficients_at_hor_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, Float64, ComplexF64, ComplexF64}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_ingoing_coefficients_at_hor::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{ComplexF64}, Vector{ComplexF64}, Vector{ComplexF64}}} = (
-    expansion_coeffs = [ComplexF64(1.0)], 
-    Pcoeffs = [ComplexF64(0.0)],
-    Qcoeffs = [ComplexF64(0.0)]
+_cached_ingoing_coefficients_at_hor_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, _DEFAULTDATATYPE, _DEFAULTDATATYPE, _DEFAULTDATATYPE}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
+_cached_ingoing_coefficients_at_hor::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}}} = (
+    expansion_coeffs = [_DEFAULTDATATYPE(1.0)], 
+    Pcoeffs = [_DEFAULTDATATYPE(0.0)],
+    Qcoeffs = [_DEFAULTDATATYPE(0.0)]
 )
 
 function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int)
@@ -873,9 +874,9 @@ function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int
         Qcoeffs = _cached_ingoing_coefficients_at_hor.Qcoeffs
     else
         # Cannot re-use the cached results, re-compute from zero
-        expansion_coeffs = [ComplexF64(1.0)] # order 0
-        Pcoeffs = [ComplexF64(PminusH(s, m, a, omega, lambda, 0))] # order 0
-        Qcoeffs = [ComplexF64(0.0)] # order 0
+        expansion_coeffs = [_DEFAULTDATATYPE(1.0)] # order 0
+        Pcoeffs = [_DEFAULTDATATYPE(PminusH(s, m, a, omega, lambda, 0))] # order 0
+        Qcoeffs = [_DEFAULTDATATYPE(0.0)] # order 0
     end
 
     if order > 0
