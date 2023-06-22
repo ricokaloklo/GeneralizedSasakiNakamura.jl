@@ -41,7 +41,14 @@ struct Mode
     lambda # SWSH eigenvalue
 end
 
-struct GSN_radial_function
+# Implement pretty-printing for Mode type
+# REPL
+function Base.show(io::IO, ::MIME"text/plain", mode::Mode)
+    print(io, "Mode(s=$(mode.s), l=$(mode.l), m=$(mode.m), a=$(mode.a), omega=$(mode.omega), lambda=$(mode.lambda))")
+end
+
+
+struct GSNRadialFunction
     mode::Mode # Information about the mode
     boundary_condition::BoundaryCondition # The boundary condition that this radial function statisfies
     rsin # The numerical inner boundary where the GSN equation is numerically evolved
@@ -57,16 +64,47 @@ struct GSN_radial_function
     normalization_convention::NormalizationConvention # The normalization convention used for the *stored* GSN solution
 end
 
-struct Teukolsky_radial_function
+# Implement pretty-printing for GSNRadialFunction
+# Mostly to suppress the printing of the numerical solution
+function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
+    println(io, "GSNRadialFunction(")
+    print(io, "    mode="); show(io, "text/plain", gsn_func.mode); println(io, ",")
+    println(io, "    boundary_condition=$(gsn_func.boundary_condition),")
+    println(io, "    rsin=$(gsn_func.rsin),")
+    println(io, "    rsout=$(gsn_func.rsout),")
+    println(io, "    horizon_expansion_order=$(gsn_func.horizon_expansion_order),")
+    println(io, "    infinity_expansion_order=$(gsn_func.infinity_expansion_order),")
+    println(io, "    transmission_amplitude=$(gsn_func.transmission_amplitude),")
+    println(io, "    incidence_amplitude=$(gsn_func.incidence_amplitude),")
+    println(io, "    reflection_amplitude=$(gsn_func.reflection_amplitude),")
+    println(io, "    normalization_convention=$(gsn_func.normalization_convention)")
+    print(io, ")")
+end
+
+struct TeukolskyRadialFunction
     mode::Mode # Information about the mode
     boundary_condition::BoundaryCondition # The boundary condition that this radial function statisfies
     transmission_amplitude # In Teukolsky formalism
     incidence_amplitude # In Teukolsky formalism
     reflection_amplitude # In Teukolsky formalism
-    GSN_solution::GSN_radial_function # Store the full GSN solution
+    GSN_solution::GSNRadialFunction # Store the full GSN solution
     Teukolsky_solution # Store the full Teukolsky solution
     normalization_convention::NormalizationConvention # The normalization convention used for the *stored* Teukolsky solution
 end
+
+# Implement pretty-printing for TeukolskyRadialFunction
+# Mostly to suppress the printing of the numerical solution
+function Base.show(io::IO, ::MIME"text/plain", teuk_func::TeukolskyRadialFunction)
+    println(io, "TeukolskyRadialFunction(")
+    print(io, "    mode="); show(io, "text/plain", teuk_func.mode); println(io, ",")
+    println(io, "    boundary_condition=$(teuk_func.boundary_condition),")
+    println(io, "    transmission_amplitude=$(teuk_func.transmission_amplitude),")
+    println(io, "    incidence_amplitude=$(teuk_func.incidence_amplitude),")
+    println(io, "    reflection_amplitude=$(teuk_func.reflection_amplitude),")
+    println(io, "    normalization_convention=$(teuk_func.normalization_convention)")
+    print(io, ")")
+end
+
 
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
@@ -92,7 +130,7 @@ function GSN_radial(
         # Construct the full, 'semi-analytical' GSN solution
         semianalytical_Xinsoln(rs) = Solutions.semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizon_expansion_order, infinity_expansion_order, rs)
 
-        return GSN_radial_function(
+        return GSNRadialFunction(
             mode,
             IN,
             rsin,
@@ -122,7 +160,7 @@ function GSN_radial(
         # Construct the full, 'semi-analytical' GSN solution
         semianalytical_Xupsoln(rs) = Solutions.semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizon_expansion_order, infinity_expansion_order, rs)
 
-        return GSN_radial_function(
+        return GSNRadialFunction(
             mode,
             UP,
             rsin,
@@ -143,7 +181,7 @@ function GSN_radial(
 end
 
 # The power of multiple dispatch
-(gsn_func::GSN_radial_function)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
+(gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
 
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
@@ -176,7 +214,7 @@ function Teukolsky_radial(
         gsn_func.GSN_solution
     )(r) / transmission_amplitude_conv_factor
 
-    return Teukolsky_radial_function(
+    return TeukolskyRadialFunction(
         gsn_func.mode,
         gsn_func.boundary_condition,
         data_type(1),
@@ -189,6 +227,6 @@ function Teukolsky_radial(
 end
 
 # The power of multiple dispatch
-(teuk_func::Teukolsky_radial_function)(r) = teuk_func.Teukolsky_solution(r)[1] # Only return R(r), discarding the first derivative
+(teuk_func::TeukolskyRadialFunction)(r) = teuk_func.Teukolsky_solution(r)[1] # Only return R(r), discarding the first derivative
 
 end
