@@ -16,7 +16,7 @@ using .Solutions
 using SpinWeightedSpheroidalHarmonics
 using DifferentialEquations # Should have been compiled by now
 
-export GSN_radial
+export GSN_radial, Teukolsky_radial
 
 # IN for purely-ingoing at the horizon and UP for purely-outgoing at infinity
 @enum BoundaryCondition begin
@@ -173,8 +173,12 @@ function Teukolsky_radial(
     # Convert asymptotic amplitudes from GSN to Teukolsky formalism
     if gsn_func.boundary_condition == IN
         transmission_amplitude_conv_factor = ConversionFactors.Btrans(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda)
+        incidence_amplitude = ConversionFactors.Binc(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+        reflection_amplitude = ConversionFactors.Bref(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
     elseif gsn_func.boundary_condition == UP
         transmission_amplitude_conv_factor = ConversionFactors.Ctrans(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda)
+        incidence_amplitude = ConversionFactors.Cinc(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+        reflection_amplitude = ConversionFactors.Cref(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
     else
         error("Does not understand the boundary condition applied to the solution")
     end
@@ -187,14 +191,14 @@ function Teukolsky_radial(
         gsn_func.mode.omega,
         gsn_func.mode.lambda,
         gsn_func.GSN_solution
-    )(r) * transmission_amplitude_conv_factor
+    )(r) / transmission_amplitude_conv_factor
 
     return Teukolsky_radial_function(
         gsn_func.mode,
         gsn_func.boundary_condition,
-        transmission_amplitude_conv_factor*gsn_func.transmission_amplitude,
-        transmission_amplitude_conv_factor*gsn_func.incidence_amplitude,
-        transmission_amplitude_conv_factor*gsn_func.reflection_amplitude,
+        data_type(1),
+        incidence_amplitude,
+        reflection_amplitude,
         gsn_func,
         teuk_func,
         UNIT_TEUKOLSKY_TRANS
