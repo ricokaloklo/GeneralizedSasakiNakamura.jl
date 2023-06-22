@@ -155,13 +155,13 @@ function Teukolsky_radial(
 
     # Convert asymptotic amplitudes from GSN to Teukolsky formalism
     if gsn_func.boundary_condition == IN
-        transmission_amplitude_conv_factor = ConversionFactors.Btrans(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda)
-        incidence_amplitude = ConversionFactors.Binc(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
-        reflection_amplitude = ConversionFactors.Bref(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+        transmission_amplitude_conv_factor = ConversionFactors.Btrans(s, m, a, omega, gsn_func.mode.lambda)
+        incidence_amplitude = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+        reflection_amplitude = ConversionFactors.Bref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
     elseif gsn_func.boundary_condition == UP
-        transmission_amplitude_conv_factor = ConversionFactors.Ctrans(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda)
-        incidence_amplitude = ConversionFactors.Cinc(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
-        reflection_amplitude = ConversionFactors.Cref(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+        transmission_amplitude_conv_factor = ConversionFactors.Ctrans(s, m, a, omega, gsn_func.mode.lambda)
+        incidence_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+        reflection_amplitude = ConversionFactors.Cref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
     else
         error("Does not understand the boundary condition applied to the solution")
     end
@@ -190,6 +190,5 @@ end
 
 # The power of multiple dispatch
 (teuk_func::Teukolsky_radial_function)(r) = teuk_func.Teukolsky_solution(r)[1] # Only return R(r), discarding the first derivative
-
 
 end
