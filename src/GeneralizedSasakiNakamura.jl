@@ -144,23 +144,6 @@ end
 
 # The power of multiple dispatch
 (gsn_func::GSN_radial_function)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
-(gsn_func::GSN_radial_function)(rs, normalization_convention::NormalizationConvention) = begin
-    if normalization_convention == gsn_func.normalization_convention
-        return gsn_func.GSN_solution(rs)[1] # No conversion needed
-    elseif normalization_convention == UNIT_TEUKOLSKY_TRANS && gsn_func.normalization_convention == UNIT_GSN_TRANS
-        if gsn_func.boundary_condition == IN
-            Btrans_SN_to_T = ConversionFactors.Btrans(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda)
-            return Btrans_SN_to_T * gsn_func.GSN_solution(rs)[1]
-        elseif gsn_func.boundary_condition == UP
-            Ctrans_SN_to_T = ConversionFactors.Ctrans(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda)
-            return Ctrans_SN_to_T * gsn_func.GSN_solution(rs)[1]
-        else
-            error("Does not understand the boundary condition applied to the solution")
-        end
-    else
-        error("Does not understand the normalization convention applied to the solution")
-    end
-end
 
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
