@@ -500,8 +500,6 @@ function residual_GSNEqn_from_Phisoln(Phisoln)
     return rs -> second_deriv(rs) - _sF(rs)*first_deriv(rs) - _sU(rs)*X(rs)
 end
 
-
-
 function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; order=0)
     p = omega - m*omega_horizon(a)
 
@@ -562,6 +560,112 @@ function BrefBinc_SN_from_Xin(s::Int, m::Int, a, omega, lambda, Xinsoln, rsout; 
     C2 = Xprime(rsout)
 
     return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
+end
+
+function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizon_expansionorder, infinity_expansionorder, rs)
+    _r = r_from_rstar(a, rs) # Evaluate at this r
+
+    if rs < rsin
+        # Extend the numerical solution to the analytical ansatz from rsin to horizon
+
+        # Construct the analytical ansatz
+        p = omega - m*omega_horizon(a)
+        gin(r) = gansatz(
+            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+            a,
+            r;
+            order=horizon_expansionorder
+        )
+
+        _Xin = gin(_r)*exp(-1im*p*rs) # Evaluate at *this* rs
+
+        _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
+        _dXindrs = (_DeltaOverr2pa2 * ForwardDiff.derivative(gin, _r) - 1im*p*gin(_r))*exp(-1im*p*rs)
+
+        return (_Xin, _dXindrs)
+    elseif rs > rsout
+        # Extend the numerical solution to the analytical ansatz from rsout to infinity
+
+        # Obtain the coefficients by imposing continuity in X and dX/drs
+        Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, omega, lambda, Xinsoln, rsout; order=infinity_expansionorder)
+
+        # Construct the analytical ansatz
+        fin(r) = fansatz(
+            ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+            omega,
+            r;
+            order=infinity_expansionorder
+        )
+        fout(r) = fansatz(
+            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+            omega,
+            r;
+            order=infinity_expansionorder
+        )
+
+        _Xin = Bref_SN*fout(_r)*exp(1im*omega*rs) + Binc_SN*fin(_r)*exp(-1im*omega*rs)
+
+        _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
+        _dXindrs = Bref_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(fout, _r) + 1im*omega*fout(_r))*exp(1im*omega*rs) + Binc_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(fin, _r) - 1im*omega*fin(_r))*exp(-1im*omega*rs)
+        
+        return (_Xin, _dXindrs)
+    else
+        # Requested rs is within the numerical solution
+        return Xinsoln(rs)
+    end 
+end
+
+function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizon_expansionorder, infinity_expansionorder, rs)
+    _r = r_from_rstar(a, rs) # Evaluate at this r
+
+    if rs < rsin
+        # Extend the numerical solution to the analytical ansatz from rsin to horizon
+
+        # Obtain the coefficients by imposing continuity in X and dX/drs
+        Cref_SN, Cinc_SN = CrefCinc_SN_from_Xup(s, m, a, omega, lambda, Xupsoln, rsin; order=horizon_expansionorder)
+        # with coefficient Cref_SN for the left-going and Cinc_SN for the right-going mode
+
+        # Construct the analytical ansatz
+        p = omega - m*omega_horizon(a)
+        gin(r) = gansatz(
+            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+            a,
+            r;
+            order=horizon_expansionorder
+        )
+        gout(r) = gansatz(
+            ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+            a,
+            r;
+            order=horizon_expansionorder
+        )
+
+        _Xup = Cinc_SN*gout(_r)*exp(1im*p*rs) + Cref_SN*gin(_r)*exp(-1im*p*rs) # Evaluate at *this* rs
+
+        _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
+        _dXupdrs = Cinc_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(gout, _r) + 1im*p*gout(_r))*exp(1im*p*rs) + Cref_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(gin, _r) - 1im*p*gin(_r))*exp(-1im*p*rs)
+
+        return (_Xup, _dXupdrs)
+    elseif rs > rsout
+        # Extend the numerical solution to the analytical ansatz from rsout to infinity
+
+        fout(r) = fansatz(
+            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+            omega,
+            r;
+            order=infinity_expansionorder
+        )
+
+        _Xup = fout(_r)*exp(1im*omega*rs)
+
+        _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
+        _dXupdrs = (_DeltaOverr2pa2 * ForwardDiff.derivative(fout, _r) + 1im*omega*fout(_r)) * exp(1im*omega*rs)
+        
+        return (_Xup, _dXupdrs)
+    else
+        # Requested rs is within the numerical solution
+        return Xupsoln(rs)
+    end 
 end
 
 end
