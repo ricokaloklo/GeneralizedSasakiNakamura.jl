@@ -89,6 +89,9 @@ function GSN_radial(
         # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
         Bref_SN, Binc_SN = Solutions.BrefBinc_SN_from_Xin(s, m, a, omega, lambda, Xinsoln, rsout; order=infinity_expansion_order)
 
+        # Construct the full, 'semi-analytical' GSN solution
+        semianalytical_Xinsoln(rs) = Solutions.semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizon_expansion_order, infinity_expansion_order, rs)
+
         return GSN_radial_function(
             mode,
             IN,
@@ -101,12 +104,39 @@ function GSN_radial(
             Bref_SN,
             nothing,
             Phiinsoln,
-            nothing,
+            semianalytical_Xinsoln,
             UNIT_GSN_TRANS
         )
     elseif boundary_condition == UP
         # Solve for Xup
-        error("Not implemented yet")
+        # NOTE For now we do *not* implement intelligent switching between the Riccati and the GSN form
+
+        # Actually solve for Phiup first
+        Phiupsoln = Solutions.solve_Phiup(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=infinity_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
+        # Then convert to Xup
+        Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
+
+        # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
+        Cref_SN, Cinc_SN = Solutions.CrefCinc_SN_from_Xup(s, m, a, omega, lambda, Xupsoln, rsin; order=horizon_expansion_order)
+
+        # Construct the full, 'semi-analytical' GSN solution
+        semianalytical_Xupsoln(rs) = Solutions.semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizon_expansion_order, infinity_expansion_order, rs)
+
+        return GSN_radial_function(
+            mode,
+            UP,
+            rsin,
+            rsout,
+            horizon_expansion_order,
+            infinity_expansion_order,
+            data_type(1),
+            Cinc_SN,
+            Cref_SN,
+            nothing,
+            Phiupsoln,
+            semianalytical_Xupsoln,
+            UNIT_GSN_TRANS
+        )
     else
         error("Boundary condition must be IN or UP")
     end
