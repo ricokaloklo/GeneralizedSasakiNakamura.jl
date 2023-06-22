@@ -162,4 +162,47 @@ end
     end
 end
 
+function Teukolsky_radial(
+    s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
+    horizon_expansion_order::Int=3, infinity_expansion_order::Int=6,
+    data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE
+)
+    # Solve for the GSN solution
+    gsn_func = GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+
+    # Convert asymptotic amplitudes from GSN to Teukolsky formalism
+    if gsn_func.boundary_condition == IN
+        transmission_amplitude_conv_factor = ConversionFactors.Btrans(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda)
+    elseif gsn_func.boundary_condition == UP
+        transmission_amplitude_conv_factor = ConversionFactors.Ctrans(gsn_func.mode.s, gsn_func.mode.m, gsn_func.mode.a, gsn_func.mode.omega, gsn_func.mode.lambda)
+    else
+        error("Does not understand the boundary condition applied to the solution")
+    end
+
+    # Convert the GSN solution to the Teukolsky solution
+    teuk_func(r) = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function(
+        gsn_func.mode.s,
+        gsn_func.mode.m,
+        gsn_func.mode.a,
+        gsn_func.mode.omega,
+        gsn_func.mode.lambda,
+        gsn_func.GSN_solution
+    )(r) * transmission_amplitude_conv_factor
+
+    return Teukolsky_radial_function(
+        gsn_func.mode,
+        gsn_func.boundary_condition,
+        transmission_amplitude_conv_factor*gsn_func.transmission_amplitude,
+        transmission_amplitude_conv_factor*gsn_func.incidence_amplitude,
+        transmission_amplitude_conv_factor*gsn_func.reflection_amplitude,
+        gsn_func,
+        teuk_func,
+        UNIT_TEUKOLSKY_TRANS
+    )
+end
+
+# The power of multiple dispatch
+(teuk_func::Teukolsky_radial_function)(r) = teuk_func.Teukolsky_solution(r)[1] # Only return R(r), discarding the first derivative
+
+
 end
