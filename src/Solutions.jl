@@ -1,6 +1,7 @@
 module Solutions
 
 using DifferentialEquations
+using ForwardDiff
 using ..Kerr
 using ..Transformation
 using ..Coordinates
@@ -10,11 +11,34 @@ using ..InitialConditions
 using ..ConversionFactors
 
 const I = 1im # Mathematica being Mathematica
+_DEFAULTDATATYPE = ComplexF64 # Double precision by default
+_DEFAULTSOLVER = Vern9()
+_DEFAULTTOLERANCE = 1e-12
 
-function generalized_Sasaki_Nakamura_equation!(du, u, p, rs)
+# First-order non-linear ODE form of the GSN equation
+function GSN_Riccati_eqn!(du, u, p, rs)
     r = r_from_rstar(p.a, rs)
     _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
     _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
+    
+    #=
+    We write X = exp(I*Phi)
+    Substitute X in this form into the GSN equation will give
+    a Riccati equation, a first-order non-linear equation
+
+    u[1] = Phi
+    u[2] = dPhidrs
+    =#
+    du[1] = u[2]
+    du[2] = -1im*_sU + _sF*u[2] - 1im*u[2]*u[2]
+end
+
+# Second-order linear ODE form of the GSN equation
+function GSN_linear_eqn!(du, u, p, rs)
+    r = r_from_rstar(p.a, rs)
+    _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
+    _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
+
     #=
     Using the convention for DifferentialEquations
     u[1] = X(rs)
@@ -26,33 +50,83 @@ function generalized_Sasaki_Nakamura_equation!(du, u, p, rs)
     du[2] = _sF*u[2] + _sU*u[1]
 end
 
-function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
+function PhiPhiprime_from_XXprime(X, Xprime)
+    Phi = -1im*log(X)
+    Phiprime = -1im*Xprime/X
+
+    return Phi, Phiprime
+end
+
+function XXprime_from_PhiPhiprime(Phi, Phiprime)
+    X = exp(1im*Phi)
+    Xprime = 1im*X*Phiprime
+
+    return X, Xprime
+end
+
+function Xsoln_from_Phisoln(Phisoln)
+    return rs -> XXprime_from_PhiPhiprime(Phisoln(rs)[1], Phisoln(rs)[2])
+end
+
+function solve_Phiup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
     end
     # Initial conditions at rs = rsout, the outer boundary
-    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout)
-    u0 = [Xup_rsout; Xupprime_rsout]
+    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order)
+    # Convert initial conditions for Xup for Phi
+    Phi, Phiprime = PhiPhiprime_from_XXprime(Xup_rsout, Xupprime_rsout)
+    u0 = [dtype(Phi); dtype(Phiprime)]
     rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(generalized_Sasaki_Nakamura_equation!, u0, rsspan, p)
-    odealgo = RK4()
+    odeprob = ODEProblem(GSN_Riccati_eqn!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    return odesoln
 end
 
-function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; reltol=1e-10, abstol=1e-10)
+function solve_Phiin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     # Sanity check
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
     end
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
-    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin)
-    u0 = [Xin_rsin; Xinprime_rsin]
+    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order)
+    # Convert initial conditions for Xin for PhiRe PhiIm
+    Phi, Phiprime = PhiPhiprime_from_XXprime(Xin_rsin, Xinprime_rsin)
+    u0 = [dtype(Phi); dtype(Phiprime)]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(generalized_Sasaki_Nakamura_equation!, u0, rsspan, p)
-    odealgo = RK4()
+    odeprob = ODEProblem(GSN_Riccati_eqn!, u0, rsspan, p)
+    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    return odesoln
+end
+
+function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+    # Sanity check
+    if rsin > rsout
+        throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
+    end
+    # Initial conditions at rs = rsout, the outer boundary
+    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order)
+    u0 = [dtype(Xup_rsout); dtype(Xupprime_rsout)]
+    rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
+    p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
+    odeprob = ODEProblem(GSN_linear_eqn!, u0, rsspan, p)
+    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+end
+
+function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+    # Sanity check
+    if rsin > rsout
+        throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
+    end
+    # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
+    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order)
+    u0 = [dtype(Xin_rsin); dtype(Xinprime_rsin)]
+    rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
+    p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
+    odeprob = ODEProblem(GSN_linear_eqn!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
@@ -322,45 +396,13 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matr
             2*I*r^2*(-3 + lambda)*omega + 3*r^3*omega^2))
         end
     else
-        # No explicit form available; revert to general-s expression
-        return _Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix_general_s(s, m, a, omega, lambda, r)
-    end
-    
+        # Throw an error, this spin weight is not supported
+        throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
+    end 
     return [M11 M12; M21 M22]
 end
 
-function _Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix_general_s(s, m, a, omega, lambda, r)
-    drstar_dr(r) = (r^2 + a^2)/Delta(a, r)
-    chi_conversion_factor(r) = (1.0/sqrt((r^2 + a^2) * (Delta(a, r)^s)))
-    dchi_conversion_factor_dr(r) = begin
-        ((-a^2)*(r - s + r*s) + r^2*(2 + s - r*(1 + s)))/
-        ((a^2 + (-2 + r)*r)*sqrt((a^2 + (-2 + r)*r)^s)*(a^2 + r^2)^(3/2))
-    end
-    _eta(r) = eta(s, m, a, omega, lambda, r)
-    _alpha(r) = alpha(s, m, a, omega, lambda, r)
-    _alpha_prime(r) = alpha_prime(s, m, a, omega, lambda, r)
-    _beta(r) = beta(s, m, a, omega, lambda, r)
-    _beta_prime(r) = beta_prime(s, m, a, omega, lambda, r)
-    _Delta(r) = Delta(a, r)
-    _VT(r) = VT(s, m, a, omega, lambda, r)
-    _1_over_eta(r) = 1.0/_eta(r)
-
-    conversion_matrix_from_X_dXdrs_to_X_dXdr(r) = [1 0 ; 0 drstar_dr(r)]
-    conversion_matrix_from_X_dXdr_to_chi_dchidr(r) = [chi_conversion_factor(r) 0 ; dchi_conversion_factor_dr(r) chi_conversion_factor(r)]
-    conversion_matrix_from_chi_dchidr_to_R_dRdr(r) = _1_over_eta(r) * [_alpha(r)+_beta_prime(r)*(_Delta(r)^(s+1)) -_beta(r)*(_Delta(r)^(s+1)) ; -(_alpha_prime(r)+_beta(r)*_VT(r)*(_Delta(r)^(s))) _alpha(r)]
-    # **Left multiplication**
-    overall_conversion_matrix = conversion_matrix_from_chi_dchidr_to_R_dRdr(r) * conversion_matrix_from_X_dXdr_to_chi_dchidr(r) * conversion_matrix_from_X_dXdrs_to_X_dXdr(r)
-    return overall_conversion_matrix
-end
-
-function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
-    # Unpack the parameters
-    s = Xsoln.prob.p.s
-    m = Xsoln.prob.p.m
-    a = Xsoln.prob.p.a
-    omega = Xsoln.prob.p.omega
-    lambda = Xsoln.prob.p.lambda
-
+function Teukolsky_radial_function_from_Sasaki_Nakamura_function(s::Int, m::Int, a, omega, lambda, Xsoln)
     #=
     First convert [X(rs), dX/drs(rs)] to [X(r), dX/dr(r)], this is done by
     [X(r), dX/dr(r)]^T = [1, 0; 0, drstar/dr ] * [X(rs), dX/drs(rs)]^T
@@ -376,8 +418,9 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(Xsoln)
     =#
 
     overall_conversion_matrix(r) = Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
-    _interpolant_in_r(r) = Xsoln(rstar_from_r(a, r))
-    Rsoln = (r -> overall_conversion_matrix(r) * _interpolant_in_r(r))
+    X(rs) = Xsoln(rs)[1]
+    Xprime(rs) = Xsoln(rs)[2]
+    Rsoln = (r -> overall_conversion_matrix(r) * [X(rstar_from_r(a, r)); Xprime(rstar_from_r(a, r))])
     return Rsoln
 end
 
@@ -392,58 +435,237 @@ function d2Rdr2_from_Rsoln(s::Int, m::Int, a, omega, lambda, Rsoln, r)
     return (VT(s, m, a, omega, lambda, r)/Delta(a, r))*R - ((2*(s+1)*(r-1))/Delta(a,r))*dRdr
 end
 
-function scaled_Wronskian(Rin_soln, Rup_soln, r, s, a)
+function scaled_Wronskian_Teukolsky(Rin_soln, Rup_soln, r, s, a)
     # The scaled Wronskian is given by W = Delta^{s+1} * det([Rin Rup; Rin' Rup'])
     Rin, Rin_prime = Rin_soln(r)
     Rup, Rup_prime = Rup_soln(r)
     return Delta(a, r)^(s+1) * (Rin*Rup_prime - Rup*Rin_prime)
 end
 
-function _extract_asymptotic_amplitude_from_Xsoln(osc_variable, sign, Xsoln, rs_extraction)
-    # This is an internal template function
-    return ((exp((-1*sign)*1im*osc_variable*rs_extraction)/(2*1im*osc_variable))*(1im*osc_variable*Xsoln(rs_extraction)[1] + sign*Xsoln(rs_extraction)[2]))
+function scaled_Wronskian_GSN(Xin_soln, Xup_soln, rs, s, m, a, omega, lambda)
+    r = r_from_rstar(a, rs)
+    Xin, dXindrs = Xin_soln(rs)
+    Xup, dXupdrs = Xup_soln(rs)
+    _eta = eta(s, m, a, omega, lambda, r)
+
+    return (Xin*dXupdrs - dXindrs*Xup)/_eta
 end
 
-function CrefCinc_SN_from_Xup(Xupsoln, rsin)
-    # Extract oscillation variable from Xupsoln
-    m = Xupsoln.prob.p.m
-    a = Xupsoln.prob.p.a
-    omega = Xupsoln.prob.p.omega
+function scaled_Wronskian_from_Phisolns(Phiin_soln, Phiup_soln, rs, s, m, a, omega, lambda)
+    r = r_from_rstar(a, rs)
+    Xin = exp(1im*Phiin_soln(rs)[1])
+    dXindrs = 1im*exp(1im*Phiinsoln(rs)[1])*Phiinsoln(rs)[2]
+    Xup = exp(1im*Phiup_soln(rs)[1])
+    dXupdrs = 1im*exp(1im*Phiupsoln(rs)[1])*Phiupsoln(rs)[2]
+    _eta = eta(s, m, a, omega, lambda, r)
+
+    return (Xin*dXupdrs - dXindrs*Xup)/_eta
+end
+
+function residual_from_Xsoln(Xsoln)
+    # Compute the second derivative using autodiff instead of finite diff
+    X(rs) = Xsoln(rs)[1]
+    first_deriv(rs) = Xsoln(rs)[2]
+    second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
+
+    params = Xsoln.prob.p
+    _sF(rs) = sF(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+    _sU(rs) = sU(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+
+    return rs -> second_deriv(rs) - _sF(rs)*first_deriv(rs) - _sU(rs)*X(rs)
+end
+
+function residual_RiccatiEqn_from_Phisoln(Phisoln)
+    Phi(rs) = Phisoln(rs)[1] # Does not matter actually!
+    first_deriv(rs) = Phisoln(rs)[2]
+    second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
+
+    params = Phisoln.prob.p
+    _sF(rs) = sF(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+    _sU(rs) = sU(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+
+    return rs -> second_deriv(rs) + 1im*_sU(rs) - _sF(rs)*first_deriv(rs) + 1im*(first_deriv(rs))^2
+end
+
+function residual_GSNEqn_from_Phisoln(Phisoln)
+    # Compute the second derivative using autodiff instead of finite diff
+    X = (rs -> exp(1im*Phisoln(rs)[1]))
+    first_deriv = (rs -> 1im*exp(1im*Phisoln(rs)[1])*Phisoln(rs)[2])
+    second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
+
+    params = Phisoln.prob.p
+    _sF(rs) = sF(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+    _sU(rs) = sU(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+
+    return rs -> second_deriv(rs) - _sF(rs)*first_deriv(rs) - _sU(rs)*X(rs)
+end
+
+function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; order=0)
     p = omega - m*omega_horizon(a)
 
-    Cinc_SN = _extract_asymptotic_amplitude_from_Xsoln(p, 1, Xupsoln, rsin)
-    Cref_SN = _extract_asymptotic_amplitude_from_Xsoln(p, -1, Xupsoln, rsin)
-    return Cref_SN, Cinc_SN
+    rin = r_from_rstar(a, rsin)
+    # Computing A1, A2, A3, A4
+    gin(r) = gansatz(
+        ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+        a,
+        r;
+        order=order
+    )
+    A1 = gin(rin) * exp(-1im*p*rsin)
+    gout(r) = gansatz(
+        ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+        a,
+        r;
+        order=order
+    )
+    A2 = gout(rin) * exp(1im*p*rsin)
+
+    _DeltaOverr2pa2 = Delta(a, rin)/(rin^2 + a^2)
+    A3 = (_DeltaOverr2pa2 * ForwardDiff.derivative(gin, rin) - 1im*p*gin(rin)) * exp(-1im*p*rsin)
+    A4 = (_DeltaOverr2pa2 * ForwardDiff.derivative(gout, rin) + 1im*p*gout(rin)) * exp(1im*p*rsin)
+
+    X(rs) = Xupsoln(rs)[1]
+    Xprime(rs) = Xupsoln(rs)[2]
+    C1 = X(rsin)
+    C2 = Xprime(rsin)
+
+    return -(A4*C1 - A2*C2)/(A2*A3 - A1*A4), -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4)
 end
 
-function _correction_factor(func, omega_times_r, order)
-    # This is an internal helper function
-    _cf = 0.0
-    for j in collect(0:1:order)
-        _cf += func(j)/((omega_times_r)^j)
-    end
-    return _cf
+function BrefBinc_SN_from_Xin(s::Int, m::Int, a, omega, lambda, Xinsoln, rsout; order=3)
+    rout = r_from_rstar(a, rsout)
+    # Computing A1, A2, A3, A4
+    fin(r) = fansatz(
+        ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+        omega,
+        r;
+        order=order
+    )
+    A1 = fin(rout) * exp(-1im*omega*rsout)
+    fout(r) = fansatz(
+        ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+        omega,
+        r;
+        order=order
+    )
+    A2 = fout(rout) * exp(1im*omega*rsout)
+
+    _DeltaOverr2pa2 = Delta(a, rout)/(rout^2 + a^2)
+    A3 = (_DeltaOverr2pa2 * ForwardDiff.derivative(fin, rout) - 1im*omega*fin(rout)) * exp(-1im*omega*rsout)
+    A4 = (_DeltaOverr2pa2 * ForwardDiff.derivative(fout, rout) + 1im*omega*fout(rout)) * exp(1im*omega*rsout)
+
+    X(rs) = Xinsoln(rs)[1]
+    Xprime(rs) = Xinsoln(rs)[2]
+    C1 = X(rsout)
+    C2 = Xprime(rsout)
+
+    return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
 end
 
-function BrefBinc_SN_from_Xin(Xinsoln, rsout)
-    # Unpack the parameters
-    s = Xinsoln.prob.p.s
-    m = Xinsoln.prob.p.m
-    a = Xinsoln.prob.p.a
-    omega = Xinsoln.prob.p.omega
-    lambda = Xinsoln.prob.p.lambda
+function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizon_expansionorder, infinity_expansionorder, rs)
+    _r = r_from_rstar(a, rs) # Evaluate at this r
 
-    Bref_SN = _extract_asymptotic_amplitude_from_Xsoln(omega, 1, Xinsoln, rsout)
-    Binc_SN = _extract_asymptotic_amplitude_from_Xsoln(omega, -1, Xinsoln, rsout)
+    if rs < rsin
+        # Extend the numerical solution to the analytical ansatz from rsin to horizon
 
-    # Compute the high-order correction factors
-    _r = r_from_rstar(a, rsout)
-    _outgoing_coefficient_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
-    _ingoing_coefficient_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
-    cf_outgoing = _correction_factor(_outgoing_coefficient_func, omega*_r, 3)
-    cf_ingoing = _correction_factor(_ingoing_coefficient_func, omega*_r, 3)
+        # Construct the analytical ansatz
+        p = omega - m*omega_horizon(a)
+        gin(r) = gansatz(
+            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+            a,
+            r;
+            order=horizon_expansionorder
+        )
 
-    return Bref_SN/cf_outgoing, Binc_SN/cf_ingoing
+        _Xin = gin(_r)*exp(-1im*p*rs) # Evaluate at *this* rs
+
+        _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
+        _dXindrs = (_DeltaOverr2pa2 * ForwardDiff.derivative(gin, _r) - 1im*p*gin(_r))*exp(-1im*p*rs)
+
+        return (_Xin, _dXindrs)
+    elseif rs > rsout
+        # Extend the numerical solution to the analytical ansatz from rsout to infinity
+
+        # Obtain the coefficients by imposing continuity in X and dX/drs
+        Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, omega, lambda, Xinsoln, rsout; order=infinity_expansionorder)
+
+        # Construct the analytical ansatz
+        fin(r) = fansatz(
+            ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+            omega,
+            r;
+            order=infinity_expansionorder
+        )
+        fout(r) = fansatz(
+            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+            omega,
+            r;
+            order=infinity_expansionorder
+        )
+
+        _Xin = Bref_SN*fout(_r)*exp(1im*omega*rs) + Binc_SN*fin(_r)*exp(-1im*omega*rs)
+
+        _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
+        _dXindrs = Bref_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(fout, _r) + 1im*omega*fout(_r))*exp(1im*omega*rs) + Binc_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(fin, _r) - 1im*omega*fin(_r))*exp(-1im*omega*rs)
+        
+        return (_Xin, _dXindrs)
+    else
+        # Requested rs is within the numerical solution
+        return Xinsoln(rs)
+    end 
+end
+
+function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizon_expansionorder, infinity_expansionorder, rs)
+    _r = r_from_rstar(a, rs) # Evaluate at this r
+
+    if rs < rsin
+        # Extend the numerical solution to the analytical ansatz from rsin to horizon
+
+        # Obtain the coefficients by imposing continuity in X and dX/drs
+        Cref_SN, Cinc_SN = CrefCinc_SN_from_Xup(s, m, a, omega, lambda, Xupsoln, rsin; order=horizon_expansionorder)
+        # with coefficient Cref_SN for the left-going and Cinc_SN for the right-going mode
+
+        # Construct the analytical ansatz
+        p = omega - m*omega_horizon(a)
+        gin(r) = gansatz(
+            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+            a,
+            r;
+            order=horizon_expansionorder
+        )
+        gout(r) = gansatz(
+            ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+            a,
+            r;
+            order=horizon_expansionorder
+        )
+
+        _Xup = Cinc_SN*gout(_r)*exp(1im*p*rs) + Cref_SN*gin(_r)*exp(-1im*p*rs) # Evaluate at *this* rs
+
+        _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
+        _dXupdrs = Cinc_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(gout, _r) + 1im*p*gout(_r))*exp(1im*p*rs) + Cref_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(gin, _r) - 1im*p*gin(_r))*exp(-1im*p*rs)
+
+        return (_Xup, _dXupdrs)
+    elseif rs > rsout
+        # Extend the numerical solution to the analytical ansatz from rsout to infinity
+
+        fout(r) = fansatz(
+            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+            omega,
+            r;
+            order=infinity_expansionorder
+        )
+
+        _Xup = fout(_r)*exp(1im*omega*rs)
+
+        _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
+        _dXupdrs = (_DeltaOverr2pa2 * ForwardDiff.derivative(fout, _r) + 1im*omega*fout(_r)) * exp(1im*omega*rs)
+        
+        return (_Xup, _dXupdrs)
+    else
+        # Requested rs is within the numerical solution
+        return Xupsoln(rs)
+    end 
 end
 
 end
