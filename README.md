@@ -1,3 +1,7 @@
-# GeneralizedSasakiNakamura
+# GeneralizedSasakiNakamura.jl
 
-[![Build Status](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/actions/workflows/CI.yml?query=branch%3Amain)
+![license](https://img.shields.io/github/license/ricokaloklo/GeneralizedSasakiNakamura.jl)
+[![GitHub release](https://img.shields.io/github/v/release/ricokaloklo/GeneralizedSasakiNakamura.jl.svg)](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/releases)
+
+## License
+The package is licensed under the MIT License.
