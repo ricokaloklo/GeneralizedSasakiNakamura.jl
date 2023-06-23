@@ -16,7 +16,7 @@ DifferentialEquations = "7"
 ForwardDiff = "0.10"
 Interpolations = "0.14"
 Roots = "2"
-SpinWeightedSpheroidalHarmonics = "0.4"
+SpinWeightedSpheroidalHarmonics = "≥0.4"
 TaylorSeries = "0.15"
 julia = "≥1.8"
 
