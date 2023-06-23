@@ -2,7 +2,17 @@
 
 ## Main functions
 ```@docs
+Teukolsky_radial
+```
+
+```@docs
 GSN_radial
 ```
 
-## Submodules
+```@docs
+rstar_from_r
+```
+
+```@docs
+r_from_rstar
+```

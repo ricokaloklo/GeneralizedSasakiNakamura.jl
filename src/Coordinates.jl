@@ -12,11 +12,24 @@ function rstar_from_rp(a, r_from_rp)
     return rp + r_from_rp + (2*1*rp)/(rp-rm) * log(r_from_rp/(2*1)) - (2*1*rm)/(rp-rm) * log((r_from_rp+rp-rm)/(2*1))
 end
 
+@doc raw"""
+    rstar_from_r(a, r)
+
+Convert a Boyer-Lindquist coordinate `r` to the corresponding tortoise coordinate `rstar`.
+"""
 function rstar_from_r(a, r)
     rp = r_plus(a)
     return rstar_from_rp(a, r-rp)
 end
 
+@doc raw"""
+    r_from_rstar(a, rstar)
+
+Convert a tortoise coordinate `rstar` to the corresponding Boyer-Lindquist coordiante `r`. 
+It uses a bisection method when `rstar <= 0`, and Newton method otherwise.
+
+The function assumes that $r \geq r_{+}$ where $r_{+}$ is the outer event horizon.
+"""
 function r_from_rstar(a, rstar)
     rp = r_plus(a)
     #=
