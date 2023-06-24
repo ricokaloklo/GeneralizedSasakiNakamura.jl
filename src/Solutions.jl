@@ -462,40 +462,40 @@ function scaled_Wronskian_from_Phisolns(Phiin_soln, Phiup_soln, rs, s, m, a, ome
     return (Xin*dXupdrs - dXindrs*Xup)/_eta
 end
 
-function residual_from_Xsoln(Xsoln)
+function residual_from_Xsoln(s::Int, m::Int, a, omega, lambda, Xsoln)
     # Compute the second derivative using autodiff instead of finite diff
     X(rs) = Xsoln(rs)[1]
     first_deriv(rs) = Xsoln(rs)[2]
     second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
 
     params = Xsoln.prob.p
-    _sF(rs) = sF(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
-    _sU(rs) = sU(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+    _sF(rs) = sF(s, m, a, omega, lambda, r_from_rstar(a, rs))
+    _sU(rs) = sU(s, m, a, omega, lambda, r_from_rstar(a, rs))
 
     return rs -> second_deriv(rs) - _sF(rs)*first_deriv(rs) - _sU(rs)*X(rs)
 end
 
-function residual_RiccatiEqn_from_Phisoln(Phisoln)
+function residual_RiccatiEqn_from_Phisoln(s::Int, m::Int, a, omega, lambda, Phisoln)
     Phi(rs) = Phisoln(rs)[1] # Does not matter actually!
     first_deriv(rs) = Phisoln(rs)[2]
     second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
 
     params = Phisoln.prob.p
-    _sF(rs) = sF(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
-    _sU(rs) = sU(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+    _sF(rs) = sF(s, m, a, omega, lambda, r_from_rstar(a, rs))
+    _sU(rs) = sU(s, m, a, omega, lambda, r_from_rstar(a, rs))
 
     return rs -> second_deriv(rs) + 1im*_sU(rs) - _sF(rs)*first_deriv(rs) + 1im*(first_deriv(rs))^2
 end
 
-function residual_GSNEqn_from_Phisoln(Phisoln)
+function residual_GSNEqn_from_Phisoln(s::Int, m::Int, a, omega, lambda, Phisoln)
     # Compute the second derivative using autodiff instead of finite diff
     X = (rs -> exp(1im*Phisoln(rs)[1]))
     first_deriv = (rs -> 1im*exp(1im*Phisoln(rs)[1])*Phisoln(rs)[2])
     second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
 
     params = Phisoln.prob.p
-    _sF(rs) = sF(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
-    _sU(rs) = sU(params.s, params.m, params.a, params.omega, params.lambda, r_from_rstar(params.a, rs))
+    _sF(rs) = sF(s, m, a, omega, lambda, r_from_rstar(a, rs))
+    _sU(rs) = sU(s, m, a, omega, lambda, r_from_rstar(a, rs))
 
     return rs -> second_deriv(rs) - _sF(rs)*first_deriv(rs) - _sU(rs)*X(rs)
 end
