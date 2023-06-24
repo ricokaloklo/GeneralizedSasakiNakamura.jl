@@ -468,7 +468,6 @@ function residual_from_Xsoln(s::Int, m::Int, a, omega, lambda, Xsoln)
     first_deriv(rs) = Xsoln(rs)[2]
     second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
 
-    params = Xsoln.prob.p
     _sF(rs) = sF(s, m, a, omega, lambda, r_from_rstar(a, rs))
     _sU(rs) = sU(s, m, a, omega, lambda, r_from_rstar(a, rs))
 
@@ -480,7 +479,6 @@ function residual_RiccatiEqn_from_Phisoln(s::Int, m::Int, a, omega, lambda, Phis
     first_deriv(rs) = Phisoln(rs)[2]
     second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
 
-    params = Phisoln.prob.p
     _sF(rs) = sF(s, m, a, omega, lambda, r_from_rstar(a, rs))
     _sU(rs) = sU(s, m, a, omega, lambda, r_from_rstar(a, rs))
 
@@ -493,7 +491,6 @@ function residual_GSNEqn_from_Phisoln(s::Int, m::Int, a, omega, lambda, Phisoln)
     first_deriv = (rs -> 1im*exp(1im*Phisoln(rs)[1])*Phisoln(rs)[2])
     second_deriv(rs) = ForwardDiff.derivative(first_deriv, rs)
 
-    params = Phisoln.prob.p
     _sF(rs) = sF(s, m, a, omega, lambda, r_from_rstar(a, rs))
     _sU(rs) = sU(s, m, a, omega, lambda, r_from_rstar(a, rs))
 
