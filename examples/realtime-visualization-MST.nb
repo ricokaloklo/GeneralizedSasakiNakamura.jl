@@ -1,0 +1,274 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Mathematica 13.1' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       158,          7]
+NotebookDataLength[     10353,        266]
+NotebookOptionsPosition[      9711,        246]
+NotebookOutlinePosition[     10178,        264]
+CellTagsIndexPosition[     10135,        261]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+Cell[BoxData[
+ RowBox[{"<<", "Teukolsky`"}]], "Input",
+ CellChangeTimes->{{3.8967944774662647`*^9, 3.8967944812127028`*^9}},
+ CellLabel->"In[1]:=",ExpressionUUID->"e9d0be58-bff4-4465-8c27-98bf098b6de3"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{"Manipulate", "[", 
+  RowBox[{
+   RowBox[{
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"TimeToNu", ",", "TeukR"}], "}"}], "=", 
+     RowBox[{"AbsoluteTiming", "[", 
+      RowBox[{
+       RowBox[{"TeukolskyRadial", "[", 
+        RowBox[{"s", ",", "2", ",", "2", ",", "a", ",", "\[Omega]"}], "]"}], 
+       "[", "BC", "]"}], "]"}]}], ";", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"TimeToR", ",", "RTable"}], "}"}], "=", 
+     RowBox[{"AbsoluteTiming", "[", 
+      RowBox[{"Table", "[", 
+       RowBox[{
+        RowBox[{"{", 
+         RowBox[{"r", ",", 
+          RowBox[{"ReIm", "[", 
+           RowBox[{"TeukR", "[", "r", "]"}], "]"}]}], "}"}], ",", 
+        RowBox[{"{", 
+         RowBox[{"r", ",", 
+          RowBox[{"N", "[", 
+           RowBox[{
+            RowBox[{
+             RowBox[{"(", 
+              RowBox[{"1", "+", 
+               SqrtBox[
+                RowBox[{"1", "-", 
+                 SuperscriptBox["a", "2"]}]]}], ")"}], "+", 
+             SuperscriptBox["10", 
+              RowBox[{"-", "2"}]]}], ",", "16"}], "]"}], ",", "90`16", ",", 
+          "1`16"}], "}"}]}], "]"}], "]"}]}], ";", 
+    RowBox[{"{", 
+     RowBox[{
+      RowBox[{"ListPlot", "[", 
+       RowBox[{
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"Transpose", "@", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"RTable", "[", 
+              RowBox[{"[", 
+               RowBox[{";;", ",", "1"}], "]"}], "]"}], ",", 
+             RowBox[{"RTable", "[", 
+              RowBox[{"[", 
+               RowBox[{";;", ",", "2", ",", "1"}], "]"}], "]"}]}], "}"}]}], 
+          ",", 
+          RowBox[{"Transpose", "@", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"RTable", "[", 
+              RowBox[{"[", 
+               RowBox[{";;", ",", "1"}], "]"}], "]"}], ",", 
+             RowBox[{"RTable", "[", 
+              RowBox[{"[", 
+               RowBox[{";;", ",", "2", ",", "2"}], "]"}], "]"}]}], "}"}]}]}], 
+         "}"}], ",", 
+        RowBox[{"PlotLegends", "->", 
+         RowBox[{"{", 
+          RowBox[{"\"\<real\>\"", ",", "\"\<imag\>\""}], "}"}]}], ",", 
+        RowBox[{"AxesLabel", "->", 
+         RowBox[{"{", 
+          RowBox[{"\"\<r/M\>\"", ",", "\"\<R(r)\>\""}], "}"}]}]}], "]"}], ",", 
+      RowBox[{"Row", "[", 
+       RowBox[{"{", 
+        RowBox[{"\"\<incidence amplitude: \>\"", ",", 
+         RowBox[{
+          RowBox[{"TeukR", "[", "\"\<Amplitudes\>\"", "]"}], "[", 
+          "\"\<Incidence\>\"", "]"}]}], "}"}], "]"}], ",", 
+      RowBox[{"Row", "[", 
+       RowBox[{"{", 
+        RowBox[{"\"\<reflection amplitude:\>\"", ",", 
+         RowBox[{
+          RowBox[{"TeukR", "[", "\"\<Amplitudes\>\"", "]"}], "[", 
+          "\"\<Reflection\>\"", "]"}]}], "}"}], "]"}], ",", 
+      RowBox[{"Row", "[", 
+       RowBox[{"{", 
+        RowBox[{"\"\<transmission amplitude:\>\"", ",", 
+         RowBox[{
+          RowBox[{"TeukR", "[", "\"\<Amplitudes\>\"", "]"}], "[", 
+          "\"\<Transmission\>\"", "]"}]}], "}"}], "]"}], ",", 
+      RowBox[{"Row", "[", 
+       RowBox[{"{", 
+        RowBox[{"\"\<takes \>\"", ",", " ", 
+         RowBox[{"(", 
+          RowBox[{
+           RowBox[{"(", 
+            RowBox[{"TimeToNu", "+", "TimeToR"}], ")"}], "*", 
+           SuperscriptBox["10", "3"]}], ")"}], ",", " ", 
+         "\"\< milliseconds\>\""}], "}"}], "]"}]}], "}"}]}], ",", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"BC", ",", "\"\<In\>\"", ",", "\"\<boundary condition\>\""}], 
+      "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<In\>\"", ",", "\"\<Up\>\""}], "}"}]}], "}"}], ",", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"s", ",", 
+       RowBox[{"-", "2"}], ",", "\"\<spin weight\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"-", "2"}], ",", 
+       RowBox[{"-", "1"}], ",", "0", ",", "1", ",", "2"}], "}"}]}], "}"}], 
+   ",", "\[IndentingNewLine]", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"a", ",", "0.7`16", ",", "\"\<spin parameter a/M\>\""}], "}"}], 
+     ",", "0`16", ",", "0.95`16", ",", "0.05`16", ",", 
+     RowBox[{"Appearance", "->", "\"\<Labeled\>\""}]}], "}"}], ",", 
+   "\[IndentingNewLine]", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"\[Omega]", ",", "0.05`16", ",", "\"\<omega\>\""}], "}"}], ",", 
+     "0.05`16", ",", "5`16", ",", "0.05`16", ",", 
+     RowBox[{"Appearance", "->", "\"\<Labeled\>\""}]}], "}"}]}], 
+  "]"}]], "Input",
+ CellChangeTimes->CompressedData["
+1:eJxTTMoPSmViYGAQB2IQ/WD+8/XdHG8d9505vxVEv2n+sxNEh61YexREO7AY
+nQLRNyZoXwbRTfWet0F01ewFj0H0pRP5L0H0uaqgDyCap+neFxD9SH/OVxAt
+ND/pJ4he9D/zH4i+/zaUpQekb4cnL4g2OGInAaLDfadKgugmC2FNEP2rrhNM
+n3No0AfR9+OLLEF0i++JaBA9ZeHFZBCd9LywCKzOdyqYnlewqQZEb+kVaQWr
+q3rUBaKPKSpPANFSSY+CeoH0v5Q5kSB6Zv+NQhAtMlmnFEQ7GZjsBNFWUefB
+tDHn3AMgmuWj1CEQHaLe/QREZ9g0fAXRRyIZHPqAtMt5NUcQvWH//OMgmsHH
+9CKInhBmyT8BpE9mAZgGAG3GsIg=
+  "],
+ CellLabel->"In[2]:=",ExpressionUUID->"736c745e-22cd-4ef5-99e0-3c24a99b508a"],
+
+Cell[BoxData[
+ TagBox[
+  StyleBox[
+   DynamicModuleBox[{$CellContext`a$$ = 0.7`16., $CellContext`BC$$ = 
+    "In", $CellContext`s$$ = -2, $CellContext`\[Omega]$$ = 0.05`16., 
+    Typeset`show$$ = True, Typeset`bookmarkList$$ = {}, 
+    Typeset`bookmarkMode$$ = "Menu", Typeset`animator$$, Typeset`animvar$$ = 
+    1, Typeset`name$$ = "\"untitled\"", Typeset`specs$$ = {{{
+       Hold[$CellContext`BC$$], "In", "boundary condition"}, {"In", "Up"}}, {{
+      
+       Hold[$CellContext`s$$], -2, "spin weight"}, {-2, -1, 0, 1, 2}}, {{
+       Hold[$CellContext`a$$], 0.7`16., "spin parameter a/M"}, 0, 0.95`16., 
+      0.05`16.}, {{
+       Hold[$CellContext`\[Omega]$$], 0.05`16., "omega"}, 0.05`16., 5.`16., 
+      0.05`16.}}, Typeset`size$$ = {980., {150.2255859375, 71.}}, 
+    Typeset`update$$ = 0, Typeset`initDone$$, Typeset`skipInitDone$$ = True}, 
+    
+    DynamicBox[Manipulate`ManipulateBoxes[
+     1, StandardForm, 
+      "Variables" :> {$CellContext`a$$ = 0.7`16., $CellContext`BC$$ = 
+        "In", $CellContext`s$$ = -2, $CellContext`\[Omega]$$ = 0.05`16.}, 
+      "ControllerVariables" :> {}, 
+      "OtherVariables" :> {
+       Typeset`show$$, Typeset`bookmarkList$$, Typeset`bookmarkMode$$, 
+        Typeset`animator$$, Typeset`animvar$$, Typeset`name$$, 
+        Typeset`specs$$, Typeset`size$$, Typeset`update$$, Typeset`initDone$$,
+         Typeset`skipInitDone$$}, 
+      "Body" :> ({$CellContext`TimeToNu, $CellContext`TeukR} = 
+        AbsoluteTiming[
+          
+          Teukolsky`TeukolskyRadial`TeukolskyRadial[$CellContext`s$$, 2, 
+           2, $CellContext`a$$, $CellContext`\[Omega]$$][$CellContext`BC$$]]; \
+{$CellContext`TimeToR, $CellContext`RTable} = AbsoluteTiming[
+          Table[{$CellContext`r, 
+            ReIm[
+             $CellContext`TeukR[$CellContext`r]]}, {$CellContext`r, 
+            N[(1 + Sqrt[1 - $CellContext`a$$^2]) + 10^(-2), 16], 90.`16., 
+            1.`16.}]]; {
+         ListPlot[{
+           Transpose[{
+             Part[$CellContext`RTable, 
+              Span[1, All], 1], 
+             Part[$CellContext`RTable, 
+              Span[1, All], 2, 1]}], 
+           Transpose[{
+             Part[$CellContext`RTable, 
+              Span[1, All], 1], 
+             Part[$CellContext`RTable, 
+              Span[1, All], 2, 2]}]}, PlotLegends -> {"real", "imag"}, 
+          AxesLabel -> {"r/M", "R(r)"}], 
+         Row[{"incidence amplitude: ", 
+           $CellContext`TeukR["Amplitudes"]["Incidence"]}], 
+         Row[{"reflection amplitude:", 
+           $CellContext`TeukR["Amplitudes"]["Reflection"]}], 
+         Row[{"transmission amplitude:", 
+           $CellContext`TeukR["Amplitudes"]["Transmission"]}], 
+         Row[{
+          "takes ", ($CellContext`TimeToNu + $CellContext`TimeToR) 10^3, 
+           " milliseconds"}]}), 
+      "Specifications" :> {{{$CellContext`BC$$, "In", "boundary condition"}, {
+         "In", "Up"}}, {{$CellContext`s$$, -2, "spin weight"}, {-2, -1, 0, 1, 
+         2}}, {{$CellContext`a$$, 0.7`16., "spin parameter a/M"}, 0, 0.95`16.,
+          0.05`16., Appearance -> 
+         "Labeled"}, {{$CellContext`\[Omega]$$, 0.05`16., "omega"}, 0.05`16., 
+         5.`16., 0.05`16., Appearance -> "Labeled"}}, "Options" :> {}, 
+      "DefaultOptions" :> {}],
+     ImageSizeCache->{1137., {243., 251.}},
+     SingleEvaluation->True],
+    Deinitialization:>None,
+    DynamicModuleValues:>{},
+    SynchronousInitialization->True,
+    UndoTrackedVariables:>{Typeset`show$$, Typeset`bookmarkMode$$},
+    UnsavedVariables:>{Typeset`initDone$$},
+    UntrackedVariables:>{Typeset`size$$}], "Manipulate",
+   Deployed->True,
+   StripOnInput->False],
+  Manipulate`InterpretManipulate[1]]], "Output",
+ CellChangeTimes->{
+  3.896800729908586*^9, 3.896800846706707*^9, {3.896800878543004*^9, 
+   3.896800906144739*^9}, 3.896803259233857*^9, 3.8968034832426243`*^9},
+ CellLabel->"Out[2]=",ExpressionUUID->"c6ed5e49-87a5-4935-83ff-4f6a05855311"]
+}, Open  ]]
+},
+WindowSize->{1400, 1013},
+WindowMargins->{{Automatic, 553}, {Automatic, 0}},
+TaggingRules-><|"TryRealOnly" -> False|>,
+Magnification:>1.5 Inherited,
+FrontEndVersion->"13.1 for Mac OS X ARM (64-bit) (June 16, 2022)",
+StyleDefinitions->"Default.nb",
+ExpressionUUID->"8d59d295-0706-4dc5-9139-6e85f275010f"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[558, 20, 202, 3, 46, "Input",ExpressionUUID->"e9d0be58-bff4-4465-8c27-98bf098b6de3"],
+Cell[CellGroupData[{
+Cell[785, 27, 4989, 134, 396, "Input",ExpressionUUID->"736c745e-22cd-4ef5-99e0-3c24a99b508a"],
+Cell[5777, 163, 3918, 80, 539, "Output",ExpressionUUID->"c6ed5e49-87a5-4935-83ff-4f6a05855311"]
+}, Open  ]]
+}
+]
+*)
+
