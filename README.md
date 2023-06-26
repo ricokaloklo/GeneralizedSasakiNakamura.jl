@@ -4,12 +4,18 @@
 [![GitHub release](https://img.shields.io/github/v/release/ricokaloklo/GeneralizedSasakiNakamura.jl.svg)](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/releases)
 [![Documentation](https://img.shields.io/badge/Documentation-ready)](http://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl)
 
+GeneralizedSasakiNakamura.jl computes solutions to the frequency-domain radial Teukolsky equation with the Generalized Sasaki-Nakamura (GSN) formalism.
+
+The angular Teukolsky equation is solved with another julia package [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) using a spectral decomposition method.
+
 ## Installation
 To install the package using the Julia package manager, simply type the following in the Julia REPL:
 ```julia
 using Pkg
 Pkg.add("GeneralizedSasakiNakamura")
 ```
+
+*Note: There is no need to install [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) manually as it should be automatically installed by the package manager.*
 
 ## Highlights
 ### Performant frequency-domain Teukolsky solver
@@ -34,7 +40,7 @@ using GeneralizedSasakiNakamura # This is going to take some time to pre-compile
 
 # Specify which mode and what boundary condition
 s=-2; l=2; m=2; a=0.7; omega=0.5; bc=IN;
-# Specify where to match the ansatzes
+# Specify where to match to ansatzes
 rsin=-20; rsout=250;
 
 # NOTE: julia uses 'just-ahead-of-time' compilation. Calling this the first time in each session will take some time
