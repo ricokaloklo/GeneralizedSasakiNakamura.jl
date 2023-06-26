@@ -16,18 +16,22 @@ Pkg.add("GeneralizedSasakiNakamura")
 ## Highlights
 ### Performant frequency-domain Teukolsky solver
 Takes on average only a few tens of milliseconds:
+```@raw html
 <p align="center">
   <img width="50%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248602615-eb611e3f-00b9-49c3-905c-0440b0607683.gif">
 </p>
+```
 
 *(There was no caching! We solved the equation on-the-fly! The notebook generating this animation can be found [here](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb))*
 
 ### Solutions that are accurate everywhere
 Numerical solutions are *smoothly stitched* to analytical ansatzes near the horizon and infinity at user-specified locations `rsin` and `rsout` respectively:
 
+```@raw html
 <p align="center">
   <img width="50%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248601145-8ce9b236-d197-4321-83b9-fcb9692a51e8.gif">
 </p>
+```
 
 ### Easy to use
 The following code snippet lets you solve the (source-free) Teukolsky function (in frequency domain) for the mode $s=-2, \ell=2, m=2, a=0.7, \omega=0.5$ that satisfies the purely-ingoing boundary condition at the horizon:
