@@ -37,7 +37,10 @@ function r_from_rstar(a, rstar)
     we first write r' = rp + h' and instead solve for h', then add back rp
     i.e. we solve the equation rstar_from_rp(h') = rstar
     =#
-    f(x) = rstar_from_rp(a, x) - rstar
+
+    # The root-finding algorithm might try a negative x, which is not allowed
+    # We rectify this by taking an absolute value
+    f(x) = rstar_from_rp(a, abs(x)) - rstar
     if rstar <= 0
         #=
         When rstar <= 0, it is more efficient to use bisection method,
@@ -50,7 +53,7 @@ function r_from_rstar(a, rstar)
         return rp + find_zero(f, (0, 1.4))
     else
         # Use Newton method instead; for large rstar, rstar \approx r
-        return rp + find_zero((f, x -> ((rp + x)^2 + a^2)/Delta(a, rp+x)), rstar, Roots.Newton())
+        return rp + find_zero((f, x -> sign(x)*((rp + x)^2 + a^2)/Delta(a, rp+x)), rstar, Roots.Newton())
     end
 end
 
