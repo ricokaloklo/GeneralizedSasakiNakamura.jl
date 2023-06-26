@@ -22,9 +22,16 @@ Pkg.add("GeneralizedSasakiNakamura")
 ## Highlights
 ### Performant frequency-domain Teukolsky solver
 Takes on average only a few tens of milliseconds:
-<p align="center">
-  <img width="75%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248602615-eb611e3f-00b9-49c3-905c-0440b0607683.gif">
-</p>
+<table>
+  <tr>
+    <th>GeneralizedSasakiNakamura.jl</th>
+    <th><a href="https://github.com/BlackHolePerturbationToolkit/Teukolsky">Teukolsky</a> Mathematica package using the MST method </th>
+  </tr>
+  <tr>
+    <td><p align="center"><img width="100%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248965077-7d216deb-5bae-433f-a699-d40a35f0e35d.gif"></p></td>
+    <td><p align="center"><img width="100%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248966033-9e7d8027-81ee-4762-98d9-0ad0a1c030ad.gif"></p></td>
+  </tr>
+</table>
 
 *(There was no caching! We solved the equation on-the-fly! The notebook generating this animation can be found [here](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb))*
 
@@ -32,9 +39,8 @@ Takes on average only a few tens of milliseconds:
 Numerical solutions are *smoothly stitched* to analytical ansatzes near the horizon and infinity at user-specified locations `rsin` and `rsout` respectively:
 
 <p align="center">
-  <img width="75%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248724944-9707332b-1238-4b3b-b1c0-ac426a1b3dc6.gif">
+  <img width="50%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248724944-9707332b-1238-4b3b-b1c0-ac426a1b3dc6.gif">
 </p>
-
 
 ### Easy to use
 The following code snippet lets you solve the (source-free) Teukolsky function (in frequency domain) for the mode $s=-2, \ell=2, m=2, a=0.7, \omega=0.5$ that satisfies the purely-ingoing boundary condition at the horizon:
