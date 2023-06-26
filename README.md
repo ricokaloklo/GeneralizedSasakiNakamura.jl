@@ -30,8 +30,9 @@ Takes on average only a few tens of milliseconds:
 Numerical solutions are *smoothly stitched* to analytical ansatzes near the horizon and infinity at user-specified locations `rsin` and `rsout` respectively:
 
 <p align="center">
-  <img width="75%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248601145-8ce9b236-d197-4321-83b9-fcb9692a51e8.gif">
+  <img width="75%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248724944-9707332b-1238-4b3b-b1c0-ac426a1b3dc6.gif">
 </p>
+
 
 ### Easy to use
 The following code snippet lets you solve the (source-free) Teukolsky function (in frequency domain) for the mode $s=-2, \ell=2, m=2, a=0.7, \omega=0.5$ that satisfies the purely-ingoing boundary condition at the horizon:
