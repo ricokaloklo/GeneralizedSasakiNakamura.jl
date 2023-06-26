@@ -17,7 +17,7 @@ using Pkg
 Pkg.add("GeneralizedSasakiNakamura")
 ```
 
-*Note: There is no need to install [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) manually as it should be automatically installed by the package manager.*
+*Note: There is no need to install [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) separately as it should be automatically installed by the package manager.*
 
 ## Highlights
 ### Performant frequency-domain Teukolsky solver
