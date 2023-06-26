@@ -28,6 +28,7 @@ Numerical solutions are *smoothly stitched* to analytical ansatzes near the hori
 </p>
 
 ### Easy to use
+The following code snippet lets you solve the (source-free) Teukolsky function (in frequency domain) for the mode $s=-2, \ell=2, m=2, a=0.7, \omega=0.5$ that satisfies the purely-ingoing boundary condition at the horizon:
 ```julia
 using GeneralizedSasakiNakamura # This is going to take some time to pre-compile, mostly due to DifferentialEquations.jl
 
