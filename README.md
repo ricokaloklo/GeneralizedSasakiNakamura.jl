@@ -5,7 +5,7 @@
 [![Documentation](https://img.shields.io/badge/Documentation-ready)](http://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl)
 
 ## Highlights
-### Highly performant frequency-domain Teukolsky solver
+### Performant frequency-domain Teukolsky solver
 Takes on average only a few tens of milliseconds:
 <p align="center">
   <img width="50%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248602615-eb611e3f-00b9-49c3-905c-0440b0607683.gif">
