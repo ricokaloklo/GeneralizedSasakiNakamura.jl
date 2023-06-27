@@ -70,7 +70,7 @@ For example, if we want to evaluate the Teukolsky function at the location $r = 
 ```julia
 R(10)
 ```
-This should gives
+This should give
 ```
 77.57508416832009 - 429.40290952257226im
 ```
