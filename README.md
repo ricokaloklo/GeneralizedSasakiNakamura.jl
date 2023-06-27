@@ -21,7 +21,7 @@ Pkg.add("GeneralizedSasakiNakamura")
 
 ## Highlights
 ### Performant frequency-domain Teukolsky solver
-Works well at both low and high frequencies, and takes on average only a few tens of milliseconds:
+Works well at *both low and high frequencies*, and takes only a few tens of milliseconds on average:
 <table>
   <tr>
     <th>GeneralizedSasakiNakamura.jl</th>
