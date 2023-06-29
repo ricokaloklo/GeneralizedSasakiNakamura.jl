@@ -1,2 +1,133 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Examples · GeneralizedSasakiNakamura.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">GeneralizedSasakiNakamura.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../APIs/">APIs</a></li><li class="is-active"><a class="tocitem" href>Examples</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Examples</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Examples</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/docs/src/examples.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Examples"><a class="docs-heading-anchor" href="#Examples">Examples</a><a id="Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Examples" title="Permalink"></a></h1></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../APIs/">« APIs</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Thursday 29 June 2023 03:51">Thursday 29 June 2023</span>. Using Julia version 1.9.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Examples · GeneralizedSasakiNakamura.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">GeneralizedSasakiNakamura.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../APIs/">APIs</a></li><li class="is-active"><a class="tocitem" href>Examples</a><ul class="internal"><li><a class="tocitem" href="#Example-1:-Solving-and-visualizing-some-Teukolsky-and-GSN-functions"><span>Example 1: Solving and visualizing some Teukolsky and GSN functions</span></a></li><li><a class="tocitem" href="#Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)"><span>Example 2: Plotting reflectivity of black holes (in GSN formalism)</span></a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Examples</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Examples</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/docs/src/examples.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Examples"><a class="docs-heading-anchor" href="#Examples">Examples</a><a id="Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Examples" title="Permalink"></a></h1><ul><li><a href="#Examples">Examples</a></li><li class="no-marker"><ul><li><a href="#Example-1:-Solving-and-visualizing-some-Teukolsky-and-GSN-functions">Example 1: Solving and visualizing some Teukolsky and GSN functions</a></li><li><a href="#Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)">Example 2: Plotting reflectivity of black holes (in GSN formalism)</a></li></ul></li></ul><h2 id="Example-1:-Solving-and-visualizing-some-Teukolsky-and-GSN-functions"><a class="docs-heading-anchor" href="#Example-1:-Solving-and-visualizing-some-Teukolsky-and-GSN-functions">Example 1: Solving and visualizing some Teukolsky and GSN functions</a><a id="Example-1:-Solving-and-visualizing-some-Teukolsky-and-GSN-functions-1"></a><a class="docs-heading-anchor-permalink" href="#Example-1:-Solving-and-visualizing-some-Teukolsky-and-GSN-functions" title="Permalink"></a></h2><p>In this example, we solve for the Teukolsky and the GSN function with <span>$s = -2, \ell = 2, m = 2, a = 0.7, \omega = 0.25$</span> that satisfy the purely outgoing condition at infinity (i.e. <code>UP</code>).</p><pre><code class="language-julia hljs">using GeneralizedSasakiNakamura
+using Plots, LaTeXStrings
+
+# Specify which mode and what boundary condition
+s=-2; l=2; m=2; a=0.7; omega=0.25; bc=UP; # Change to bc=IN to solve for R^in or X^in instead
+# Specify where to match to ansatzes
+rsin=-20; rsout=250;
+
+# NOTE: julia uses &#39;just-ahead-of-time&#39; compilation. Calling this the first time in each session will take some time
+R = Teukolsky_radial(s, l, m, a, omega, bc, rsin, rsout);
+
+# Set up a grid of the tortoise coordinate rs
+rsgrid = collect(-30:1:300); # Does not have to be within [rsin, rsout]
+# Set up a grid of the Boyer-Lindquist r coordinate
+# Convert from rsgrid using r_from_rstar(a, rs)
+rgrid = [r_from_rstar(a, rs) for rs in rsgrid];</code></pre><pre><code class="language-julia hljs"># Visualize the Teukolsky function
+
+# Use the &#39;shortcut&#39; interface to access the function
+plot(rgrid, [real(R(r)) for r in rgrid], label=&quot;real&quot;)
+# Use the full interface to access the function (and its derivative)
+plot!(rgrid, [imag(R.Teukolsky_solution(r)[1]) for r in rgrid], label=&quot;imag&quot;)
+plot!(
+    legendfontsize=14,
+    xguidefontsize=14,
+    yguidefontsize=14,
+    xtickfontsize=14,
+    ytickfontsize=14,
+    foreground_color_legend=nothing,
+    background_color_legend=nothing,
+    legend=:topleft,
+    xlabel=L&quot;r/M&quot;,
+    ylabel=L&quot;R(r)&quot;,
+)
+title!(&quot;$(R.boundary_condition) solution&quot;)</code></pre><p><img src="R.png" alt="R.png"/></p><pre><code class="language-julia hljs"># Visualize the underlying GSN function
+
+# Use the &#39;shortcut&#39; interface to access the function
+plot(rsgrid, [real(R.GSN_solution(rs)) for rs in rsgrid], label=&quot;real&quot;)
+# Use the full interface to access the function (and its derivative)
+plot!(rsgrid, [imag(R.GSN_solution.GSN_solution(rs)[1]) for rs in rsgrid], label=&quot;imag&quot;)
+plot!(
+    legendfontsize=14,
+    xguidefontsize=14,
+    yguidefontsize=14,
+    xtickfontsize=14,
+    ytickfontsize=14,
+    foreground_color_legend=nothing,
+    background_color_legend=nothing,
+    legend=:bottomright,
+    xlabel=L&quot;r_{*}/M&quot;,
+    ylabel=L&quot;X(r_{*})&quot;,
+)
+title!(&quot;$(R.boundary_condition) solution&quot;)</code></pre><p><img src="X.png" alt="X.png"/></p><pre><code class="language-julia hljs"># Visualize the underlying complex frequency function
+# NOTE: for this one, rstar has to be within [rsin, rsout]
+plot(collect(rsin:0.1:rsout), [real(R.GSN_solution.numerical_Riccati_solution(rs)[2]) for rs in rsin:0.1:rsout], label=&quot;real&quot;)
+# Use the full interface to access the function (and its derivative)
+plot!(collect(rsin:0.1:rsout), [imag(R.GSN_solution.numerical_Riccati_solution(rs)[2]) for rs in rsin:0.1:rsout], label=&quot;imag&quot;)
+plot!(
+    legendfontsize=14,
+    xguidefontsize=14,
+    yguidefontsize=14,
+    xtickfontsize=14,
+    ytickfontsize=14,
+    foreground_color_legend=nothing,
+    background_color_legend=nothing,
+    legend=:bottomright,
+    xlabel=L&quot;r_{*}/M&quot;,
+    ylabel=L&quot;d\Phi(r_{*})/dr_{*}&quot;,
+)
+title!(&quot;$(R.boundary_condition) solution&quot;)</code></pre><p><img src="dPhidrs.png" alt="dPhidrs.png"/></p><h2 id="Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)"><a class="docs-heading-anchor" href="#Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)">Example 2: Plotting reflectivity of black holes (in GSN formalism)</a><a id="Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)-1"></a><a class="docs-heading-anchor-permalink" href="#Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)" title="Permalink"></a></h2><pre><code class="language-julia hljs">using GeneralizedSasakiNakamura
+using Plots, LaTeXStrings
+
+sarr = [-2, -1, 0, 1, 2];
+l=2;m=2;a=0.0;
+reflectivity_from_inf_nonrotating = Dict()
+omegas = collect(0.01:0.01:2.0);
+
+for s in sarr
+    reflectivity_from_inf_nonrotating[s] = []
+    for omg in omegas
+        Xin = GSN_radial(s, l, m, a, omg, IN, -20, 250)
+        append!(reflectivity_from_inf_nonrotating[s], Xin.reflection_amplitude/Xin.incidence_amplitude)
+    end
+end</code></pre><pre><code class="language-julia hljs">plot(omegas, abs.(reflectivity_from_inf_nonrotating[-2]), linewidth=2, color=theme_palette(:auto)[1], label=L&quot;s = \pm 2&quot;)
+plot!(omegas, abs.(reflectivity_from_inf_nonrotating[-1]), linewidth=2, color=theme_palette(:auto)[2], label=L&quot;s = \pm 1&quot;)
+plot!(omegas, abs.(reflectivity_from_inf_nonrotating[0]), linewidth=2, color=theme_palette(:auto)[3], label=L&quot;s = 0&quot;)
+plot!(
+    legendfontsize=14,
+    xguidefontsize=14,
+    yguidefontsize=14,
+    xtickfontsize=14,
+    ytickfontsize=14,
+    foreground_color_legend=nothing,
+    background_color_legend=nothing,
+    legend=:bottomright,
+    formatter=:latex,
+    xlabel=L&quot;M\omega&quot;,
+    ylabel=L&quot;| \hat{B}^{\mathrm{ref}}_{\mathrm{SN}}/\hat{B}^{\mathrm{inc}}_{\mathrm{SN}} |&quot;,
+    left_margin = 2Plots.mm,
+    right_margin = 3Plots.mm,
+)
+title!(L&quot;a/M = 0&quot;)</code></pre><p><img src="reflectivity-aOverM_0.png" alt="reflectivity-aOverM_0.png"/></p><pre><code class="language-julia hljs">sarr = [-2, -1, 0, 1, 2];
+l=2;m=2;a=0.7;
+reflectivity_from_inf_rotating = Dict()
+omegas = collect(0.01:0.01:2.0);
+
+for s in sarr
+    reflectivity_from_inf_rotating[s] = []
+    for omg in omegas
+        Xin = GSN_radial(s, l, m, a, omg, IN, -20, 250)
+        append!(reflectivity_from_inf_rotating[s], Xin.reflection_amplitude/Xin.incidence_amplitude)
+    end
+end</code></pre><pre><code class="language-julia hljs">plot(omegas, abs.(reflectivity_from_inf_rotating[-2]), linewidth=2, color=theme_palette(:auto)[1], label=L&quot;s = -2&quot;)
+plot!(omegas, abs.(reflectivity_from_inf_rotating[-1]), linewidth=2, color=theme_palette(:auto)[2], label=L&quot;s = -1&quot;)
+plot!(omegas, abs.(reflectivity_from_inf_rotating[0]), linewidth=2, color=theme_palette(:auto)[3], label=L&quot;s = 0&quot;)
+plot!(omegas, abs.(reflectivity_from_inf_rotating[1]), linewidth=2, color=theme_palette(:auto)[4], label=L&quot;s = 1&quot;)
+plot!(omegas, abs.(reflectivity_from_inf_rotating[2]), linewidth=2, color=theme_palette(:auto)[5], label=L&quot;s = 2&quot;)
+plot!(
+    legendfontsize=14,
+    xguidefontsize=14,
+    yguidefontsize=14,
+    xtickfontsize=14,
+    ytickfontsize=14,
+    foreground_color_legend=nothing,
+    background_color_legend=nothing,
+    legend=:bottomright,
+    formatter=:latex,
+    xlabel=L&quot;M\omega&quot;,
+    ylabel=L&quot;| \hat{B}^{\mathrm{ref}}_{\mathrm{SN}}/\hat{B}^{\mathrm{inc}}_{\mathrm{SN}} |&quot;,
+    left_margin = 2Plots.mm,
+    right_margin = 3Plots.mm,
+)
+title!(L&quot;a/M = 0.7&quot;)</code></pre><p><img src="reflectivity-aOverM_0p7.png" alt="reflectivity-aOverM_0p7.png"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../APIs/">« APIs</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Thursday 29 June 2023 03:52">Thursday 29 June 2023</span>. Using Julia version 1.9.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
