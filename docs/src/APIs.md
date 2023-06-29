@@ -66,7 +66,7 @@ This is a composite struct type that stores information about a mode
 #### GSNRadialFunction
 This is a composite struct type that stores the output from [`GSN_radial`](@ref)
 
-!!! note
+!!! tip
 
     `GSNRadialFunction(rstar)` is equivalent to `GSNRadialFunction.GSN_solution(rstar)[1]`, 
     returning only the value of the GSN function evaluated at the *tortoise coordinate* `rstar`
@@ -90,7 +90,7 @@ This is a composite struct type that stores the output from [`GSN_radial`](@ref)
 #### TeukolskyRadialFunction
 This is a composite struct type that stores the output from [`Teukolsky_radial`](@ref)
 
-!!! note
+!!! tip
 
     `TeukolskyRadialFunction(r)` is equivalent to `TeukolskyRadialFunction.Teukolsky_solution(r)[1]`, 
     returning only the value of the Teukolsky function evaluated at the *Boyer-Lindquist coordinate* `r`
