@@ -32,7 +32,7 @@ plot!(
     xlabel=L&quot;r/M&quot;,
     ylabel=L&quot;R(r)&quot;,
 )
-title!(&quot;$(R.boundary_condition) solution&quot;)</code></pre><p><img src="R.png" alt="R.png"/></p><pre><code class="language-julia hljs"># Visualize the underlying GSN function
+title!(&quot;$(R.boundary_condition) solution&quot;)</code></pre><p><img src="../R.png" alt="R.png"/></p><pre><code class="language-julia hljs"># Visualize the underlying GSN function
 
 # Use the &#39;shortcut&#39; interface to access the function
 plot(rsgrid, [real(R.GSN_solution(rs)) for rs in rsgrid], label=&quot;real&quot;)
@@ -50,7 +50,7 @@ plot!(
     xlabel=L&quot;r_{*}/M&quot;,
     ylabel=L&quot;X(r_{*})&quot;,
 )
-title!(&quot;$(R.boundary_condition) solution&quot;)</code></pre><p><img src="X.png" alt="X.png"/></p><pre><code class="language-julia hljs"># Visualize the underlying complex frequency function
+title!(&quot;$(R.boundary_condition) solution&quot;)</code></pre><p><img src="../X.png" alt="X.png"/></p><pre><code class="language-julia hljs"># Visualize the underlying complex frequency function
 # NOTE: for this one, rstar has to be within [rsin, rsout]
 plot(collect(rsin:0.1:rsout), [real(R.GSN_solution.numerical_Riccati_solution(rs)[2]) for rs in rsin:0.1:rsout], label=&quot;real&quot;)
 # Use the full interface to access the function (and its derivative)
@@ -67,7 +67,7 @@ plot!(
     xlabel=L&quot;r_{*}/M&quot;,
     ylabel=L&quot;d\Phi(r_{*})/dr_{*}&quot;,
 )
-title!(&quot;$(R.boundary_condition) solution&quot;)</code></pre><p><img src="dPhidrs.png" alt="dPhidrs.png"/></p><h2 id="Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)"><a class="docs-heading-anchor" href="#Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)">Example 2: Plotting reflectivity of black holes (in GSN formalism)</a><a id="Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)-1"></a><a class="docs-heading-anchor-permalink" href="#Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)" title="Permalink"></a></h2><pre><code class="language-julia hljs">using GeneralizedSasakiNakamura
+title!(&quot;$(R.boundary_condition) solution&quot;)</code></pre><p><img src="../dPhidrs.png" alt="dPhidrs.png"/></p><h2 id="Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)"><a class="docs-heading-anchor" href="#Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)">Example 2: Plotting reflectivity of black holes (in GSN formalism)</a><a id="Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)-1"></a><a class="docs-heading-anchor-permalink" href="#Example-2:-Plotting-reflectivity-of-black-holes-(in-GSN-formalism)" title="Permalink"></a></h2><pre><code class="language-julia hljs">using GeneralizedSasakiNakamura
 using Plots, LaTeXStrings
 
 sarr = [-2, -1, 0, 1, 2];
@@ -99,7 +99,7 @@ plot!(
     left_margin = 2Plots.mm,
     right_margin = 3Plots.mm,
 )
-title!(L&quot;a/M = 0&quot;)</code></pre><p><img src="reflectivity-aOverM_0.png" alt="reflectivity-aOverM_0.png"/></p><pre><code class="language-julia hljs">sarr = [-2, -1, 0, 1, 2];
+title!(L&quot;a/M = 0&quot;)</code></pre><p><img src="../reflectivity-aOverM_0.png" alt="reflectivity-aOverM_0.png"/></p><pre><code class="language-julia hljs">sarr = [-2, -1, 0, 1, 2];
 l=2;m=2;a=0.7;
 reflectivity_from_inf_rotating = Dict()
 omegas = collect(0.01:0.01:2.0);
@@ -130,4 +130,4 @@ plot!(
     left_margin = 2Plots.mm,
     right_margin = 3Plots.mm,
 )
-title!(L&quot;a/M = 0.7&quot;)</code></pre><p><img src="reflectivity-aOverM_0p7.png" alt="reflectivity-aOverM_0p7.png"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../APIs/">« APIs</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Thursday 29 June 2023 03:52">Thursday 29 June 2023</span>. Using Julia version 1.9.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+title!(L&quot;a/M = 0.7&quot;)</code></pre><p><img src="../reflectivity-aOverM_0p7.png" alt="reflectivity-aOverM_0p7.png"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../APIs/">« APIs</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Thursday 29 June 2023 07:38">Thursday 29 June 2023</span>. Using Julia version 1.9.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
