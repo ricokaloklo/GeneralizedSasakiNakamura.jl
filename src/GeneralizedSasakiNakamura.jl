@@ -118,7 +118,7 @@ function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition
 )
     if omega != 0
-        error("Cannot compute the Teukolsky function for a nonstatic (omega != 0) case without specifying rsin and rsout")
+        error("Cannot compute the GSN function for a nonstatic (omega != 0) case without specifying rsin and rsout")
     else
         teuk_func = Teukolsky_radial(s, l, m, a, omega, boundary_condition)
         GSN_solution = Solutions.Sasaki_Nakamura_function_from_Teukolsky_radial_function(s, m, a, omega, teuk_func.mode.lambda, teuk_func.Teukolsky_solution)
