@@ -2,6 +2,7 @@ module Solutions
 
 using DifferentialEquations
 using ForwardDiff
+using HypergeometricFunctions
 using ..Kerr
 using ..Transformation
 using ..Coordinates
@@ -424,6 +425,22 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(s::Int, m::Int,
     return Rsoln
 end
 
+function Sasaki_Nakamura_function_from_Teukolsky_radial_function(s::Int, m::Int, a, omega, lambda, Rsoln)
+    #=
+    Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix() returns 
+    the conversion matrix for going from (X, dX/drs) to (R, dR/dr). Here we need
+    the inverse of that to go from (R, dR/dr) to (X, dX/drs).
+    =#
+    conversion_matrix(r) = inv(Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r))
+
+    Xsoln(rs) = begin
+        r = r_from_rstar(a, rs)
+        conversion_matrix(r) * Rsoln(r)
+    end
+
+    return Xsoln
+end
+
 function d2Rdr2_from_Rsoln(s::Int, m::Int, a, omega, lambda, Rsoln, r)
     #=
     Using the radial Teukolsky equation we can solve for d2Rdr2 from R and dRdr using
@@ -664,5 +681,120 @@ function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizo
         return Xupsoln(rs)
     end 
 end
+
+# Some helper functions for static modes
+function x_from_r(a, r)
+    #=
+    x \equiv (rp - r)/(rp - rm) is a transformed coordinate that
+    is used only internally in the code/static mode computation
+    =#
+    gamma = sqrt(1 - a^2)
+    return ((1+gamma)-r)/(2*gamma)
+end
+
+function r_from_x(a, x)
+    gamma = sqrt(1 - a^2)
+    return 1 + gamma - 2*gamma*x
+end
+
+function isnegativeinteger(x)
+    isinteger(x) && x < 0
+end
+
+# Some helper functions for manipulating hypergeometric functions
+function pochhammer(x, n)
+    # Wrapper for the pochhammer function implemented in HypergeometricFunctions.jl
+    HypergeometricFunctions.pochhammer(x, n)
+end
+
+#=
+Since there is no implementation of a "regularized" Gauss hypergeometric function in
+HypergeometricFunctions.jl yet, we use the fact that when c approaches a negative
+integer, 2F1(a,b;c,z)/Gamma(c) approaches the value
+
+lim c->-m 2F1(a, b; c, z)/Gamma(c) = (a)_m (b)_m / m! * z^m * 2F1(a+m, b+m; m+1; z)
+
+which is implemented below
+=#
+function _2F1_over_Gamma_c(a, b, c, z)
+    # NOTE This is true only when c is a negative integer
+    z *= (1 + 0im) # Make sure that z is a complex number
+    m = abs(c) + 1
+    ( pochhammer(a, m) * pochhammer(b, m) / factorial(m) ) * z^m * pFq((a+m, b+m), (m+1, ), z)
+end
+
+function _d2F1_over_Gamma_c_dz(a, b, c, z)
+    # NOTE This is true only when c is a negative integer
+    z *= (1 + 0im) # Make sure that z is a complex number
+    m = abs(c) + 1
+    # Here we explicitly compute the derivative because ForwardDiff.jl does not work very well with HypergeometricFunctions.jl
+    ( pochhammer(a, m) * pochhammer(b, m) / factorial(m) ) * (m*z^(m-1) * pFq((a+m, b+m), (m+1, ), z) + z^m * pFq((a+m+1, b+m+1), (m+2, ), z))
+end
+
+function solve_static_Rin(s::Int, l::Int, m::Int, a)
+    #=
+    This is an internal function that returns the static (omega = 0) solution that satisfies
+    the "purely left-going" condition at the horizon, namely the R^in solution.
+
+    Use instead GeneralizedSasakiNakamura.Teukolsky_radial() and set omega = 0 and boundary_condition = IN
+    =#
+    gamma = sqrt(1 - a^2)
+    kappa = I*a*m/gamma
+
+    normalization_const = begin
+        (-1)^(-kappa/2) * exp(I*a*m/2) * gamma^(I*a*m/(1+gamma)) * (-4*gamma^2)^(-s)
+    end
+
+    Rin(r) = begin
+        x = x_from_r(a, r)
+        if iszero(kappa) && isnegativeinteger(1-s)
+            # Regularization
+            normalization_const * x^(-s + kappa/2) * (1-x)^(kappa/2) * _2F1_over_Gamma_c(-l+kappa, 1+l+kappa, 1-s, x)
+        else
+            normalization_const * x^(-s + kappa/2) * (1-x)^(kappa/2) * pFq((-l+kappa, 1+l+kappa), (1-s+kappa,), x)
+        end
+    end
+
+    dRindr(r) = begin
+        x = x_from_r(a, r)
+        if iszero(kappa) && isnegativeinteger(1-s)
+            # Regularization
+            normalization_const * (-1/(2*gamma)) * ( (1/2) * (1-x)^(-1+kappa/2) * x^(-1-s+kappa/2) * (2*s*(x-1) + kappa - 2*kappa*x) * _2F1_over_Gamma_c(-l+kappa, 1+l+kappa, 1-s, x) + x^(-s + kappa/2) * (1-x)^(kappa/2) * _d2F1_over_Gamma_c_dz(-l+kappa, 1+l+kappa, 1-s, x) )
+        else
+            normalization_const * (-1/(2*gamma)) * ( (1/2) * (1-x)^(-1+kappa/2) * x^(-1-s+kappa/2) * (2*s*(x-1) + kappa - 2*kappa*x) * pFq((-l+kappa, 1+l+kappa), (1-s+kappa,), x) + x^(-s + kappa/2) * (1-x)^(kappa/2) * pochhammer(-l+kappa, 1) * pochhammer(1+l+kappa, 1) / pochhammer(1-s+kappa, 1) * pFq((-l+kappa+1, 1+l+kappa+1), (1-s+kappa+1,), x) )
+        end
+    end
+
+    return (r -> [Rin(r);  dRindr(r)])
+end
+
+function solve_static_Rup(s::Int, l::Int, m::Int, a)
+    #=
+    This is an internal function that returns the static (omega = 0) solution that satisfies
+    the "purely right-going" condition at spatial infinity, namely the R^up solution.
+
+    Use instead GeneralizedSasakiNakamura.Teukolsky_radial() and set omega = 0 and boundary_condition = UP
+    =#
+    gamma = sqrt(1 - a^2)
+    kappa = I*a*m/gamma
+
+    normalization_const = begin
+        (-2*gamma)^(-s-l-1)
+    end
+
+    Rup(r) = begin
+        x = x_from_r(a, r)
+        normalization_const * x^(-s-l-1-kappa/2) * (x-1)^(kappa/2) * pFq((1+l+kappa, 1+s+l), (2+2*l,),1/x)
+    end
+    
+    dRupdr(r) = begin
+        x = x_from_r(a, r)
+        normalization_const * (-1/(2*gamma)) * ( ( (1/2)*(x-1)^(-1+kappa/2) * x^(-2-l-s-kappa/2) * (-2*(1+l+s)*(x-1) + kappa) ) * pFq((1+l+kappa, 1+s+l), (2+2*l,),1/x) + x^(-s-l-1-kappa/2) * (x-1)^(kappa/2) * pochhammer(1+l+kappa, 1) * pochhammer(1+s+l, 1) / pochhammer(2+2*l, 1) * pFq((2+l+kappa, 2+s+l), (3+2*l,),1/x) * (-1/x^2) )
+    end
+
+    return (r-> [Rup(r); dRupdr(r)])
+end
+
+
 
 end
