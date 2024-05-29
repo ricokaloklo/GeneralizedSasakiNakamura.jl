@@ -58,8 +58,8 @@ struct GSNRadialFunction
     transmission_amplitude # In GSN formalism
     incidence_amplitude # In GSN formalism
     reflection_amplitude # In GSN formalism
-    numerical_GSN_solution::Union{ODESolution, Nothing} # Store the numerical solution to the GSN equation in [rsin, rsout]
-    numerical_Riccati_solution::Union{ODESolution, Nothing} # Store the numerical solution to the GSN equation in the Riccati form if applicable
+    numerical_GSN_solution::Union{ODESolution, Missing} # Store the numerical solution to the GSN equation in [rsin, rsout]
+    numerical_Riccati_solution::Union{ODESolution, Missing} # Store the numerical solution to the GSN equation in the Riccati form if applicable
     GSN_solution # Store the *full* GSN solution where asymptotic solutions are smoothly attached
     normalization_convention::NormalizationConvention # The normalization convention used for the *stored* GSN solution
 end
@@ -87,7 +87,7 @@ struct TeukolskyRadialFunction
     transmission_amplitude # In Teukolsky formalism
     incidence_amplitude # In Teukolsky formalism
     reflection_amplitude # In Teukolsky formalism
-    GSN_solution::GSNRadialFunction # Store the full GSN solution
+    GSN_solution::Union{GSNRadialFunction, Missing} # Store the full GSN solution
     Teukolsky_solution # Store the full Teukolsky solution
     normalization_convention::NormalizationConvention # The normalization convention used for the *stored* Teukolsky solution
 end
@@ -155,7 +155,7 @@ function GSN_radial(
             data_type(1),
             Binc_SN,
             Bref_SN,
-            nothing,
+            missing,
             Phiinsoln,
             semianalytical_Xinsoln,
             UNIT_GSN_TRANS
@@ -185,7 +185,7 @@ function GSN_radial(
             data_type(1),
             Cinc_SN,
             Cref_SN,
-            nothing,
+            missing,
             Phiupsoln,
             semianalytical_Xupsoln,
             UNIT_GSN_TRANS
@@ -199,6 +199,44 @@ end
 (gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
 
 @doc raw"""
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition)
+
+Compute the exact static (`omega = 0`) Teukolsky function using Gauss hypergeometric functions 
+for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
+and boundary condition (specified by `boundary_condition` which can be either `IN` for purely-ingoing at the horizon or `UP` for purely-outgoing at infinity).
+"""
+function Teukolsky_radial(
+    s::Int, l::Int, m::Int, a, omega, boundary_condition
+)
+    if omega != 0
+        error("Cannot compute the Teukolsky function for a nonstatic (omega != 0) case without specifying rsin and rsout")
+    else
+        # Compute the SWSH eigenvalue
+        lambda = spin_weighted_spherical_eigenvalue(s, l, m)
+        # Fill in the mode information
+        mode = Mode(s, l, m, a, omega, lambda)
+        if boundary_condition == IN
+            teuk_func = Solutions.solve_static_Rin(s, l, m, a)
+        elseif boundary_condition == UP
+            teuk_func = Solutions.solve_static_Rup(s, l, m, a)
+        else
+            error("Does not understand the boundary condition applied to the solution")
+        end
+
+        return TeukolskyRadialFunction(
+            mode,
+            boundary_condition,
+            1,
+            missing,
+            missing,
+            missing,
+            teuk_func,
+            UNIT_TEUKOLSKY_TRANS
+        )
+    end
+end
+
+@doc raw"""
     Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=3, infinity_expansion_order::Int=6, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
@@ -206,49 +244,57 @@ and boundary condition (specified by `boundary_condition` which can be either `I
 
 The full GSN solution is converted to the corresponding Teukolsky solution $(R(r), dR/dr)$ and 
 the incidence, reflection and transmission amplitude are converted from the GSN formalism to the Teukolsky formalism 
-with the normalization convention that the transmission amplitude is normalized to 1 (i.e. `normalization_convention=UNIT_TEUKOLSKY_TRANS`). 
+with the normalization convention that the transmission amplitude is normalized to 1 (i.e. `normalization_convention=UNIT_TEUKOLSKY_TRANS`).
+
+Note, however, when `omega = 0`, the exact Teukolsky function expressed using Gauss hypergeometric functions will be returned (i.e., instead of using the GSN formalism). 
+In this case, only `s`, `l`, `m`, `a`, `omega`, `boundary_condition` will be parsed.
 """
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=3, infinity_expansion_order::Int=6,
     data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE
 )
-    # Solve for the GSN solution
-    gsn_func = GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
-
-    # Convert asymptotic amplitudes from GSN to Teukolsky formalism
-    if gsn_func.boundary_condition == IN
-        transmission_amplitude_conv_factor = ConversionFactors.Btrans(s, m, a, omega, gsn_func.mode.lambda)
-        incidence_amplitude = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
-        reflection_amplitude = ConversionFactors.Bref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
-    elseif gsn_func.boundary_condition == UP
-        transmission_amplitude_conv_factor = ConversionFactors.Ctrans(s, m, a, omega, gsn_func.mode.lambda)
-        incidence_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
-        reflection_amplitude = ConversionFactors.Cref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+    if omega == 0
+        return Teukolsky_radial(s, l, m, a, 0, boundary_condition)
     else
-        error("Does not understand the boundary condition applied to the solution")
+
+        # Solve for the GSN solution
+        gsn_func = GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+
+        # Convert asymptotic amplitudes from GSN to Teukolsky formalism
+        if gsn_func.boundary_condition == IN
+            transmission_amplitude_conv_factor = ConversionFactors.Btrans(s, m, a, omega, gsn_func.mode.lambda)
+            incidence_amplitude = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+            reflection_amplitude = ConversionFactors.Bref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+        elseif gsn_func.boundary_condition == UP
+            transmission_amplitude_conv_factor = ConversionFactors.Ctrans(s, m, a, omega, gsn_func.mode.lambda)
+            incidence_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+            reflection_amplitude = ConversionFactors.Cref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+        else
+            error("Does not understand the boundary condition applied to the solution")
+        end
+
+        # Convert the GSN solution to the Teukolsky solution
+        teuk_func(r) = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function(
+            gsn_func.mode.s,
+            gsn_func.mode.m,
+            gsn_func.mode.a,
+            gsn_func.mode.omega,
+            gsn_func.mode.lambda,
+            gsn_func.GSN_solution
+        )(r) / transmission_amplitude_conv_factor
+
+        return TeukolskyRadialFunction(
+            gsn_func.mode,
+            gsn_func.boundary_condition,
+            data_type(1),
+            incidence_amplitude,
+            reflection_amplitude,
+            gsn_func,
+            teuk_func,
+            UNIT_TEUKOLSKY_TRANS
+        )
     end
-
-    # Convert the GSN solution to the Teukolsky solution
-    teuk_func(r) = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function(
-        gsn_func.mode.s,
-        gsn_func.mode.m,
-        gsn_func.mode.a,
-        gsn_func.mode.omega,
-        gsn_func.mode.lambda,
-        gsn_func.GSN_solution
-    )(r) / transmission_amplitude_conv_factor
-
-    return TeukolskyRadialFunction(
-        gsn_func.mode,
-        gsn_func.boundary_condition,
-        data_type(1),
-        incidence_amplitude,
-        reflection_amplitude,
-        gsn_func,
-        teuk_func,
-        UNIT_TEUKOLSKY_TRANS
-    )
 end
 
 # The power of multiple dispatch
