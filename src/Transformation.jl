@@ -215,8 +215,12 @@ function eta(s::Int, m::Int, a, omega, lambda, r)
 end
 
 function eta_prime(s::Int, m::Int, a, omega, lambda, r)
-    # FIXME it might be a bit quicker to derive this by hand
-    return ForwardDiff.derivative(x -> eta(s, m, a, omega, lambda, x), r)
+    # eta'(r) = -c1/r^2 - 2c2/r^3 - 3c3/r^4 - 4c4/r^5
+    c1 = eta_coefficient(s, m, a, omega, lambda, -1)
+    c2 = eta_coefficient(s, m, a, omega, lambda, -2)
+    c3 = eta_coefficient(s, m, a, omega, lambda, -3)
+    c4 = eta_coefficient(s, m, a, omega, lambda, -4)
+    return -c1/r^2 - 2c2/r^3 - 3c3/r^4 - 4c4/r^5
 end
 
 end
