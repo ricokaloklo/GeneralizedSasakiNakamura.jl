@@ -83,6 +83,16 @@ function Xsoln_from_Phisoln(Phisoln)
     return rs -> XXprime_from_PhiPhiprime(Phisoln(rs)[1], Phisoln(rs)[2])
 end
 
+function Prufer_phase_func_from_phase_func(omega, phase_func)
+    Prufer_phase_func(rs) = -omega*rs + (1/(2im)) * log((1im*phase_func(rs) - omega)/(1im*phase_func(rs) + omega))
+    return Prufer_phase_func
+end
+
+function phase_func_from_Prufer_phase_func(omega, Prufer_phase_func)
+    phase_func(rs) = omega*cot(omega*rs + Prufer_phase_func(rs))
+    return phase_func
+end
+
 function solve_Phiup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     # Sanity check
     if rsin > rsout
