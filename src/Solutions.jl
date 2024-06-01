@@ -34,6 +34,20 @@ function GSN_Riccati_eqn!(du, u, p, rs)
     du[2] = -1im*_sU + _sF*u[2] - 1im*u[2]*u[2]
 end
 
+# Prufer phase function
+function GSN_Prufer_eqn!(du, u, p, rs)
+    r = r_from_rstar(p.a, rs)
+    _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
+    _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
+
+    #=
+    u[1] = -i log X = Phi = k cot(k*rs + \tilde{P})
+    u[2] = \tilde{P} is the Prufer phase function
+    =#
+    du[1] = -1im * p.omega*cot(p.omega*rs + u[2])
+    du[2] = -(p.omega + cot(p.omega*rs + u[2])*_sF + _sU/p.omega)*(sin(p.omega*rs + u[2]))^2
+end
+
 # Second-order linear ODE form of the GSN equation
 function GSN_linear_eqn!(du, u, p, rs)
     r = r_from_rstar(p.a, rs)
@@ -115,6 +129,7 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditi
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
     odeprob = ODEProblem(GSN_linear_eqn!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    return odesoln
 end
 
 function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
@@ -129,6 +144,7 @@ function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditi
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
     odeprob = ODEProblem(GSN_linear_eqn!, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    return odesoln
 end
 
 function Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
