@@ -250,13 +250,17 @@ function GSN_radial(
             Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
 
             # Xdown is a linear combination of Xin and Xup with the following coefficients
+            Btrans = Xin.transmission_amplitude # Should really be just 1
             Binc = Xin.incidence_amplitude
             Bref = Xin.reflection_amplitude
             Ctrans = Xup.transmission_amplitude # Should really be just 1
+            Cinc = Xup.incidence_amplitude
+            Cref = Xup.reflection_amplitude
 
             _full_Xdown_solution(rs) = Binc^-1 .* (Xin.GSN_solution(rs) .- Bref/Ctrans .* Xup.GSN_solution(rs))
 
             # These solutions are "normalized" in the sense that Xdown -> exp(-i*omega*rs) near infinity
+            # NOTE The definition of the "incidence" and "reflection" amplitudes follow 2101.04592, Eq. (93)
             return GSNRadialFunction(
                 Xin.mode,
                 DOWN,
@@ -265,8 +269,8 @@ function GSN_radial(
                 horizon_expansion_order,
                 infinity_expansion_order,
                 data_type(1),
-                missing,
-                missing,
+                Btrans/Binc - (Bref*Cref)/(Binc*Ctrans),
+                (-Bref*Cinc)/(Binc*Ctrans),
                 missing,
                 missing,
                 _full_Xdown_solution,
@@ -281,12 +285,16 @@ function GSN_radial(
 
             # Xout is a linear combination of Xin and Xup with the following coefficients
             Btrans = Xin.transmission_amplitude # Should really be just 1
+            Binc = Xin.incidence_amplitude
+            Bref = Xin.reflection_amplitude
+            Ctrans = Xup.transmission_amplitude # Should really be just 1
             Cinc = Xup.incidence_amplitude
             Cref = Xup.reflection_amplitude
 
             _full_Xout_solution(rs) = Cinc^-1 .* (Xup.GSN_solution(rs) .- Cref/Btrans .* Xin.GSN_solution(rs))
 
             # These solutions are "normalized" in the sense that Xout -> exp(i*p*rs) near the horizon
+            # NOTE The definition of the "incidence" and "reflection" amplitudes follow 2101.04592, Eq. (93)
             return GSNRadialFunction(
                 Xin.mode,
                 OUT,
@@ -295,8 +303,8 @@ function GSN_radial(
                 horizon_expansion_order,
                 infinity_expansion_order,
                 data_type(1),
-                missing,
-                missing,
+                Ctrans/Cinc - (Bref*Cref)/(Btrans*Cinc),
+                (-Binc*Cref)/(Btrans*Cinc),
                 missing,
                 missing,
                 _full_Xout_solution,
