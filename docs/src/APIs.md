@@ -42,6 +42,8 @@ This is an enum type that can take either one of the two values
 | :--- | :--- |
 | `IN` | purely ingoing at the horizon | 
 | `UP` | purely outgoing at infinity |
+| `OUT` | purely outgoing at the horizon |
+| `DOWN`| purely ingoing at infinity |
 
 #### NormalizationConvention
 This is an enum type that can take either one of the two values
