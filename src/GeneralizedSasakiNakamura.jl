@@ -353,7 +353,14 @@ end
     Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=3, infinity_expansion_order::Int=6, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
-and boundary condition (specified by `boundary_condition` which can be either `IN` for purely-ingoing at the horizon or `UP` for purely-outgoing at infinity) using the GSN formalism with [`GSN_radial`](@ref GeneralizedSasakiNakamura.GSN_radial).
+and boundary condition specified by `boundary_condition`, which can be either
+
+    - `IN` for purely-ingoing at the horizon,
+    - `UP` for purely-outgoing at infinity,
+    - `OUT` for purely-outgoing at the horizon,
+    - `DOWN` for purely-ingoing at infinity.
+
+Note that the `OUT` and `DOWN` solutions are constructed by linearly combining the `IN` and `UP` solutions, respectively.
 
 The full GSN solution is converted to the corresponding Teukolsky solution $(R(r), dR/dr)$ and 
 the incidence, reflection and transmission amplitude are converted from the GSN formalism to the Teukolsky formalism 
@@ -383,6 +390,18 @@ function Teukolsky_radial(
             transmission_amplitude_conv_factor = ConversionFactors.Ctrans(s, m, a, omega, gsn_func.mode.lambda)
             incidence_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
             reflection_amplitude = ConversionFactors.Cref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+        elseif gsn_func.boundary_condition == DOWN
+            # NOTE While for a DOWN solution, it makes no physical sense to talk about incidence and reflection amplitude
+            # The "transmission amplitude" transforms like Binc
+            transmission_amplitude_conv_factor = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda)
+            incidence_amplitude = missing
+            reflection_amplitude = missing
+        elseif gsn_func.boundary_condition == OUT
+            # NOTE While for a OUT solution, it makes no physical sense to talk about incidence and reflection amplitude
+            # The "tranmission amplitude" transforms like Cinc
+            transmission_amplitude_conv_factor = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda)
+            incidence_amplitude = missing
+            reflection_amplitude = missing
         else
             error("Does not understand the boundary condition applied to the solution")
         end
