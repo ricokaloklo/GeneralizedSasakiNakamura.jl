@@ -19,11 +19,14 @@ using DifferentialEquations # Should have been compiled by now
 export GSN_radial, Teukolsky_radial
 
 # IN for purely-ingoing at the horizon and UP for purely-outgoing at infinity
+# OUT for purely-outgoing at the horizon and DOWN for purely-ingoing at infinity
 @enum BoundaryCondition begin
     IN = 1
     UP = 2
+    OUT = 3
+    DOWN = 4
 end
-export IN, UP # Use these to specify the BC
+export IN, UP, OUT, DOWN # Use these to specify the BC
 
 # Normalization convention, UNIT_GSN_TRANS means that the transmission amplitude for GSN functions is normalized to 1, vice versa
 @enum NormalizationConvention begin
@@ -145,7 +148,14 @@ end
     GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=3, infinity_expansion_order::Int=6, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
-and boundary condition (specified by `boundary_condition` which can be either `IN` for purely-ingoing at the horizon or `UP` for purely-outgoing at infinity).
+and boundary condition specified by `boundary_condition`, which can be either
+
+    - `IN` for purely-ingoing at the horizon,
+    - `UP` for purely-outgoing at infinity,
+    - `OUT` for purely-outgoing at the horizon,
+    - `DOWN` for purely-ingoing at infinity.
+
+Note that the `OUT` and `DOWN` solutions are constructed by linearly combining the `IN` and `UP` solutions, respectively.
 
 The GSN function is numerically solved in the interval of *tortoise coordinates* $r_{*} \in$ `[rsin, rsout]` using the ODE solver (from `DifferentialEquations.jl`) specified by `ODE_algorithm` (default: `Vern9()`) 
 with tolerance specified by `tolerance` (default: `1e-12`). By default the data type used is `ComplexF64` (i.e. double-precision floating-point number) but it can be changed by 
@@ -230,6 +240,66 @@ function GSN_radial(
                 missing,
                 Phiupsoln,
                 semianalytical_Xupsoln,
+                UNIT_GSN_TRANS
+            )
+        elseif boundary_condition == DOWN
+            # Construct Xdown from Xin and Xup, instead of solving the ODE numerically with the boundary condition
+
+            # Solve for Xin *and* Xup first
+            Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+            Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+
+            # Xdown is a linear combination of Xin and Xup with the following coefficients
+            Binc = Xin.incidence_amplitude
+            Bref = Xin.reflection_amplitude
+            Ctrans = Xup.transmission_amplitude # Should really be just 1
+
+            _full_Xdown_solution(rs) = Binc^-1 .* (Xin.GSN_solution(rs) .- Bref/Ctrans .* Xup.GSN_solution(rs))
+
+            # These solutions are "normalized" in the sense that Xdown -> exp(-i*omega*rs) near infinity
+            return GSNRadialFunction(
+                Xin.mode,
+                DOWN,
+                rsin,
+                rsout,
+                horizon_expansion_order,
+                infinity_expansion_order,
+                data_type(1),
+                missing,
+                missing,
+                missing,
+                missing,
+                _full_Xdown_solution,
+                UNIT_GSN_TRANS
+            )
+        elseif boundary_condition == OUT
+            # Construct Xout from Xin and Xup, instead of solving the ODE numerically with the boundary condition
+
+            # Solve for Xin *and* Xup first
+            Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+            Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+
+            # Xout is a linear combination of Xin and Xup with the following coefficients
+            Btrans = Xin.transmission_amplitude # Should really be just 1
+            Cinc = Xup.incidence_amplitude
+            Cref = Xup.reflection_amplitude
+
+            _full_Xout_solution(rs) = Cinc^-1 .* (Xup.GSN_solution(rs) .- Cref/Btrans .* Xin.GSN_solution(rs))
+
+            # These solutions are "normalized" in the sense that Xout -> exp(i*p*rs) near the horizon
+            return GSNRadialFunction(
+                Xin.mode,
+                OUT,
+                rsin,
+                rsout,
+                horizon_expansion_order,
+                infinity_expansion_order,
+                data_type(1),
+                missing,
+                missing,
+                missing,
+                missing,
+                _full_Xout_solution,
                 UNIT_GSN_TRANS
             )
         else
