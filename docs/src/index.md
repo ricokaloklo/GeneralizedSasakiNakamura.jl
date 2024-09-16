@@ -33,6 +33,8 @@ Works well at *both low and high frequencies*, and takes only a few tens of mill
 
 *(There was no caching! We solved the equation on-the-fly! The notebook generating this animation can be found [here](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb))*
 
+Static/zero-frequency solutions are solved analytically with Gauss hypergeometric functions.
+
 ### Solutions that are accurate everywhere
 Numerical solutions are *smoothly stitched* to analytical ansatzes near the horizon and infinity at user-specified locations `rsin` and `rsout` respectively:
 
