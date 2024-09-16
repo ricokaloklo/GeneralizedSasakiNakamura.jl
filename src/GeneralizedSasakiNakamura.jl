@@ -399,17 +399,19 @@ function Teukolsky_radial(
             incidence_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
             reflection_amplitude = ConversionFactors.Cref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
         elseif gsn_func.boundary_condition == DOWN
-            # NOTE While for a DOWN solution, it makes no physical sense to talk about incidence and reflection amplitude
             # The "transmission amplitude" transforms like Binc
             transmission_amplitude_conv_factor = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda)
-            incidence_amplitude = missing
-            reflection_amplitude = missing
+            # The "incidence amplitude" transforms like Btrans
+            incidence_amplitude = ConversionFactors.Btrans(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+            # The "reflection amplitude" transforms like Cinc
+            reflection_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
         elseif gsn_func.boundary_condition == OUT
-            # NOTE While for a OUT solution, it makes no physical sense to talk about incidence and reflection amplitude
             # The "tranmission amplitude" transforms like Cinc
             transmission_amplitude_conv_factor = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda)
-            incidence_amplitude = missing
-            reflection_amplitude = missing
+            # The "incidence amplitude" transforms like Bref
+            incidence_amplitude = ConversionFactors.Bref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+            # The "reflection amplitude" transformslike Binc
+            reflection_amplitude = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
         else
             error("Does not understand the boundary condition applied to the solution")
         end
