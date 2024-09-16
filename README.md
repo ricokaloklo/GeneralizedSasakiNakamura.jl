@@ -10,6 +10,8 @@ The code is capable of handling *both in-going and out-going* radiation of scala
 
 The angular Teukolsky equation is solved with an accompanying julia package [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) using a spectral decomposition method.
 
+The paper describing both the GSN formalism and the implementation can be found in [2306.16469](https://arxiv.org/abs/2306.16469). A set of Mathematica notebooks deriving all the equations used in the code can be found in [10.5281/zenodo.8080241](https://zenodo.org/records/8080242).
+
 ## Installation
 To install the package using the Julia package manager, simply type the following in the Julia REPL:
 ```julia
