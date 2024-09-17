@@ -36,7 +36,7 @@ r_from_rstar
 
 ## Types
 #### BoundaryCondition
-This is an enum type that can take either one of the two values
+This is an enum type that can take either one of the four values
 
 | value |  |
 | :--- | :--- |
