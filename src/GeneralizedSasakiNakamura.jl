@@ -109,42 +109,6 @@ function Base.show(io::IO, ::MIME"text/plain", teuk_func::TeukolskyRadialFunctio
 end
 
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition)
-
-Compute the exact *static* (`omega = 0`) GSN function using Gauss hypergeometric functions 
-for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
-and boundary condition (specified by `boundary_condition` which can be either `IN` for purely-ingoing at the horizon or `UP` for purely-outgoing at infinity).
-
-Note that the GSN function is transformed from the exact Teukolsky function using the GSN transformation.
-"""
-function GSN_radial(
-    s::Int, l::Int, m::Int, a, omega, boundary_condition
-)
-    if omega != 0
-        error("Cannot compute the GSN function for a nonstatic (omega != 0) case without specifying rsin and rsout")
-    else
-        teuk_func = Teukolsky_radial(s, l, m, a, omega, boundary_condition)
-        GSN_solution = Solutions.Sasaki_Nakamura_function_from_Teukolsky_radial_function(s, m, a, omega, teuk_func.mode.lambda, teuk_func.Teukolsky_solution)
-
-        return GSNRadialFunction(
-                teuk_func.mode,
-                boundary_condition,
-                missing,
-                missing,
-                -1,
-                -1,
-                missing,
-                missing,
-                missing,
-                missing,
-                missing,
-                GSN_solution,
-                UNIT_TEUKOLSKY_TRANS
-            )
-    end
-end
-
-@doc raw"""
     GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=3, infinity_expansion_order::Int=6, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
@@ -316,46 +280,44 @@ function GSN_radial(
     end
 end
 
-# The power of multiple dispatch
-(gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
-
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition)
+    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition)
 
-Compute the exact *static* (`omega = 0`) Teukolsky function using Gauss hypergeometric functions 
+Compute the exact *static* (`omega = 0`) GSN function using Gauss hypergeometric functions 
 for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
 and boundary condition (specified by `boundary_condition` which can be either `IN` for purely-ingoing at the horizon or `UP` for purely-outgoing at infinity).
+
+Note that the GSN function is transformed from the exact Teukolsky function using the GSN transformation.
 """
-function Teukolsky_radial(
+function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition
 )
     if omega != 0
-        error("Cannot compute the Teukolsky function for a nonstatic (omega != 0) case without specifying rsin and rsout")
+        error("Cannot compute the GSN function for a nonstatic (omega != 0) case without specifying rsin and rsout")
     else
-        # Compute the SWSH eigenvalue
-        lambda = spin_weighted_spherical_eigenvalue(s, l, m)
-        # Fill in the mode information
-        mode = Mode(s, l, m, a, omega, lambda)
-        if boundary_condition == IN
-            teuk_func = Solutions.solve_static_Rin(s, l, m, a)
-        elseif boundary_condition == UP
-            teuk_func = Solutions.solve_static_Rup(s, l, m, a)
-        else
-            error("Does not understand the boundary condition applied to the solution")
-        end
+        teuk_func = Teukolsky_radial(s, l, m, a, omega, boundary_condition)
+        GSN_solution = Solutions.Sasaki_Nakamura_function_from_Teukolsky_radial_function(s, m, a, omega, teuk_func.mode.lambda, teuk_func.Teukolsky_solution)
 
-        return TeukolskyRadialFunction(
-            mode,
-            boundary_condition,
-            1,
-            missing,
-            missing,
-            missing,
-            teuk_func,
-            UNIT_TEUKOLSKY_TRANS
-        )
+        return GSNRadialFunction(
+                teuk_func.mode,
+                boundary_condition,
+                missing,
+                missing,
+                -1,
+                -1,
+                missing,
+                missing,
+                missing,
+                missing,
+                missing,
+                GSN_solution,
+                UNIT_TEUKOLSKY_TRANS
+            )
     end
 end
+
+# The power of multiple dispatch
+(gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
 
 @doc raw"""
     Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=3, infinity_expansion_order::Int=6, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
@@ -433,6 +395,44 @@ function Teukolsky_radial(
             incidence_amplitude,
             reflection_amplitude,
             gsn_func,
+            teuk_func,
+            UNIT_TEUKOLSKY_TRANS
+        )
+    end
+end
+
+@doc raw"""
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition)
+
+Compute the exact *static* (`omega = 0`) Teukolsky function using Gauss hypergeometric functions 
+for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
+and boundary condition (specified by `boundary_condition` which can be either `IN` for purely-ingoing at the horizon or `UP` for purely-outgoing at infinity).
+"""
+function Teukolsky_radial(
+    s::Int, l::Int, m::Int, a, omega, boundary_condition
+)
+    if omega != 0
+        error("Cannot compute the Teukolsky function for a nonstatic (omega != 0) case without specifying rsin and rsout")
+    else
+        # Compute the SWSH eigenvalue
+        lambda = spin_weighted_spherical_eigenvalue(s, l, m)
+        # Fill in the mode information
+        mode = Mode(s, l, m, a, omega, lambda)
+        if boundary_condition == IN
+            teuk_func = Solutions.solve_static_Rin(s, l, m, a)
+        elseif boundary_condition == UP
+            teuk_func = Solutions.solve_static_Rup(s, l, m, a)
+        else
+            error("Does not understand the boundary condition applied to the solution")
+        end
+
+        return TeukolskyRadialFunction(
+            mode,
+            boundary_condition,
+            1,
+            missing,
+            missing,
+            missing,
             teuk_func,
             UNIT_TEUKOLSKY_TRANS
         )
