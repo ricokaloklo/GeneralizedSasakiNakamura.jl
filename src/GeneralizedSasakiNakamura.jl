@@ -398,13 +398,6 @@ function Teukolsky_radial(
     end
 end
 
-@doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition)
-
-Compute the exact *static* (`omega = 0`) Teukolsky function using Gauss hypergeometric functions 
-for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
-and boundary condition (specified by `boundary_condition` which can be either `IN` for purely-ingoing at the horizon or `UP` for purely-outgoing at infinity).
-"""
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition
 )
