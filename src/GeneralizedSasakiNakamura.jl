@@ -90,6 +90,10 @@ function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
     print(io, ")")
 end
 
+function Base.show(io::IO, gsn_func::GSNRadialFunction)
+    print(io, "GSNRadialFunction(mode="); show(io, "text/plain", gsn_func.mode); print(", boundary_condition=$(gsn_func.boundary_condition))")
+end
+
 struct TeukolskyRadialFunction
     mode::Mode # Information about the mode
     boundary_condition::BoundaryCondition # The boundary condition that this radial function statisfies
@@ -112,6 +116,10 @@ function Base.show(io::IO, ::MIME"text/plain", teuk_func::TeukolskyRadialFunctio
     println(io, "    reflection_amplitude=$(teuk_func.reflection_amplitude),")
     println(io, "    normalization_convention=$(teuk_func.normalization_convention)")
     print(io, ")")
+end
+
+function Base.show(io::IO, teuk_func::TeukolskyRadialFunction)
+    print(io, "TeukolskyRadialFunction(mode="); show(io, "text/plain", teuk_func.mode); print(", boundary_condition=$(teuk_func.boundary_condition))")
 end
 
 @doc raw"""
