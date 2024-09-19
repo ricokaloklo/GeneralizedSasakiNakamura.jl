@@ -18,6 +18,12 @@ using DifferentialEquations # Should have been compiled by now
 
 export GSN_radial, Teukolsky_radial
 
+# Default values
+_DEFAULT_rsin = -50
+_DEFAULT_rsout = 1000
+_DEFAULT_horizon_expansion_order = 3
+_DEFAULT_infinity_expansion_order = 6
+
 # IN for purely-ingoing at the horizon and UP for purely-outgoing at infinity
 # OUT for purely-outgoing at the horizon and DOWN for purely-ingoing at infinity
 @enum BoundaryCondition begin
@@ -56,8 +62,8 @@ struct GSNRadialFunction
     boundary_condition::BoundaryCondition # The boundary condition that this radial function statisfies
     rsin # The numerical inner boundary where the GSN equation is numerically evolved
     rsout # The numerical outer boundary where the GSN equation is numerically evolved
-    horizon_expansion_order::Int # The order of the asymptotic expansion at the horizon
-    infinity_expansion_order::Int # The order of the asymptotic expansion at infinity
+    horizon_expansion_order::Union{Int, Missing} # The order of the asymptotic expansion at the horizon
+    infinity_expansion_order::Union{Int, Missing} # The order of the asymptotic expansion at infinity
     transmission_amplitude # In GSN formalism
     incidence_amplitude # In GSN formalism
     reflection_amplitude # In GSN formalism
@@ -84,6 +90,10 @@ function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
     print(io, ")")
 end
 
+function Base.show(io::IO, gsn_func::GSNRadialFunction)
+    print(io, "GSNRadialFunction(mode="); show(io, "text/plain", gsn_func.mode); print(", boundary_condition=$(gsn_func.boundary_condition))")
+end
+
 struct TeukolskyRadialFunction
     mode::Mode # Information about the mode
     boundary_condition::BoundaryCondition # The boundary condition that this radial function statisfies
@@ -108,8 +118,12 @@ function Base.show(io::IO, ::MIME"text/plain", teuk_func::TeukolskyRadialFunctio
     print(io, ")")
 end
 
+function Base.show(io::IO, teuk_func::TeukolskyRadialFunction)
+    print(io, "TeukolskyRadialFunction(mode="); show(io, "text/plain", teuk_func.mode); print(", boundary_condition=$(teuk_func.boundary_condition))")
+end
+
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=3, infinity_expansion_order::Int=6, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -136,7 +150,7 @@ Return a `GSNRadialFunction` object which contains all the information about the
 """
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
-    horizon_expansion_order::Int=3, infinity_expansion_order::Int=6,
+    horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
     data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE
 )
     if omega == 0
@@ -280,20 +294,11 @@ function GSN_radial(
     end
 end
 
-@doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition)
-
-Compute the exact *static* (`omega = 0`) GSN function using Gauss hypergeometric functions 
-for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
-and boundary condition (specified by `boundary_condition` which can be either `IN` for purely-ingoing at the horizon or `UP` for purely-outgoing at infinity).
-
-Note that the GSN function is transformed from the exact Teukolsky function using the GSN transformation.
-"""
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition
 )
     if omega != 0
-        error("Cannot compute the GSN function for a nonstatic (omega != 0) case without specifying rsin and rsout")
+        return GSN_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout)
     else
         teuk_func = Teukolsky_radial(s, l, m, a, omega, boundary_condition)
         GSN_solution = Solutions.Sasaki_Nakamura_function_from_Teukolsky_radial_function(s, m, a, omega, teuk_func.mode.lambda, teuk_func.Teukolsky_solution)
@@ -303,8 +308,8 @@ function GSN_radial(
                 boundary_condition,
                 missing,
                 missing,
-                -1,
-                -1,
+                missing,
+                missing,
                 missing,
                 missing,
                 missing,
@@ -316,11 +321,50 @@ function GSN_radial(
     end
 end
 
+@doc raw"""
+    GSN_radial(s::Int, l::Int, m::Int, a, omega)
+
+Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
+with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
+
+Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
+while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
+"""
+function GSN_radial(s::Int, l::Int, m::Int, a, omega)
+    # The maximum expansion order to use
+    _MAX_horizon_expansion_order = 100
+    _MAX_infinity_expansion_order = 100
+    # Step size when increasing the expansion order
+    _STEP_horizon_expansion_order = 5
+    _STEP_infinity_expansion_order = 5
+
+    if omega == 0
+        Xin = GSN_radial(s, l, m, a, omega, IN)
+        Xup = GSN_radial(s, l, m, a, omega, UP)
+    else
+        # Solve for Xin and Xup using the default settings
+        Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=_DEFAULT_horizon_expansion_order, infinity_expansion_order=_DEFAULT_infinity_expansion_order)
+        Xup = GSN_radial(s, l, m, a, omega, UP, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=_DEFAULT_horizon_expansion_order, infinity_expansion_order=_DEFAULT_infinity_expansion_order)
+
+        # Bump up the expansion order until the solution is "sane"
+        while(!Solutions.check_XinXup_sanity(Xin, Xup))
+            new_horizon_expansion_order = Xin.horizon_expansion_order + _STEP_horizon_expansion_order >= _MAX_horizon_expansion_order ? _MAX_horizon_expansion_order : Xin.horizon_expansion_order + _STEP_horizon_expansion_order
+            new_infinity_expansion_order = Xup.infinity_expansion_order + _STEP_infinity_expansion_order >= _MAX_infinity_expansion_order ? _MAX_infinity_expansion_order : Xup.infinity_expansion_order + _STEP_infinity_expansion_order
+
+            # Re-solve Xin and Xup using the updated settings
+            Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=new_horizon_expansion_order, infinity_expansion_order=new_infinity_expansion_order)
+            Xup = GSN_radial(s, l, m, a, omega, UP, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=new_horizon_expansion_order, infinity_expansion_order=new_infinity_expansion_order)
+        end
+    end
+
+    return (Xin, Xup)
+end
+
 # The power of multiple dispatch
 (gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
 
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=3, infinity_expansion_order::Int=6, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -341,7 +385,7 @@ In this case, only `s`, `l`, `m`, `a`, `omega`, `boundary_condition` will be par
 """
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
-    horizon_expansion_order::Int=3, infinity_expansion_order::Int=6,
+    horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
     data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE
 )
     if omega == 0
@@ -401,18 +445,11 @@ function Teukolsky_radial(
     end
 end
 
-@doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition)
-
-Compute the exact *static* (`omega = 0`) Teukolsky function using Gauss hypergeometric functions 
-for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
-and boundary condition (specified by `boundary_condition` which can be either `IN` for purely-ingoing at the horizon or `UP` for purely-outgoing at infinity).
-"""
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition
 )
     if omega != 0
-        error("Cannot compute the Teukolsky function for a nonstatic (omega != 0) case without specifying rsin and rsout")
+        return Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout)
     else
         # Compute the SWSH eigenvalue
         lambda = spin_weighted_spherical_eigenvalue(s, l, m)
@@ -437,6 +474,29 @@ function Teukolsky_radial(
             UNIT_TEUKOLSKY_TRANS
         )
     end
+end
+
+@doc raw"""
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega)
+
+Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
+with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
+
+Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
+while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
+"""
+function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega)
+    if omega == 0
+        Rin = Teukolsky_radial(s, l, m, a, omega, IN)
+        Rup = Teukolsky_radial(s, l, m, a, omega, UP)
+    else
+        # NOTE This is not the most efficient implementation but ensures self-consistency
+        Xin, Xup = GSN_radial(s, l, m, a, omega) # This is simply to figure out what expansion orders to use
+        Rin = Teukolsky_radial(s, l, m, a, omega, IN, Xin.rsin, Xin.rsout; horizon_expansion_order=Xin.horizon_expansion_order, infinity_expansion_order=Xin.infinity_expansion_order)
+        Rup = Teukolsky_radial(s, l, m, a, omega, UP, Xup.rsin, Xup.rsout; horizon_expansion_order=Xup.horizon_expansion_order, infinity_expansion_order=Xup.infinity_expansion_order)
+    end
+
+    return (Rin, Rup)
 end
 
 # The power of multiple dispatch

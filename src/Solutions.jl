@@ -682,6 +682,36 @@ function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizo
     end 
 end
 
+function check_XinXup_sanity(Xin, Xup; tolerance=1e-6)
+    #=
+    Check if the X_in and X_up solutions are sane by checking if the identity
+
+    Binc/Cinc = (p*c0)/(omega*eta(r_+)) [note: this is Eq. (42) in the paper]
+
+    is satisfied within a specified tolerance
+    =#
+
+    # Check if the modes are the same
+    if Xin.mode != Xup.mode
+        throw(ArgumentError("The modes of Xin and Xup are different"))
+    end
+
+    # Calculate what Binc/Cinc is expected to be
+    p = Xin.mode.omega - Xin.mode.m*omega_horizon(Xin.mode.a)
+    c0 = eta_coefficient(Xin.mode.s, Xin.mode.m, Xin.mode.a, Xin.mode.omega, Xin.mode.lambda, 0)
+    eta_at_rplus = eta(Xin.mode.s, Xin.mode.m, Xin.mode.a, Xin.mode.omega, Xin.mode.lambda, r_plus(Xin.mode.a))
+    expected_value = (p*c0)/(Xin.mode.omega*eta_at_rplus)
+
+    # Calculate the actual value
+    actual_value = Xin.incidence_amplitude/Xup.incidence_amplitude
+
+    if abs(actual_value - expected_value) > tolerance
+        return false
+    else
+        return true
+    end
+end
+
 # Some helper functions for static modes
 function x_from_r(a, r)
     #=
