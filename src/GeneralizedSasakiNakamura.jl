@@ -313,6 +313,40 @@ function GSN_radial(
     end
 end
 
+@doc raw"""
+    GSN_radial(s::Int, l::Int, m::Int, a, omega)
+
+Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
+with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
+
+Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
+while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
+"""
+function GSN_radial(s::Int, l::Int, m::Int, a, omega)
+    # The maximum expansion order to use
+    _MAX_horizon_expansion_order = 100
+    _MAX_infinity_expansion_order = 100
+    # Step size when increasing the expansion order
+    _STEP_horizon_expansion_order = 5
+    _STEP_infinity_expansion_order = 5
+
+    # Solve for Xin and Xup using the default settings
+    Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=_DEFAULT_horizon_expansion_order, infinity_expansion_order=_DEFAULT_infinity_expansion_order)
+    Xup = GSN_radial(s, l, m, a, omega, UP, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=_DEFAULT_horizon_expansion_order, infinity_expansion_order=_DEFAULT_infinity_expansion_order)
+
+    # Bump up the expansion order until the solution is "sane"
+    while(!Solutions.check_XinXup_sanity(Xin, Xup))
+        new_horizon_expansion_order = Xin.horizon_expansion_order + _STEP_horizon_expansion_order >= _MAX_horizon_expansion_order ? _MAX_horizon_expansion_order : Xin.horizon_expansion_order + _STEP_horizon_expansion_order
+        new_infinity_expansion_order = Xup.infinity_expansion_order + _STEP_infinity_expansion_order >= _MAX_infinity_expansion_order ? _MAX_infinity_expansion_order : Xup.infinity_expansion_order + _STEP_infinity_expansion_order
+
+        # Re-solve Xin and Xup using the updated settings
+        Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=new_horizon_expansion_order, infinity_expansion_order=new_infinity_expansion_order)
+        Xup = GSN_radial(s, l, m, a, omega, UP, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=new_horizon_expansion_order, infinity_expansion_order=new_infinity_expansion_order)
+    end
+
+    return (Xin, Xup)
+end
+
 # The power of multiple dispatch
 (gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
 
@@ -427,6 +461,24 @@ function Teukolsky_radial(
             UNIT_TEUKOLSKY_TRANS
         )
     end
+end
+
+@doc raw"""
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega)
+
+Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
+with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
+
+Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
+while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
+"""
+function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega)
+    # NOTE This is not the most efficient implementation but ensures self-consistency
+    Xin, Xup = GSN_radial(s, l, m, a, omega) # This is simply to figure out what expansion orders to use
+    Rin = Teukolsky_radial(s, l, m, a, omega, IN, Xin.rsin, Xin.rsout; horizon_expansion_order=Xin.horizon_expansion_order, infinity_expansion_order=Xin.infinity_expansion_order)
+    Rup = Teukolsky_radial(s, l, m, a, omega, UP, Xup.rsin, Xup.rsout; horizon_expansion_order=Xup.horizon_expansion_order, infinity_expansion_order=Xup.infinity_expansion_order)
+
+    return (Rin, Rup)
 end
 
 # The power of multiple dispatch
