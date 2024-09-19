@@ -4,7 +4,7 @@ using ForwardDiff
 using ..Kerr
 using ..Potentials
 
-export alpha, alpha_prime, beta, beta_prime, eta, eta_prime
+export alpha, alpha_prime, beta, beta_prime, eta_coefficient, eta, eta_prime
 
 const I = 1im # Mathematica being Mathematica
 
