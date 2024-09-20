@@ -91,7 +91,7 @@ function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
 end
 
 function Base.show(io::IO, gsn_func::GSNRadialFunction)
-    print(io, "GSNRadialFunction(mode="); show(io, "text/plain", gsn_func.mode); print(", boundary_condition=$(gsn_func.boundary_condition))")
+    print(io, "GSNRadialFunction(mode=Mode(s=$(gsn_func.mode.s), l=$(gsn_func.mode.l), m=$(gsn_func.mode.m), a=$(gsn_func.mode.a), omega=$(gsn_func.mode.omega), lambda=$(gsn_func.mode.lambda)), boundary_condition=$(gsn_func.boundary_condition))")
 end
 
 struct TeukolskyRadialFunction
@@ -119,7 +119,7 @@ function Base.show(io::IO, ::MIME"text/plain", teuk_func::TeukolskyRadialFunctio
 end
 
 function Base.show(io::IO, teuk_func::TeukolskyRadialFunction)
-    print(io, "TeukolskyRadialFunction(mode="); show(io, "text/plain", teuk_func.mode); print(", boundary_condition=$(teuk_func.boundary_condition))")
+    print(io, "TeukolskyRadialFunction(mode=Mode(s=$(teuk_func.mode.s), l=$(teuk_func.mode.l), m=$(teuk_func.mode.m), a=$(teuk_func.mode.a), omega=$(teuk_func.mode.omega), lambda=$(teuk_func.mode.lambda)), boundary_condition=$(teuk_func.boundary_condition))")
 end
 
 @doc raw"""
