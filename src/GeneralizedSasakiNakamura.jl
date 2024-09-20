@@ -322,7 +322,7 @@ function GSN_radial(
 end
 
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega)
+    GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
@@ -330,7 +330,7 @@ with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-
 Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 """
-function GSN_radial(s::Int, l::Int, m::Int, a, omega)
+function GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
     # The maximum expansion order to use
     _MAX_horizon_expansion_order = 100
     _MAX_infinity_expansion_order = 100
@@ -343,8 +343,14 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega)
         Xup = GSN_radial(s, l, m, a, omega, UP)
     else
         # Solve for Xin and Xup using the default settings
-        Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=_DEFAULT_horizon_expansion_order, infinity_expansion_order=_DEFAULT_infinity_expansion_order)
-        Xup = GSN_radial(s, l, m, a, omega, UP, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=_DEFAULT_horizon_expansion_order, infinity_expansion_order=_DEFAULT_infinity_expansion_order)
+        Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout,
+            horizon_expansion_order=_DEFAULT_horizon_expansion_order,
+            infinity_expansion_order=_DEFAULT_infinity_expansion_order,
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+        Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout,
+            horizon_expansion_order=_DEFAULT_horizon_expansion_order,
+            infinity_expansion_order=_DEFAULT_infinity_expansion_order,
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
 
         # Bump up the expansion order until the solution is "sane"
         while(!Solutions.check_XinXup_sanity(Xin, Xup))
@@ -352,8 +358,14 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega)
             new_infinity_expansion_order = Xup.infinity_expansion_order + _STEP_infinity_expansion_order >= _MAX_infinity_expansion_order ? _MAX_infinity_expansion_order : Xup.infinity_expansion_order + _STEP_infinity_expansion_order
 
             # Re-solve Xin and Xup using the updated settings
-            Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=new_horizon_expansion_order, infinity_expansion_order=new_infinity_expansion_order)
-            Xup = GSN_radial(s, l, m, a, omega, UP, _DEFAULT_rsin, _DEFAULT_rsout, horizon_expansion_order=new_horizon_expansion_order, infinity_expansion_order=new_infinity_expansion_order)
+            Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout,
+                horizon_expansion_order=new_horizon_expansion_order,
+                infinity_expansion_order=new_infinity_expansion_order,
+                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+            Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout,
+                horizon_expansion_order=new_horizon_expansion_order,
+                infinity_expansion_order=new_infinity_expansion_order,
+                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
         end
     end
 
@@ -477,7 +489,7 @@ function Teukolsky_radial(
 end
 
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega)
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
@@ -485,15 +497,21 @@ with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-
 Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 """
-function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega)
+function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
     if omega == 0
         Rin = Teukolsky_radial(s, l, m, a, omega, IN)
         Rup = Teukolsky_radial(s, l, m, a, omega, UP)
     else
         # NOTE This is not the most efficient implementation but ensures self-consistency
-        Xin, Xup = GSN_radial(s, l, m, a, omega) # This is simply to figure out what expansion orders to use
-        Rin = Teukolsky_radial(s, l, m, a, omega, IN, Xin.rsin, Xin.rsout; horizon_expansion_order=Xin.horizon_expansion_order, infinity_expansion_order=Xin.infinity_expansion_order)
-        Rup = Teukolsky_radial(s, l, m, a, omega, UP, Xup.rsin, Xup.rsout; horizon_expansion_order=Xup.horizon_expansion_order, infinity_expansion_order=Xup.infinity_expansion_order)
+        Xin, Xup = GSN_radial(s, l, m, a, omega; rsin=rsin, rsout=rsout, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance) # This is simply to figure out what expansion orders to use
+        Rin = Teukolsky_radial(s, l, m, a, omega, IN, Xin.rsin, Xin.rsout;
+            horizon_expansion_order=Xin.horizon_expansion_order,
+            infinity_expansion_order=Xin.infinity_expansion_order,
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+        Rup = Teukolsky_radial(s, l, m, a, omega, UP, Xup.rsin, Xup.rsout;
+            horizon_expansion_order=Xup.horizon_expansion_order,
+            infinity_expansion_order=Xup.infinity_expansion_order,
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
     end
 
     return (Rin, Rup)
