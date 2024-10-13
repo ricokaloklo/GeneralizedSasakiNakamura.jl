@@ -1,7 +1,7 @@
 name = "GeneralizedSasakiNakamura"
 uuid = "7d2aac85-6cc1-40c7-a4aa-e1a43f13f131"
 authors = ["Rico Ka Lok Lo"]
-version = "0.4.2"
+version = "0.4.3"
 
 [deps]
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
