@@ -14,11 +14,11 @@ TaylorSeries = "6aa5eb33-94cf-58f4-a9d0-e4b2c4fc25ea"
 
 [compat]
 DifferentialEquations = "7"
-ForwardDiff = "0.10"
-Interpolations = "0.14"
+ForwardDiff = "^0.10"
+Interpolations = "^0.15"
 Roots = "2"
-SpinWeightedSpheroidalHarmonics = "^0.5"
-TaylorSeries = "0.15"
+SpinWeightedSpheroidalHarmonics = "^1"
+TaylorSeries = "^0.18"
 HypergeometricFunctions = "^0.3.23"
 julia = "^1.8"
 
