@@ -69,7 +69,7 @@ function solve_r_from_rho(
     return r_from_rho
 end
 
-function GSN_eqn_in_rho!(du, u, p, rho)
+function GSN_linear_eqn!(du, u, p, rho)
     r = p.r_from_rho(rho)
     _sF = exp(1im*p.beta)*sF(p.s, p.m, p.a, p.omega, p.lambda, r)
     _sU = exp(2im*p.beta)*sU(p.s, p.m, p.a, p.omega, p.lambda, r)
@@ -85,7 +85,7 @@ function GSN_eqn_in_rho!(du, u, p, rho)
     du[2] = _sF*u[2] + _sU*u[1]
 end
 
-function Xup_in_rho_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoout; order::Int=-1)
+function Xup_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoout; order::Int=-1)
     outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
     fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
     dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=order)
@@ -105,13 +105,13 @@ end
 function solve_X_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rhospan, initial_conditions; dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, r_from_rho=r_from_rho)
 
-    odeprob = ODEProblem(GSN_eqn_in_rho!, initial_conditions, rhospan, p)
+    odeprob = ODEProblem(GSN_linear_eqn!, initial_conditions, rhospan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 
     return odesoln
 end
 
-function solve_Xup_in_rho(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin, rhoout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+function solve_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin, rhoout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     # Sanity check
     if rhoin > rhoout
         throw(DomainError(rhoout, "rhoout ($rhoout) must be larger than rhoin ($rhoin)"))
@@ -121,7 +121,7 @@ function solve_Xup_in_rho(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, 
     end
 
     # Initial conditions at rho = rhoout, the outer boundary
-    Xup_rhoout, Xupprime_rhoout = Xup_in_rho_initialconditions(s, m, a, beta_pos, omega, lambda, r_from_rho, rs_mp, rhoout; order=initialconditions_order)
+    Xup_rhoout, Xupprime_rhoout = Xup_initialconditions(s, m, a, beta_pos, omega, lambda, r_from_rho, rs_mp, rhoout; order=initialconditions_order)
     u0 = [dtype(Xup_rhoout); dtype(Xupprime_rhoout)]
 
     # Solve the ODE to the matching point no matter what
@@ -143,7 +143,7 @@ function solve_Xup_in_rho(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, 
     return odesoln, odesoln_pos, odesoln_neg
 end
 
-function Xin_in_rho_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoin; order::Int=-1)
+function Xin_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoin; order::Int=-1)
     ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
     gin(r) = gansatz(ingoing_coeff_func, a, r; order=order)
     dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=order)
@@ -161,7 +161,7 @@ function Xin_in_rho_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_
     return Xrho_in, dXdrho_in
 end
 
-function solve_Xin_in_rho(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin, rhoout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+function solve_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin, rhoout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
     # Sanity check
     if rhoin > rhoout
         throw(DomainError(rhoin, "rhoin ($rhoin) must be smaller than rhoout ($rhoout)"))
@@ -171,7 +171,7 @@ function solve_Xin_in_rho(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, 
     end
 
     # Initial conditions at rho = rhoin, the inner boundary
-    Xin_rhoin, Xinprime_rhoin = Xin_in_rho_initialconditions(s, m, a, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin; order=initialconditions_order)
+    Xin_rhoin, Xinprime_rhoin = Xin_initialconditions(s, m, a, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin; order=initialconditions_order)
     u0 = [dtype(Xin_rhoin); dtype(Xinprime_rhoin)]
 
     # Solve the ODE to the matching point no matter what
@@ -191,6 +191,67 @@ function solve_Xin_in_rho(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, 
     odesoln(rho) = rho <= 0 ? rho != 0 ? odesoln_neg(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho) : odesoln_pos(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
+end
+
+function BrefBinc_SN_from_Xin(s::Int, m::Int, a, beta, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=10)
+    rout = r_from_rho(rhoout)
+    rsout = rs_mp + rhoout * exp(1im*beta)
+
+    ingoing_coeff_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    fin(r) = fansatz(ingoing_coeff_func, omega, r; order=order)
+    dfin_dr(r) = dfansatz_dr(ingoing_coeff_func, omega, r; order=order)
+    _fin = fin(rout)
+    _dfin_dr = dfin_dr(rout)
+    _phase_in = exp(-1im * omega * rsout)
+
+    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
+    dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=order)
+    _fout = fout(rout)
+    _dfout_dr = dfout_dr(rout)
+    _phase_out = exp(1im * omega * rsout)
+
+    # Computing A1, A2, A3, A4
+    A1 = _fin * _phase_in
+    A2 = _fout * _phase_out
+    A3 = exp(1im*beta)*_phase_in*(-1im*omega*_fin + (Delta(a, rout)/(rout^2 + a^2))*_dfin_dr)
+    A4 = exp(1im*beta)*_phase_out*(1im*omega*_fout + (Delta(a, rout)/(rout^2 + a^2))*_dfout_dr)
+
+    C1 = Xinsoln(rhoout)[1]
+    C2 = Xinsoln(rhoout)[2]
+
+    return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
+end
+
+function CrefCinc_SN_from_Xup(s::Int, m::Int, a, beta, omega, lambda, Xupsoln, r_from_rho, rs_mp, rhoin; order=10)
+    p = omega - m*omega_horizon(a)
+    rin = r_from_rho(rhoin)
+    rsin = rs_mp + rhoin * exp(1im*beta)
+
+    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+    gin(r) = gansatz(ingoing_coeff_func, a, r; order=order)
+    dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=order)
+    _gin = gin(rin)
+    _dgin_dr = dgin_dr(rin)
+    _phase_in = exp(-1im * p * rsin)
+
+    outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+    gout(r) = gansatz(outgoing_coeff_func, a, r; order=order)
+    dgout_dr(r) = dgansatz_dr(outgoing_coeff_func, a, r; order=order)
+    _gout = gout(rin)
+    _dgout_dr = dgout_dr(rin)
+    _phase_out = exp(1im * p * rsin)
+
+    # Computing A1, A2, A3, A4
+    A1 = _gin * _phase_in
+    A2 = _gout * _phase_out
+    A3 = exp(1im*beta)*_phase_in*(-1im*p*_gin + (Delta(a, rin)/(rin^2 + a^2))*_dgin_dr)
+    A4 = exp(1im*beta)*_phase_out*(1im*p*_gout + (Delta(a, rin)/(rin^2 + a^2))*_dgout_dr)
+
+    C1 = Xupsoln(rhoin)[1]
+    C2 = Xupsoln(rhoin)[2]
+
+    return -(A4*C1 - A2*C2)/(A2*A3 - A1*A4), -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4)
 end
 
 end
