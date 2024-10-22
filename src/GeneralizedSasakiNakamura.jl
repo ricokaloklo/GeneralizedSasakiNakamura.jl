@@ -8,6 +8,7 @@ include("ConversionFactors.jl")
 include("Potentials.jl")
 include("Transformation.jl")
 include("Solutions.jl")
+include("ComplexFrequencies.jl")
 
 using .Coordinates
 export r_from_rstar, rstar_from_r # Useful to be exposed
@@ -46,7 +47,7 @@ struct Mode
     l::Int # harmonic index
     m::Int # azimuthal index
     a # Kerr spin parameter
-    omega # frequency
+    omega::Union{Real, Complex} # frequency
     lambda # SWSH eigenvalue
 end
 
@@ -162,34 +163,37 @@ function GSN_radial(
         mode = Mode(s, l, m, a, omega, lambda)
         if boundary_condition == IN
             # Solve for Xin
-            # NOTE For now we do *not* implement intelligent switching between the Riccati and the GSN form
+            if isa(omega, real)
+                # NOTE For now we do *not* implement intelligent switching between the Riccati and the GSN form
+                # Actually solve for Phiin first
+                Phiinsoln = Solutions.solve_Phiin(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=horizon_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
+                # Then convert to Xin
+                Xinsoln = Solutions.Xsoln_from_Phisoln(Phiinsoln)
 
-            # Actually solve for Phiin first
-            Phiinsoln = Solutions.solve_Phiin(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=horizon_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
-            # Then convert to Xin
-            Xinsoln = Solutions.Xsoln_from_Phisoln(Phiinsoln)
+                # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
+                Bref_SN, Binc_SN = Solutions.BrefBinc_SN_from_Xin(s, m, a, omega, lambda, Xinsoln, rsout; order=infinity_expansion_order)
 
-            # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
-            Bref_SN, Binc_SN = Solutions.BrefBinc_SN_from_Xin(s, m, a, omega, lambda, Xinsoln, rsout; order=infinity_expansion_order)
+                # Construct the full, 'semi-analytical' GSN solution
+                semianalytical_Xinsoln(rs) = Solutions.semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizon_expansion_order, infinity_expansion_order, rs)
 
-            # Construct the full, 'semi-analytical' GSN solution
-            semianalytical_Xinsoln(rs) = Solutions.semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizon_expansion_order, infinity_expansion_order, rs)
-
-            return GSNRadialFunction(
-                mode,
-                IN,
-                rsin,
-                rsout,
-                horizon_expansion_order,
-                infinity_expansion_order,
-                data_type(1),
-                Binc_SN,
-                Bref_SN,
-                missing,
-                Phiinsoln,
-                semianalytical_Xinsoln,
-                UNIT_GSN_TRANS
-            )
+                return GSNRadialFunction(
+                    mode,
+                    IN,
+                    rsin,
+                    rsout,
+                    horizon_expansion_order,
+                    infinity_expansion_order,
+                    data_type(1),
+                    Binc_SN,
+                    Bref_SN,
+                    missing,
+                    Phiinsoln,
+                    semianalytical_Xinsoln,
+                    UNIT_GSN_TRANS
+                )
+            else
+                # Solve the _transformed_ GSN equation instead
+            end
         elseif boundary_condition == UP
             # Solve for Xup
             # NOTE For now we do *not* implement intelligent switching between the Riccati and the GSN form
