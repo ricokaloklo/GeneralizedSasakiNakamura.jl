@@ -5,7 +5,7 @@ using ..Coordinates
 using ..AsymptoticExpansionCoefficients
 
 export Xup_initialconditions, Xin_initialconditions
-export fansatz, gansatz
+export fansatz, gansatz, dfansatz_dr, dgansatz_dr
 
 const I = 1im # Mathematica being Mathematica
 
