@@ -64,29 +64,7 @@ function solve_r_from_rho(
     )
 
     # Stitch together the two solutions
-    # NOTE We **extrapolate** the solution with straight lines
-    # r_from_rho(rho) = rho >= 0 ? rho <= rho_pos_end ? r_from_rhopos(rho) : NaN : rho >= rho_neg_end ? r_from_rhoneg(rho) : NaN
-    r_from_rho(rho) = begin
-        if rho >= 0
-            if rho <= rho_pos_end
-                r_from_rhopos(rho)
-            else
-                # Extrapolate to the right
-                r_pos_end = r_from_rhopos(rho_pos_end)
-                slope = exp(1im*beta_pos) * Delta(a, r_pos_end) / (r_pos_end^2 + a^2)
-                return slope*(rho - rho_pos_end) + r_pos_end
-            end
-        else
-            if rho >= rho_neg_end
-                r_from_rhoneg(rho)
-            else
-                # Extrapolate to the left
-                r_neg_end = r_from_rhoneg(rho_neg_end)
-                slope = exp(1im*beta_neg) * Delta(a, r_neg_end) / (r_neg_end^2 + a^2)
-                return slope*(rho - rho_neg_end) + r_neg_end
-            end
-        end
-    end
+    r_from_rho(rho) = rho >= 0 ? rho <= rho_pos_end ? r_from_rhopos(rho) : NaN : rho >= rho_neg_end ? r_from_rhoneg(rho) : NaN
     return r_from_rho
 end
 
