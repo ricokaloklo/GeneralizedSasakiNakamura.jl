@@ -137,8 +137,8 @@ function solve_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
     end
 
     # Stitch together the two solutions
-    # NOTE When rho = 0, the returned solution is [X, dX/drs] and not [X, dX/drho] anymore
-    odesoln(rho) = rho >= 0 ? rho != 0 ? odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : odesoln_neg(rho)
+    # NOTE This *always* return X(rho) and dX(rho)/drs
+    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
 end
@@ -187,8 +187,8 @@ function solve_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
     end
 
     # Stitch together the two solutions
-    # NOTE When rho = 0, the returned solution is [X, dX/drs] and not [X, dX/drho] anymore
-    odesoln(rho) = rho <= 0 ? rho != 0 ? odesoln_neg(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho) : odesoln_pos(rho)
+    # NOTE This *always* return X(rho) and dX(rho)/drs
+    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
 end
@@ -218,7 +218,7 @@ function BrefBinc_SN_from_Xin(s::Int, m::Int, a, beta, omega, lambda, Xinsoln, r
     A4 = exp(1im*beta)*_phase_out*(1im*omega*_fout + (Delta(a, rout)/(rout^2 + a^2))*_dfout_dr)
 
     C1 = Xinsoln(rhoout)[1]
-    C2 = Xinsoln(rhoout)[2]
+    C2 = exp(1im*beta)*Xinsoln(rhoout)[2]
 
     return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
 end
@@ -249,9 +249,62 @@ function CrefCinc_SN_from_Xup(s::Int, m::Int, a, beta, omega, lambda, Xupsoln, r
     A4 = exp(1im*beta)*_phase_out*(1im*p*_gout + (Delta(a, rin)/(rin^2 + a^2))*_dgout_dr)
 
     C1 = Xupsoln(rhoin)[1]
-    C2 = Xupsoln(rhoin)[2]
+    C2 = exp(1im*beta)*Xupsoln(rhoin)[2]
 
     return -(A4*C1 - A2*C2)/(A2*A3 - A1*A4), -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4)
+end
+
+function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoin, rhoout, horizon_expansionorder, infinity_expansionorder, rho)
+    if rho < rhoin
+        # Extend the numerical solution to the analytical ansatz from rhoin to horizon
+        p = omega - m*omega_horizon(a)
+        _r = r_from_rho(rho)
+        _rs = rs_mp + rho * exp(1im*beta_neg)
+
+        # Construct the analytical ansatz
+        ingoing_coeff_func_hor(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+        gin(r) = gansatz(ingoing_coeff_func_hor, a, r; order=horizon_expansionorder)
+        dgin_dr(r) = dgansatz_dr(ingoing_coeff_func_hor, a, r; order=horizon_expansionorder)
+        _gin = gin(_r)
+        _dgin_dr = dgin_dr(_r)
+        _phase_in = exp(-1im * p * _rs)
+
+        # NOTE There is no exp(1im*beta) since the derivative is wrt rstar
+        _Xin = _gin * _phase_in
+        _dXin_drs = _phase_in*(-1im*p*_gin + (Delta(a, _r)/(_r^2 + a^2))*_dgin_dr)
+
+        return (_Xin, _dXin_drs)
+
+    elseif rho > rhoout
+        # Extend the numerical solution to the analytical ansatz from rhoout to infinity
+
+        Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, beta_pos, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=infinity_expansionorder)
+        _r = r_from_rho(rho)
+        _rs = rs_mp + rho * exp(1im*beta_pos)
+
+        # Construct the analytical ansatz
+        ingoing_coeff_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+        fin(r) = fansatz(ingoing_coeff_func, omega, r; order=infinity_expansionorder)
+        dfin_dr(r) = dfansatz_dr(ingoing_coeff_func, omega, r; order=infinity_expansionorder)
+        _fin = fin(_r)
+        _dfin_dr = dfin_dr(_r)
+        _phase_in = exp(-1im * omega * _rs)
+
+        outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+        fout(r) = fansatz(outgoing_coeff_func, omega, r; order=infinity_expansionorder)
+        dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=infinity_expansionorder)
+        _fout = fout(_r)
+        _dfout_dr = dfout_dr(_r)
+        _phase_out = exp(1im * omega * _rs)
+
+        _Xin = Bref_SN*_fout*_phase_out + Binc_SN*_fin*_phase_in
+        _dXin_drs = Bref_SN*_phase_out*(1im*omega*_fout + (Delta(a, _r)/(_r^2 + a^2))*_dfout_dr) + Binc_SN*_phase_in*(-1im*omega*_fin + (Delta(a, _r)/(_r^2 + a^2))*_dfin_dr)
+
+        return (_Xin, _dXin_drs)
+    else
+        # Return the numerical solution
+        return Xinsoln(rho)
+    end
 end
 
 end
