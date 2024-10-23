@@ -238,34 +238,79 @@ function GSN_radial(
             end
         elseif boundary_condition == UP
             # Solve for Xup
-            # NOTE For now we do *not* implement intelligent switching between the Riccati and the GSN form
+            if isa(omega, Real)
+                # NOTE For now we do *not* implement intelligent switching between the Riccati and the GSN form
+                # Actually solve for Phiup first
+                Phiupsoln = Solutions.solve_Phiup(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=infinity_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
+                # Then convert to Xup
+                Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
 
-            # Actually solve for Phiup first
-            Phiupsoln = Solutions.solve_Phiup(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=infinity_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
-            # Then convert to Xup
-            Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
+                # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
+                Cref_SN, Cinc_SN = Solutions.CrefCinc_SN_from_Xup(s, m, a, omega, lambda, Xupsoln, rsin; order=horizon_expansion_order)
 
-            # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
-            Cref_SN, Cinc_SN = Solutions.CrefCinc_SN_from_Xup(s, m, a, omega, lambda, Xupsoln, rsin; order=horizon_expansion_order)
+                # Construct the full, 'semi-analytical' GSN solution
+                semianalytical_Xupsoln(rs) = Solutions.semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizon_expansion_order, infinity_expansion_order, rs)
 
-            # Construct the full, 'semi-analytical' GSN solution
-            semianalytical_Xupsoln(rs) = Solutions.semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizon_expansion_order, infinity_expansion_order, rs)
+                return GSNRadialFunction(
+                    mode,
+                    UP,
+                    rsin,
+                    rsout,
+                    horizon_expansion_order,
+                    infinity_expansion_order,
+                    data_type(1),
+                    Cinc_SN,
+                    Cref_SN,
+                    missing,
+                    Phiupsoln,
+                    semianalytical_Xupsoln,
+                    UNIT_GSN_TRANS
+                )
+            else
+                p = omega - m*Kerr.omega_horizon(a)
 
-            return GSNRadialFunction(
-                mode,
-                UP,
-                rsin,
-                rsout,
-                horizon_expansion_order,
-                infinity_expansion_order,
-                data_type(1),
-                Cinc_SN,
-                Cref_SN,
-                missing,
-                Phiupsoln,
-                semianalytical_Xupsoln,
-                UNIT_GSN_TRANS
-            )
+                # First solve for r in terms of rho,
+                # the distance along the rotated path on the complex plane
+                rho_min = rsin
+                rho_max = rsout
+
+                r_from_rho = ComplexFrequencies.solve_r_from_rho(
+                    a, -angle(p), -angle(omega),
+                    0, rho_min, rho_max
+                )
+
+                Xupsoln, _, _ = ComplexFrequencies.solve_Xup(
+                    s, m, a, -angle(omega), -angle(p),
+                    omega, lambda, r_from_rho,
+                    0, rho_min, rho_max;
+                    initialconditions_order=infinity_expansion_order, dtype=data_type,
+                    odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
+                )
+
+                # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
+                Cref_SN, Cinc_SN = ComplexFrequencies.CrefCinc_SN_from_Xup(
+                    s, m, a, -angle(p), omega, lambda, Xupsoln, r_from_rho, 0, rho_min; order=horizon_expansion_order
+                )
+
+                # Construct the full, 'semi-analytical' GSN solution *in rho*
+                semianalytical_Xupsoln_rho(rho) = ComplexFrequencies.semianalytical_Xup(s, m, a, -angle(omega), -angle(p), omega, lambda, Xupsoln, r_from_rho, 0, rho_min, rho_max, horizon_expansion_order, infinity_expansion_order, rho)
+
+                return GSNRadialFunction(
+                    mode,
+                    UP,
+                    rsin,
+                    rsout,
+                    horizon_expansion_order,
+                    infinity_expansion_order,
+                    data_type(1),
+                    Cinc_SN,
+                    Cref_SN,
+                    Xupsoln,
+                    missing,
+                    semianalytical_Xupsoln_rho,
+                    UNIT_GSN_TRANS
+                )
+            end
         elseif boundary_condition == DOWN
             # Construct Xdown from Xin and Xup, instead of solving the ODE numerically with the boundary condition
 

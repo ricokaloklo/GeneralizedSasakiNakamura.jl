@@ -316,4 +316,65 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
     end
 end
 
+function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, Xupsoln, r_from_rho, rs_mp, rhoin, rhoout, horizon_expansionorder, infinity_expansionorder, rho)
+    if rho < rhoin
+        # Extend the numerical solution to the analytical ansatz from rhoin to horizon
+
+        Cref_SN, Cinc_SN = CrefCinc_SN_from_Xup(s, m, a, beta_neg, omega, lambda, Xupsoln, r_from_rho, rs_mp, rhoin; order=horizon_expansionorder)
+
+        p = omega - m*omega_horizon(a)
+        _r = r_from_rho(rho)
+        if isnan(_r)
+            # Resolve r_from_rho
+            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rho, rhoout)
+            _r = r_from_rho(rho)
+        end
+        # _rs = rs_mp + rho * exp(1im*beta_neg)
+
+        # Construct the analytical ansatz
+        ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+        gin(r) = gansatz(ingoing_coeff_func, a, r; order=horizon_expansionorder)
+        dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=horizon_expansionorder)
+        _gin = gin(_r)
+        _dgin_dr = dgin_dr(_r)
+        _phase_in = exp(-1im * abs(p) * rho) * exp(-1im * p * rs_mp)
+
+        outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+        gout(r) = gansatz(outgoing_coeff_func, a, r; order=horizon_expansionorder)
+        dgout_dr(r) = dgansatz_dr(outgoing_coeff_func, a, r; order=horizon_expansionorder)
+        _gout = gout(_r)
+        _dgout_dr = dgout_dr(_r)
+        _phase_out = exp(1im * abs(p) * rho) * exp(1im * p * rs_mp)
+
+        _Xup = Cref_SN*_gin*_phase_in + Cinc_SN*_gout*_phase_out
+        _dXup_drs = Cref_SN*_phase_in*(-1im*p*_gin + (Delta(a, _r)/(_r^2 + a^2))*_dgin_dr) + Cinc_SN*_phase_out*(1im*p*_gout + (Delta(a, _r)/(_r^2 + a^2))*_dgout_dr)
+
+        return (_Xup, _dXup_drs)
+    elseif rho > rhoout
+        # Extend the numerical solution to the analytical ansatz from rhoout to infinity
+        _r = r_from_rho(rho)
+        if isnan(_r)
+            # Resolve r_from_rho
+            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rhoin, rho)
+            _r = r_from_rho(rho)
+        end
+
+        # Construct the analytical ansatz
+        outgoing_coeff_func_inf(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+        fout(r) = fansatz(outgoing_coeff_func_inf, omega, r; order=infinity_expansionorder)
+        dfout_dr(r) = dfansatz_dr(outgoing_coeff_func_inf, omega, r; order=infinity_expansionorder)
+        _fout = fout(_r)
+        _dfout_dr = dfout_dr(_r)
+        _phase_out = exp(1im * abs(omega) * rho) * exp(1im * omega * rs_mp)
+
+        _Xup = _fout*_phase_out
+        _dXup_drs = _phase_out*(1im*omega*_fout + (Delta(a, _r)/(_r^2 + a^2))*_dfout_dr)
+
+        return (_Xup, _dXup_drs)
+    else
+        # Return the numerical solution
+        return Xupsoln(rho)
+    end
+end
+
 end
