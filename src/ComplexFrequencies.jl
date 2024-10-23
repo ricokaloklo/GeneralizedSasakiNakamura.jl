@@ -258,6 +258,11 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         # Extend the numerical solution to the analytical ansatz from rhoin to horizon
         p = omega - m*omega_horizon(a)
         _r = r_from_rho(rho)
+        if isnan(_r)
+            # Resolve r_from_rho
+            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rho, rhoout)
+            _r = r_from_rho(rho)
+        end
         # _rs = rs_mp + rho * exp(1im*beta_neg)
 
         # Construct the analytical ansatz
@@ -279,6 +284,11 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
 
         Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, beta_pos, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=infinity_expansionorder)
         _r = r_from_rho(rho)
+        if isnan(_r)
+            # Resolve r_from_rho
+            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rhoin, rho)
+            _r = r_from_rho(rho)
+        end
         # _rs = rs_mp + rho * exp(1im*beta_pos)
 
         # Construct the analytical ansatz
