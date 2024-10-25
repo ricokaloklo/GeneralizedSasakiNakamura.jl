@@ -5,12 +5,13 @@ using ..Coordinates
 using ..Potentials
 using ..AsymptoticExpansionCoefficients
 using ..InitialConditions
+using ..Solutions
 
 using DifferentialEquations
 
-_DEFAULTDATATYPE = ComplexF64 # Double precision by default
-_DEFAULTSOLVER = Vern9()
-_DEFAULTTOLERANCE = 1e-12
+_DEFAULTDATATYPE = Solutions._DEFAULTDATATYPE
+_DEFAULTSOLVER = Solutions._DEFAULTSOLVER
+_DEFAULTTOLERANCE = Solutions._DEFAULTTOLERANCE
 
 function drdrho!(du, u, p, rho)
     #=
