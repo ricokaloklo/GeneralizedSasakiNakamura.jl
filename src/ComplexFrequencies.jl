@@ -253,7 +253,7 @@ function solve_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
 
     # Stitch together the two solutions
     # NOTE This *always* return X(rho) and dX(rho)/drs
-    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
+    odesoln(rho) = rho > 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
 end
@@ -292,7 +292,7 @@ function solve_Phiin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
 
     # Stitch together the two solutions
     # NOTE This *always* return Phi(rho) and dPhi(rho)/drs
-    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
+    odesoln(rho) = rho > 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
 end
