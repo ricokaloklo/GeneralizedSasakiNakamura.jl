@@ -85,6 +85,41 @@ function GSN_linear_eqn!(du, u, p, rho)
     du[2] = _sF*u[2] + _sU*u[1]
 end
 
+function GSN_Riccati_eqn!(du, u, p, rho)
+    r = p.r_from_rho(rho)
+    _sF = exp(1im*p.beta)*sF(p.s, p.m, p.a, p.omega, p.lambda, r)
+    _sU = exp(2im*p.beta)*sU(p.s, p.m, p.a, p.omega, p.lambda, r)
+    
+    #=
+    We write X = exp(I*Phi)
+    Substitute X in this form into the GSN equation will give
+    a Riccati equation, a first-order non-linear equation
+
+    u[1] = Phi
+    u[2] = dPhidrs
+    =#
+    du[1] = u[2]
+    du[2] = -1im*_sU + _sF*u[2] - 1im*u[2]*u[2]
+end
+
+function solve_X_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rhospan, initial_conditions; dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+    p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, r_from_rho=r_from_rho)
+
+    odeprob = ODEProblem(GSN_linear_eqn!, initial_conditions, rhospan, p)
+    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+
+    return odesoln
+end
+
+function solve_Phi_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rhospan, initial_conditions; dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+    p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, r_from_rho=r_from_rho)
+
+    odeprob = ODEProblem(GSN_Riccati_eqn!, initial_conditions, rhospan, p)
+    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+
+    return odesoln
+end
+
 function Xup_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoout; order::Int=-1)
     outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
     fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
@@ -100,15 +135,6 @@ function Xup_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rh
     dXdrho_out = exp(1im*beta)*phase*(1im*omega*_fansatz + (Delta(a, rout)/(rout^2 + a^2))*_dfansatz_dr)
 
     return Xrho_out, dXdrho_out
-end
-
-function solve_X_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rhospan, initial_conditions; dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
-    p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, r_from_rho=r_from_rho)
-
-    odeprob = ODEProblem(GSN_linear_eqn!, initial_conditions, rhospan, p)
-    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
-
-    return odesoln
 end
 
 function solve_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin, rhoout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
@@ -138,6 +164,45 @@ function solve_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
 
     # Stitch together the two solutions
     # NOTE This *always* return X(rho) and dX(rho)/drs
+    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
+
+    return odesoln, odesoln_pos, odesoln_neg
+end
+
+function solve_Phiup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin, rhoout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+    # Sanity check
+    if rhoin > rhoout
+        throw(DomainError(rhoout, "rhoout ($rhoout) must be larger than rhoin ($rhoin)"))
+    end
+    if rhoout < 0
+        throw(DomainError(rhoout, "rhoout ($rhoout) must be positive"))
+    end
+
+    # Initial conditions at rho = rhoout, the outer boundary
+    Xup_rhoout, Xupprime_rhoout = Xup_initialconditions(s, m, a, beta_pos, omega, lambda, r_from_rho, rs_mp, rhoout; order=initialconditions_order)
+    # Convert initial conditions for Xup for Phi
+    Phi, Phiprime = Solutions.PhiPhiprime_from_XXprime(Xup_rhoout, Xupprime_rhoout)
+    u0 = [dtype(Phi); dtype(Phiprime)]
+
+    # Solve the ODE to the matching point no matter what
+    odesoln_pos = solve_Phi_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, (rhoout, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+
+    if rhoin < 0
+        _Phi, _Phiprime = odesoln_pos(0)
+        _X, _Xprime = Solutions.XXprime_from_PhiPhiprime(_Phi, _Phiprime)
+        v0_Phi, v0_Phiprime = Solutions.PhiPhiprime_from_XXprime(
+            _X,
+            dtype(exp(1im*beta_neg)) * dtype(exp(-1im*beta_pos)) * _Xprime
+        )
+        # Continue the integration
+        odesoln_neg = solve_Phi_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, (0, rhoin), [v0_Phi; v0_Phiprime]; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+    else
+        # Should not be used
+        odesoln_neg = rho -> [NaN; NaN]
+    end
+
+    # Stitch together the two solutions
+    # NOTE This *always* return Phi(rho) and dPhi(rho)/drs
     odesoln(rho) = rho >= 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
@@ -188,6 +253,45 @@ function solve_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
 
     # Stitch together the two solutions
     # NOTE This *always* return X(rho) and dX(rho)/drs
+    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
+
+    return odesoln, odesoln_pos, odesoln_neg
+end
+
+function solve_Phiin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin, rhoout; initialconditions_order=-1, dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+    # Sanity check
+    if rhoin > rhoout
+        throw(DomainError(rhoin, "rhoin ($rhoin) must be smaller than rhoout ($rhoout)"))
+    end
+    if rhoin > 0
+        throw(DomainError(rhoin, "rhoin ($rhoin) must be negative"))
+    end
+
+    # Initial conditions at rho = rhoin, the inner boundary
+    Xin_rhoin, Xinprime_rhoin = Xin_initialconditions(s, m, a, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin; order=initialconditions_order)
+    # Convert initial conditions for Xin for Phi
+    Phi, Phiprime = Solutions.PhiPhiprime_from_XXprime(Xin_rhoin, Xinprime_rhoin)
+    u0 = [dtype(Phi); dtype(Phiprime)]
+
+    # Solve the ODE to the matching point no matter what
+    odesoln_neg = solve_Phi_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, (rhoin, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+    
+    if rhoout > 0
+        _Phi, _Phiprime = odesoln_neg(0)
+        _X, _Xprime = Solutions.XXprime_from_PhiPhiprime(_Phi, _Phiprime)
+        v0_Phi, v0_Phiprime = Solutions.PhiPhiprime_from_XXprime(
+            _X,
+            dtype(exp(1im*beta_pos)) * dtype(exp(-1im*beta_neg)) * _Xprime
+        )
+        # Continue the integration
+        odesoln_pos = solve_Phi_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, (0, rhoout), [v0_Phi; v0_Phiprime]; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+    else
+        # Should not be used
+        odesoln_pos = rho -> [NaN; NaN]
+    end
+
+    # Stitch together the two solutions
+    # NOTE This *always* return Phi(rho) and dPhi(rho)/drs
     odesoln(rho) = rho >= 0 ? [dtype(1); dtype(exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
