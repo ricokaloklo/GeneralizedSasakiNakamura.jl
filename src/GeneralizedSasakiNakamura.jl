@@ -201,7 +201,7 @@ function GSN_radial(
 
                 r_from_rho = ComplexFrequencies.solve_r_from_rho(
                     a, -angle(p), -angle(omega),
-                    0, rho_min, rho_max
+                    0, rho_min, rho_max; sign=sign(real(omega))
                 )
 
                 Xinsoln, _, _ = ComplexFrequencies.solve_Xin(
@@ -276,7 +276,7 @@ function GSN_radial(
 
                 r_from_rho = ComplexFrequencies.solve_r_from_rho(
                     a, -angle(p), -angle(omega),
-                    0, rho_min, rho_max
+                    0, rho_min, rho_max; sign=sign(real(omega))
                 )
 
                 Xupsoln, _, _ = ComplexFrequencies.solve_Xup(
