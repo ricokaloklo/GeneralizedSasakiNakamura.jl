@@ -186,7 +186,7 @@ function GSN_radial(
                     data_type(1),
                     Binc_SN,
                     Bref_SN,
-                    missing,
+                    Xinsoln,
                     Phiinsoln,
                     semianalytical_Xinsoln,
                     UNIT_GSN_TRANS
@@ -264,7 +264,7 @@ function GSN_radial(
                     data_type(1),
                     Cinc_SN,
                     Cref_SN,
-                    missing,
+                    Xupsoln,
                     Phiupsoln,
                     semianalytical_Xupsoln,
                     UNIT_GSN_TRANS
