@@ -204,13 +204,16 @@ function GSN_radial(
                     0, rho_min, rho_max; sign=sign(real(omega))
                 )
 
-                Xinsoln, _, _ = ComplexFrequencies.solve_Xin(
+                Phiinsoln, _, _ = ComplexFrequencies.solve_Phiin(
                     s, m, a, -angle(omega), -angle(p),
                     omega, lambda, r_from_rho,
                     0, rho_min, rho_max;
                     initialconditions_order=horizon_expansion_order, dtype=data_type,
                     odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
                 )
+
+                # Then convert to Xin
+                Xinsoln = Solutions.Xsoln_from_Phisoln(Phiinsoln)
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
                 Bref_SN, Binc_SN = ComplexFrequencies.BrefBinc_SN_from_Xin(
@@ -231,7 +234,7 @@ function GSN_radial(
                     Binc_SN,
                     Bref_SN,
                     Xinsoln,
-                    missing,
+                    Phiinsoln,
                     semianalytical_Xinsoln_rho,
                     UNIT_GSN_TRANS
                 )
@@ -279,13 +282,16 @@ function GSN_radial(
                     0, rho_min, rho_max; sign=sign(real(omega))
                 )
 
-                Xupsoln, _, _ = ComplexFrequencies.solve_Xup(
+                Phiupsoln, _, _ = ComplexFrequencies.solve_Phiup(
                     s, m, a, -angle(omega), -angle(p),
                     omega, lambda, r_from_rho,
                     0, rho_min, rho_max;
                     initialconditions_order=infinity_expansion_order, dtype=data_type,
                     odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
                 )
+
+                # Then convert to Xup
+                Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
                 Cref_SN, Cinc_SN = ComplexFrequencies.CrefCinc_SN_from_Xup(
@@ -306,7 +312,7 @@ function GSN_radial(
                     Cinc_SN,
                     Cref_SN,
                     Xupsoln,
-                    missing,
+                    Phiupsoln,
                     semianalytical_Xupsoln_rho,
                     UNIT_GSN_TRANS
                 )
