@@ -151,4 +151,46 @@ function Bref(s::Int, m::Int, a, omega, lambda)
     return Ctrans(s, m, a, omega, lambda)
 end
 
+function TeukolskyStarobinsky_abs_Csq(s::Int, m::Int, a, omega, lambda)
+    if abs(s) != 2
+        throw(AssertionError("|C|^2 is only defined for s = +/-2"))
+    end
+
+    # Here we assume that lambda is computed with s = -2
+    if s == 2
+        # −sAlm = sAlm + 2s
+        # Compute what lambda should be for s = -2
+        lambda_minus2 = lambda + 4
+    else
+        lambda_minus2 = lambda
+    end
+
+    E = lambda_minus2 + 2*a*m*omega - a^2*omega^2 + 2
+    Q = E + a^2*omega^2 - 2*a*m*omega
+    return begin
+        (Q^2 + 4*a*omega*m - 4*a^2*omega^2)*((Q-2)^2 + 36*a*omega*m - 36*a^2*omega^2) + (2*Q - 1)*(96*a^2*omega^2 - 48a*omega*m) + 144*omega^2(1-a^2)
+    end
+end
+
+function TeukolskyStarobinsky_Bsq(s::Int, m::Int, a, omega, lambda)
+    if abs(s) != 1
+        throw(AssertionError("|B|^2 is only defined for s = +/-1"))
+    end
+
+    # Here we assume that lambda is computed with s = -1
+    if s == 1
+        # −sAlm = sAlm + 2s
+        # Compute what lambda should be for s = -1
+        lambda_minus1 = lambda + 2
+    else
+        lambda_minus1 = lambda
+    end
+
+    E = lambda_minus1 + 2*a*m*omega - a^2*omega^2
+    Q = E + a^2*omega^2 - 2*a*m*omega
+    return begin
+        Q^2 + 4*a*omega*m - 4*a^2*omega^2
+    end
+end
+
 end
