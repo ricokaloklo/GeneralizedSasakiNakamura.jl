@@ -2,7 +2,6 @@ module Transformation
 
 using ForwardDiff
 using ..Kerr
-using ..Potentials
 
 export alpha, alpha_prime, beta, beta_prime
 export eta_coefficient, eta, eta_prime, eta_primeprime
