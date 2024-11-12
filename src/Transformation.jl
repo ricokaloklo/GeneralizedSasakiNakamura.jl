@@ -4,7 +4,8 @@ using ForwardDiff
 using ..Kerr
 using ..Potentials
 
-export alpha, alpha_prime, beta, beta_prime, eta_coefficient, eta, eta_prime
+export alpha, alpha_prime, beta, beta_prime
+export eta_coefficient, eta, eta_prime, eta_primeprime
 
 const I = 1im # Mathematica being Mathematica
 
@@ -221,6 +222,15 @@ function eta_prime(s::Int, m::Int, a, omega, lambda, r)
     c3 = eta_coefficient(s, m, a, omega, lambda, -3)
     c4 = eta_coefficient(s, m, a, omega, lambda, -4)
     return -c1/r^2 - 2c2/r^3 - 3c3/r^4 - 4c4/r^5
+end
+
+function eta_primeprime(s::Int, m::Int, a, omega, lambda, r)
+    # eta''(r) = 2c1/r^3 + 6c2/r^4 + 12c3/r^5 + 20c4/r^6
+    c1 = eta_coefficient(s, m, a, omega, lambda, -1)
+    c2 = eta_coefficient(s, m, a, omega, lambda, -2)
+    c3 = eta_coefficient(s, m, a, omega, lambda, -3)
+    c4 = eta_coefficient(s, m, a, omega, lambda, -4)
+    return 2*c1/r^3 + 6*c2/r^4 + 12*c3/r^5 + 20*c4/r^6
 end
 
 end
