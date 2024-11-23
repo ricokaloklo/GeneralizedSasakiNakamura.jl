@@ -14,10 +14,10 @@ _DEFAULTSOLVER = Solutions._DEFAULTSOLVER
 _DEFAULTTOLERANCE = Solutions._DEFAULTTOLERANCE
 
 function determine_sign(x)
-    if x == 0
-        return 1.0
+    if real(x) >= 0
+        return sign(1.0)
     else
-        return sign(x)
+        return sign(-1.0)
     end
 end
 
@@ -54,20 +54,21 @@ end
 # Power of multiple dispatch
 function solve_r_from_rho(
     a, beta_neg, beta_pos,
-    rs_mp, rho_neg_end, rho_pos_end; sign=1,
+    rs_mp, rho_neg_end, rho_pos_end;
+    sign_neg=1, sign_pos=1,
     dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER,
     reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE
 )
     # Obtain r_from_rho for positive rho
     r_from_rhopos = solve_r_from_rho(
-        a, beta_pos, rs_mp, rho_pos_end; sign=sign,
+        a, beta_pos, rs_mp, rho_pos_end; sign=sign_pos,
         dtype=dtype, odealgo=odealgo,
         reltol=reltol, abstol=abstol
     )
 
     # Obtain r_from_rho for negative rho
     r_from_rhoneg = solve_r_from_rho(
-        a, beta_neg, rs_mp, rho_neg_end; sign=sign,
+        a, beta_neg, rs_mp, rho_neg_end; sign=sign_neg,
         dtype=dtype, odealgo=odealgo,
         reltol=reltol, abstol=abstol
     )
@@ -110,8 +111,8 @@ function GSN_Riccati_eqn!(du, u, p, rho)
     du[2] = -1im*_sU + _sF*u[2] - 1im*u[2]*u[2]
 end
 
-function solve_X_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rhospan, initial_conditions; dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
-    p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, sign=determine_sign(real(omega)), r_from_rho=r_from_rho)
+function solve_X_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, sign, rhospan, initial_conditions; dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+    p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, sign=sign, r_from_rho=r_from_rho)
 
     odeprob = ODEProblem(GSN_linear_eqn!, initial_conditions, rhospan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
@@ -119,8 +120,8 @@ function solve_X_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rhos
     return odesoln
 end
 
-function solve_Phi_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rhospan, initial_conditions; dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
-    p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, sign=determine_sign(real(omega)), r_from_rho=r_from_rho)
+function solve_Phi_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, sign, rhospan, initial_conditions; dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER, reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE)
+    p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, sign=sign, r_from_rho=r_from_rho)
 
     odeprob = ODEProblem(GSN_Riccati_eqn!, initial_conditions, rhospan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
@@ -136,11 +137,11 @@ function Xup_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rh
     rout = r_from_rho(rhoout)
     _fansatz = fout(rout)
     _dfansatz_dr = dfout_dr(rout)
-    # rsout = rs_mp + rhoout * exp(1im*beta)
-    phase = exp(1im * abs(omega) * determine_sign(real(omega))*rhoout) * exp(1im * omega * rs_mp)
+
+    phase = exp(1im * abs(omega) * determine_sign(omega)*rhoout) * exp(1im * omega * rs_mp)
 
     Xrho_out = phase*_fansatz
-    dXdrho_out = determine_sign(real(omega))*exp(1im*beta)*phase*(1im*omega*_fansatz + (Delta(a, rout)/(rout^2 + a^2))*_dfansatz_dr)
+    dXdrho_out = determine_sign(omega)*exp(1im*beta)*phase*(1im*omega*_fansatz + (Delta(a, rout)/(rout^2 + a^2))*_dfansatz_dr)
 
     return Xrho_out, dXdrho_out
 end
@@ -159,12 +160,12 @@ function solve_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
     u0 = [dtype(Xup_rhoout); dtype(Xupprime_rhoout)]
 
     # Solve the ODE to the matching point no matter what
-    odesoln_pos = solve_X_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, (rhoout, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+    odesoln_pos = solve_X_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, determine_sign(omega), (rhoout, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
 
     if rhoin < 0
-        v0 = [dtype(1); dtype(determine_sign(real(omega))*exp(1im*beta_neg))] .* [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_pos))] .* odesoln_pos(0)
+        v0 = [dtype(1); dtype(determine_sign(omega - m*omega_horizon(a))*exp(1im*beta_neg))] .* [dtype(1); dtype(determine_sign(omega)*exp(-1im*beta_pos))] .* odesoln_pos(0)
         # Continue the integration
-        odesoln_neg = solve_X_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, (0, rhoin), v0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+        odesoln_neg = solve_X_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, determine_sign(omega - m*omega_horizon(a)), (0, rhoin), v0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
     else
         # Should not be used
         odesoln_neg = rho -> [NaN; NaN]
@@ -172,7 +173,7 @@ function solve_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
 
     # Stitch together the two solutions
     # NOTE This *always* return X(rho) and dX(rho)/drs
-    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_neg))] .* odesoln_neg(rho)
+    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(determine_sign(omega)*exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(determine_sign(omega - m*omega_horizon(a))*exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
 end
@@ -193,17 +194,17 @@ function solve_Phiup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
     u0 = [dtype(Phi); dtype(Phiprime)]
 
     # Solve the ODE to the matching point no matter what
-    odesoln_pos = solve_Phi_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, (rhoout, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+    odesoln_pos = solve_Phi_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, determine_sign(omega), (rhoout, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
 
     if rhoin < 0
         _Phi, _Phiprime = odesoln_pos(0)
         _X, _Xprime = Solutions.XXprime_from_PhiPhiprime(_Phi, _Phiprime)
         v0_Phi, v0_Phiprime = Solutions.PhiPhiprime_from_XXprime(
             _X,
-            dtype(determine_sign(real(omega))*exp(1im*beta_neg)) * dtype(determine_sign(real(omega))*exp(-1im*beta_pos)) * _Xprime
+            dtype(determine_sign(omega - m*omega_horizon(a))*exp(1im*beta_neg)) * dtype(determine_sign(omega)*exp(-1im*beta_pos)) * _Xprime
         )
         # Continue the integration
-        odesoln_neg = solve_Phi_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, (0, rhoin), [v0_Phi; v0_Phiprime]; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+        odesoln_neg = solve_Phi_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, determine_sign(omega - m*omega_horizon(a)), (0, rhoin), [v0_Phi; v0_Phiprime]; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
     else
         # Should not be used
         odesoln_neg = rho -> [NaN; NaN]
@@ -211,7 +212,7 @@ function solve_Phiup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
 
     # Stitch together the two solutions
     # NOTE This *always* return Phi(rho) and dPhi(rho)/drs
-    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_neg))] .* odesoln_neg(rho)
+    odesoln(rho) = rho >= 0 ? [dtype(1); dtype(determine_sign(omega)*exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(determine_sign(omega - m*omega_horizon(a))*exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
 end
@@ -226,10 +227,10 @@ function Xin_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rh
     _dgansatz_dr = dgin_dr(rin)
     # rsin = rs_mp + rhoin * exp(1im*beta)
     p = omega - m*omega_horizon(a)
-    phase = exp(-1im * abs(p) * determine_sign(real(omega))*rhoin) * exp(-1im * p * rs_mp)
+    phase = exp(-1im * abs(p) * determine_sign(p)*rhoin) * exp(-1im * p * rs_mp)
 
     Xrho_in = phase*_gansatz
-    dXdrho_in = determine_sign(real(omega))*exp(1im*beta)*phase*(-1im*p*_gansatz + (Delta(a, rin)/(rin^2 + a^2))*_dgansatz_dr)
+    dXdrho_in = determine_sign(p)*exp(1im*beta)*phase*(-1im*p*_gansatz + (Delta(a, rin)/(rin^2 + a^2))*_dgansatz_dr)
 
     return Xrho_in, dXdrho_in
 end
@@ -248,12 +249,12 @@ function solve_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
     u0 = [dtype(Xin_rhoin); dtype(Xinprime_rhoin)]
 
     # Solve the ODE to the matching point no matter what
-    odesoln_neg = solve_X_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, (rhoin, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+    odesoln_neg = solve_X_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, determine_sign(omega - m*omega_horizon(a)), (rhoin, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
 
     if rhoout > 0
-        v0 = [dtype(1); dtype(determine_sign(real(omega))*exp(1im*beta_pos))] .* [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_neg))] .* odesoln_neg(0)
+        v0 = [dtype(1); dtype(determine_sign(omega)*exp(1im*beta_pos))] .* [dtype(1); dtype(determine_sign(omega - m*omega_horizon(a))*exp(-1im*beta_neg))] .* odesoln_neg(0)
         # Continue the integration
-        odesoln_pos = solve_X_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, (0, rhoout), v0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+        odesoln_pos = solve_X_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, determine_sign(omega), (0, rhoout), v0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
     else
         # Should not be used
         odesoln_pos = rho -> [NaN; NaN]
@@ -261,7 +262,7 @@ function solve_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
 
     # Stitch together the two solutions
     # NOTE This *always* return X(rho) and dX(rho)/drs
-    odesoln(rho) = rho > 0 ? [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_neg))] .* odesoln_neg(rho)
+    odesoln(rho) = rho > 0 ? [dtype(1); dtype(determine_sign(omega)*exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(determine_sign(omega - m*omega_horizon(a))*exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
 end
@@ -282,17 +283,17 @@ function solve_Phiin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
     u0 = [dtype(Phi); dtype(Phiprime)]
 
     # Solve the ODE to the matching point no matter what
-    odesoln_neg = solve_Phi_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, (rhoin, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+    odesoln_neg = solve_Phi_in_rho(s, m, a, beta_neg, omega, lambda, r_from_rho, determine_sign(omega - m*omega_horizon(a)), (rhoin, 0), u0; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
     
     if rhoout > 0
         _Phi, _Phiprime = odesoln_neg(0)
         _X, _Xprime = Solutions.XXprime_from_PhiPhiprime(_Phi, _Phiprime)
         v0_Phi, v0_Phiprime = Solutions.PhiPhiprime_from_XXprime(
             _X,
-            dtype(determine_sign(real(omega))*exp(1im*beta_pos)) * dtype(determine_sign(real(omega))*exp(-1im*beta_neg)) * _Xprime
+            dtype(determine_sign(omega)*exp(1im*beta_pos)) * dtype(determine_sign(omega - m*omega_horizon(a))*exp(-1im*beta_neg)) * _Xprime
         )
         # Continue the integration
-        odesoln_pos = solve_Phi_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, (0, rhoout), [v0_Phi; v0_Phiprime]; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
+        odesoln_pos = solve_Phi_in_rho(s, m, a, beta_pos, omega, lambda, r_from_rho, determine_sign(omega), (0, rhoout), [v0_Phi; v0_Phiprime]; dtype=dtype, odealgo=odealgo, reltol=reltol, abstol=abstol)
     else
         # Should not be used
         odesoln_pos = rho -> [NaN; NaN]
@@ -300,37 +301,36 @@ function solve_Phiin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
 
     # Stitch together the two solutions
     # NOTE This *always* return Phi(rho) and dPhi(rho)/drs
-    odesoln(rho) = rho > 0 ? [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(determine_sign(real(omega))*exp(-1im*beta_neg))] .* odesoln_neg(rho)
+    odesoln(rho) = rho > 0 ? [dtype(1); dtype(determine_sign(omega)*exp(-1im*beta_pos))] .* odesoln_pos(rho) : [dtype(1); dtype(determine_sign(omega - m*omega_horizon(a))*exp(-1im*beta_neg))] .* odesoln_neg(rho)
 
     return odesoln, odesoln_pos, odesoln_neg
 end
 
 function BrefBinc_SN_from_Xin(s::Int, m::Int, a, beta, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=10)
     rout = r_from_rho(rhoout)
-    # rsout = rs_mp \pm rhoout * exp(1im*beta)
 
     ingoing_coeff_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
     fin(r) = fansatz(ingoing_coeff_func, omega, r; order=order)
     dfin_dr(r) = dfansatz_dr(ingoing_coeff_func, omega, r; order=order)
     _fin = fin(rout)
     _dfin_dr = dfin_dr(rout)
-    _phase_in = exp(-1im * abs(omega) * determine_sign(real(omega))*rhoout) * exp(-1im * omega * rs_mp)
+    _phase_in = exp(-1im * abs(omega) * determine_sign(omega)*rhoout) * exp(-1im * omega * rs_mp)
 
     outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
     fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
     dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=order)
     _fout = fout(rout)
     _dfout_dr = dfout_dr(rout)
-    _phase_out = exp(1im * abs(omega) * determine_sign(real(omega))*rhoout) * exp(1im * omega * rs_mp)
+    _phase_out = exp(1im * abs(omega) * determine_sign(omega)*rhoout) * exp(1im * omega * rs_mp)
 
     # Computing A1, A2, A3, A4
     A1 = _fin * _phase_in
     A2 = _fout * _phase_out
-    A3 = determine_sign(real(omega))*exp(1im*beta)*_phase_in*(-1im*omega*_fin + (Delta(a, rout)/(rout^2 + a^2))*_dfin_dr)
-    A4 = determine_sign(real(omega))*exp(1im*beta)*_phase_out*(1im*omega*_fout + (Delta(a, rout)/(rout^2 + a^2))*_dfout_dr)
+    A3 = determine_sign(omega)*exp(1im*beta)*_phase_in*(-1im*omega*_fin + (Delta(a, rout)/(rout^2 + a^2))*_dfin_dr)
+    A4 = determine_sign(omega)*exp(1im*beta)*_phase_out*(1im*omega*_fout + (Delta(a, rout)/(rout^2 + a^2))*_dfout_dr)
 
     C1 = Xinsoln(rhoout)[1]
-    C2 = determine_sign(real(omega))*exp(1im*beta)*Xinsoln(rhoout)[2]
+    C2 = determine_sign(omega)*exp(1im*beta)*Xinsoln(rhoout)[2]
 
     return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
 end
@@ -345,23 +345,23 @@ function CrefCinc_SN_from_Xup(s::Int, m::Int, a, beta, omega, lambda, Xupsoln, r
     dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=order)
     _gin = gin(rin)
     _dgin_dr = dgin_dr(rin)
-    _phase_in = exp(-1im * abs(p) * determine_sign(real(omega))*rhoin) * exp(-1im * p * rs_mp)
+    _phase_in = exp(-1im * abs(p) * determine_sign(p)*rhoin) * exp(-1im * p * rs_mp)
 
     outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
     gout(r) = gansatz(outgoing_coeff_func, a, r; order=order)
     dgout_dr(r) = dgansatz_dr(outgoing_coeff_func, a, r; order=order)
     _gout = gout(rin)
     _dgout_dr = dgout_dr(rin)
-    _phase_out = exp(1im * abs(p) * determine_sign(real(omega))*rhoin) * exp(1im * p * rs_mp)
+    _phase_out = exp(1im * abs(p) * determine_sign(p)*rhoin) * exp(1im * p * rs_mp)
 
     # Computing A1, A2, A3, A4
     A1 = _gin * _phase_in
     A2 = _gout * _phase_out
-    A3 = determine_sign(real(omega))*exp(1im*beta)*_phase_in*(-1im*p*_gin + (Delta(a, rin)/(rin^2 + a^2))*_dgin_dr)
-    A4 = determine_sign(real(omega))*exp(1im*beta)*_phase_out*(1im*p*_gout + (Delta(a, rin)/(rin^2 + a^2))*_dgout_dr)
+    A3 = determine_sign(p)*exp(1im*beta)*_phase_in*(-1im*p*_gin + (Delta(a, rin)/(rin^2 + a^2))*_dgin_dr)
+    A4 = determine_sign(p)*exp(1im*beta)*_phase_out*(1im*p*_gout + (Delta(a, rin)/(rin^2 + a^2))*_dgout_dr)
 
     C1 = Xupsoln(rhoin)[1]
-    C2 = determine_sign(real(omega))*exp(1im*beta)*Xupsoln(rhoin)[2]
+    C2 = determine_sign(p)*exp(1im*beta)*Xupsoln(rhoin)[2]
 
     return -(A4*C1 - A2*C2)/(A2*A3 - A1*A4), -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4)
 end
@@ -384,7 +384,7 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         dgin_dr(r) = dgansatz_dr(ingoing_coeff_func_hor, a, r; order=horizon_expansionorder)
         _gin = gin(_r)
         _dgin_dr = dgin_dr(_r)
-        _phase_in = exp(-1im * abs(p) * determine_sign(real(omega))* rho) * exp(-1im * p * rs_mp)
+        _phase_in = exp(-1im * abs(p) * determine_sign(p)* rho) * exp(-1im * p * rs_mp)
 
         # NOTE There is no exp(1im*beta) since the derivative is wrt rstar
         _Xin = _gin * _phase_in
@@ -410,14 +410,14 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         dfin_dr(r) = dfansatz_dr(ingoing_coeff_func, omega, r; order=infinity_expansionorder)
         _fin = fin(_r)
         _dfin_dr = dfin_dr(_r)
-        _phase_in = exp(-1im * abs(omega) * determine_sign(real(omega))*rho) * exp(-1im * omega * rs_mp)
+        _phase_in = exp(-1im * abs(omega) * determine_sign(omega)*rho) * exp(-1im * omega * rs_mp)
 
         outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
         fout(r) = fansatz(outgoing_coeff_func, omega, r; order=infinity_expansionorder)
         dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=infinity_expansionorder)
         _fout = fout(_r)
         _dfout_dr = dfout_dr(_r)
-        _phase_out = exp(1im * abs(omega) * determine_sign(real(omega))*rho) * exp(1im * omega * rs_mp)
+        _phase_out = exp(1im * abs(omega) * determine_sign(omega)*rho) * exp(1im * omega * rs_mp)
 
         _Xin = Bref_SN*_fout*_phase_out + Binc_SN*_fin*_phase_in
         _dXin_drs = Bref_SN*_phase_out*(1im*omega*_fout + (Delta(a, _r)/(_r^2 + a^2))*_dfout_dr) + Binc_SN*_phase_in*(-1im*omega*_fin + (Delta(a, _r)/(_r^2 + a^2))*_dfin_dr)
@@ -450,14 +450,14 @@ function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=horizon_expansionorder)
         _gin = gin(_r)
         _dgin_dr = dgin_dr(_r)
-        _phase_in = exp(-1im * abs(p) * determine_sign(real(omega))* rho) * exp(-1im * p * rs_mp)
+        _phase_in = exp(-1im * abs(p) * determine_sign(p)* rho) * exp(-1im * p * rs_mp)
 
         outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
         gout(r) = gansatz(outgoing_coeff_func, a, r; order=horizon_expansionorder)
         dgout_dr(r) = dgansatz_dr(outgoing_coeff_func, a, r; order=horizon_expansionorder)
         _gout = gout(_r)
         _dgout_dr = dgout_dr(_r)
-        _phase_out = exp(1im * abs(p) * determine_sign(real(omega))* rho) * exp(1im * p * rs_mp)
+        _phase_out = exp(1im * abs(p) * determine_sign(p)* rho) * exp(1im * p * rs_mp)
 
         _Xup = Cref_SN*_gin*_phase_in + Cinc_SN*_gout*_phase_out
         _dXup_drs = Cref_SN*_phase_in*(-1im*p*_gin + (Delta(a, _r)/(_r^2 + a^2))*_dgin_dr) + Cinc_SN*_phase_out*(1im*p*_gout + (Delta(a, _r)/(_r^2 + a^2))*_dgout_dr)
@@ -478,7 +478,7 @@ function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         dfout_dr(r) = dfansatz_dr(outgoing_coeff_func_inf, omega, r; order=infinity_expansionorder)
         _fout = fout(_r)
         _dfout_dr = dfout_dr(_r)
-        _phase_out = exp(1im * abs(omega) * determine_sign(real(omega))* rho) * exp(1im * omega * rs_mp)
+        _phase_out = exp(1im * abs(omega) * determine_sign(omega)* rho) * exp(1im * omega * rs_mp)
 
         _Xup = _fout*_phase_out
         _dXup_drs = _phase_out*(1im*omega*_fout + (Delta(a, _r)/(_r^2 + a^2))*_dfout_dr)
