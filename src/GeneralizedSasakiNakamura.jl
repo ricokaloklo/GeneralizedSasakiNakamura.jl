@@ -201,7 +201,7 @@ function GSN_radial(
 
                 r_from_rho = ComplexFrequencies.solve_r_from_rho(
                     a, -angle(p), -angle(omega),
-                    0, rho_min, rho_max; sign=sign(real(omega))
+                    0, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                 )
 
                 Phiinsoln, _, _ = ComplexFrequencies.solve_Phiin(
@@ -279,7 +279,7 @@ function GSN_radial(
 
                 r_from_rho = ComplexFrequencies.solve_r_from_rho(
                     a, -angle(p), -angle(omega),
-                    0, rho_min, rho_max; sign=sign(real(omega))
+                    0, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                 )
 
                 Phiupsoln, _, _ = ComplexFrequencies.solve_Phiup(
