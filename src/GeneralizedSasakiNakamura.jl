@@ -126,7 +126,7 @@ end
 @doc raw"""
     GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
-Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
+Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
 
     - `IN` for purely-ingoing at the horizon,
@@ -136,9 +136,16 @@ and boundary condition specified by `boundary_condition`, which can be either
 
 Note that the `OUT` and `DOWN` solutions are constructed by linearly combining the `IN` and `UP` solutions, respectively.
 
-The GSN function is numerically solved in the interval of *tortoise coordinates* $r_{*} \in$ `[rsin, rsout]` using the ODE solver (from `DifferentialEquations.jl`) specified by `ODE_algorithm` (default: `Vern9()`) 
+The GSN function is numerically solved, for real values of `omega`, in the interval of *tortoise coordinates* $r_{*} \in$ `[rsin, rsout]` using the ODE solver (from `DifferentialEquations.jl`) specified by `ODE_algorithm` (default: `Vern9()`) 
 with tolerance specified by `tolerance` (default: `1e-12`). By default the data type used is `ComplexF64` (i.e. double-precision floating-point number) but it can be changed by 
 specifying `data_type` (e.g. `Complex{BigFloat}` for complex arbitrary precision number).
+
+With complex values of `omega`, the GSN function is solved along a rotated path on the complex plane of $r_*$, 
+where the path consists of two broken line segments parametrized by a real variable/a new coordinate $\rho$.
+The angle with which the path is rotated is determined by the frequency $\omega$, the Kerr spin parameter $a$ and the azimuthal index $m$, 
+such that the GSN function still behaves like a plane wave near the horizon and spatial infinity. 
+In particular, the new coordinate $\rho$ is chosen such that $\rho = r_{*}$ when the path is rotated back to the real axis. 
+This means that the tortoise coordinate $r_{*}$ is effectively $\rho$.
 
 While the numerical GSN solution is only accurate in the range `[rsin, rsout]`, 
 the full GSN solution is constructed by smoothly attaching the asymptotic solutions near horizon (up to `horizon_expansion_order`-th order) 
@@ -475,7 +482,7 @@ end
 @doc raw"""
     Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
 
-Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency) 
+Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
 
     - `IN` for purely-ingoing at the horizon,
