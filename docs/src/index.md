@@ -79,5 +79,31 @@ This should give
 77.57508416832009 - 429.40290952257226im
 ```
 
+
+One can just the same interface to compute solutions with complex frequencies. For example, the QNM solution of the $s=-2, \ell=2, m=2, a=0.68$ fundamental tone (i.e., with the overtone number $n = 0$) can be obtained using
+```julia
+R = Teukolsky_radial(-2, 2, 2, 0.68, 0.5239751-0.0815126im, UP, -50, 1000)
+```
+It should give you something like
+```julia
+TeukolskyRadialFunction(
+    mode=Mode(s=-2, l=2, m=2, a=0.68, omega=0.5239751 - 0.0815126im, lambda=1.6550030805786855 + 0.3602676563885877im),
+    boundary_condition=UP,
+    transmission_amplitude=1.0 + 0.0im,
+    incidence_amplitude=-5.8212709177202876e-8 - 3.805329609843362e-7im,
+    reflection_amplitude=1.1011632105029887 + 2.1300597368117247im,
+    normalization_convention=UNIT_TEUKOLSKY_TRANS
+)
+```
+We see that the incidence amplitude is indeed very small numerically as a QNM solution should. This can be accessed using
+```julia
+R.incidence_amplitude
+```
+
+This should give
+```julia
+-5.8212709177202876e-8 - 3.805329609843362e-7im
+```
+
 ## License
 The package is licensed under the MIT License.
