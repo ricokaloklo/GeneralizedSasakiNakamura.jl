@@ -81,8 +81,8 @@ This should give
 77.57508416832009 - 429.40290952257226im
 ```
 
-
-One can just the same interface to compute solutions with complex frequencies. For example, the QNM solution of the $s=-2, \ell=2, m=2, a=0.68$ fundamental tone (i.e., with the overtone number $n = 0$) can be obtained using
+#### Solving for complex frequencies
+One can use the same interface to compute solutions with complex frequencies. For example, the QNM solution of the $s=-2, \ell=2, m=2, a=0.68$ fundamental tone can be obtained using
 ```julia
 R = Teukolsky_radial(-2, 2, 2, 0.68, 0.5239751-0.0815126im, UP, -50, 1000)
 ```
