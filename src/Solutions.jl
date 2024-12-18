@@ -13,7 +13,7 @@ using ..ConversionFactors
 
 const I = 1im # Mathematica being Mathematica
 _DEFAULTDATATYPE = ComplexF64 # Double precision by default
-_DEFAULTSOLVER = Vern9()
+_DEFAULTSOLVER = AutoVern9(Rosenbrock23(autodiff=false))
 _DEFAULTTOLERANCE = 1e-12
 
 # First-order non-linear ODE form of the GSN equation
