@@ -112,12 +112,16 @@ If you have used this code in your research that leads to a publication, please 
 ```
 @article{Lo:2023fvv,
     author = "Lo, Rico K. L.",
-    title = "{Recipes for computing radiation from a Kerr black hole using Generalized Sasaki-Nakamura formalism: I. Homogeneous solutions}",
+    title = "{Recipes for computing radiation from a Kerr black hole using a generalized Sasaki-Nakamura formalism: Homogeneous solutions}",
     eprint = "2306.16469",
     archivePrefix = "arXiv",
     primaryClass = "gr-qc",
-    month = "6",
-    year = "2023"
+    doi = "10.1103/PhysRevD.110.124070",
+    journal = "Phys. Rev. D",
+    volume = "110",
+    number = "12",
+    pages = "124070",
+    year = "2024"
 }
 ```
 
