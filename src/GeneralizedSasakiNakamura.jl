@@ -124,7 +124,7 @@ function Base.show(io::IO, teuk_func::TeukolskyRadialFunction)
 end
 
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
+    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -137,7 +137,9 @@ and boundary condition specified by `boundary_condition`, which can be either
 Note that the `OUT` and `DOWN` solutions are constructed by linearly combining the `IN` and `UP` solutions, respectively.
 
 The GSN function is numerically solved, for real values of `omega`, in the interval of *tortoise coordinates* $r_{*} \in$ `[rsin, rsout]` using the ODE solver (from `DifferentialEquations.jl`) specified by `ODE_algorithm` (default: `Vern9()`) 
-with tolerance specified by `tolerance` (default: `1e-12`). By default the data type used is `ComplexF64` (i.e. double-precision floating-point number) but it can be changed by 
+with tolerance specified by `tolerance` (default: `1e-12`). The ODE to be solved is determined by the keyword `method` (default: `auto`),
+which can be either `linear` (solving the GSN equation in a linear form) or `Riccati` (solving the GSN equation in a nonlinear form).
+By default the data type used is `ComplexF64` (i.e. double-precision floating-point number) but it can be changed by
 specifying `data_type` (e.g. `Complex{BigFloat}` for complex arbitrary precision number).
 
 With complex values of `omega`, the GSN function is solved along a rotated path on the complex plane of $r_*$, 
@@ -160,7 +162,7 @@ Return a `GSNRadialFunction` object which contains all the information about the
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0
+    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0
 )
     if omega == 0
         return GSN_radial(s, l, m, a, omega, boundary_condition)
@@ -172,11 +174,21 @@ function GSN_radial(
         if boundary_condition == IN
             # Solve for Xin
             if isa(omega, Real)
-                # NOTE For now we do *not* implement intelligent switching between the Riccati and the GSN form
-                # Actually solve for Phiin first
-                Phiinsoln = Solutions.solve_Phiin(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=horizon_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
-                # Then convert to Xin
-                Xinsoln = Solutions.Xsoln_from_Phisoln(Phiinsoln)
+                if method == "auto"
+                    # For real frequencies, we can use the Riccati form
+                    method = "Riccati"
+                end
+
+                if method == "Riccati"
+                    Phiinsoln = Solutions.solve_Phiin(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=horizon_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
+                    # Then convert to Xin
+                    Xinsoln = Solutions.Xsoln_from_Phisoln(Phiinsoln)
+                elseif method == "linear"
+                    Phiinsoln = nothing
+                    Xinsoln = Solutions.solve_Xin(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=horizon_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
+                else
+                    error("Method must be either 'Riccati' or 'linear'")
+                end
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
                 Bref_SN, Binc_SN = Solutions.BrefBinc_SN_from_Xin(s, m, a, omega, lambda, Xinsoln, rsout; order=infinity_expansion_order)
@@ -200,6 +212,11 @@ function GSN_radial(
                     UNIT_GSN_TRANS
                 )
             else
+                if method == "auto"
+                    # For complex frequencies, we solve the linear form
+                    method = "linear"
+                end
+
                 p = omega - m*Kerr.omega_horizon(a)
 
                 # First solve for r in terms of rho,
@@ -212,16 +229,28 @@ function GSN_radial(
                     rsmp, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                 )
 
-                Phiinsoln, _, _ = ComplexFrequencies.solve_Phiin(
-                    s, m, a, -angle(omega), -angle(p),
-                    omega, lambda, r_from_rho,
-                    rsmp, rho_min, rho_max;
-                    initialconditions_order=horizon_expansion_order, dtype=data_type,
-                    odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
-                )
-
-                # Then convert to Xin
-                Xinsoln = Solutions.Xsoln_from_Phisoln(Phiinsoln)
+                if method == "Riccati"
+                    Phiinsoln, _, _ = ComplexFrequencies.solve_Phiin(
+                        s, m, a, -angle(omega), -angle(p),
+                        omega, lambda, r_from_rho,
+                        rsmp, rho_min, rho_max;
+                        initialconditions_order=horizon_expansion_order, dtype=data_type,
+                        odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
+                    )
+                    # Then convert to Xin
+                    Xinsoln = Solutions.Xsoln_from_Phisoln(Phiinsoln)
+                elseif method == "linear"
+                    Phiinsoln = nothing
+                    Xinsoln, _, _ = ComplexFrequencies.solve_Xin(
+                        s, m, a, -angle(omega), -angle(p),
+                        omega, lambda, r_from_rho,
+                        rsmp, rho_min, rho_max;
+                        initialconditions_order=horizon_expansion_order, dtype=data_type,
+                        odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
+                    )
+                else
+                    error("Method must be either 'Riccati' or 'linear'")
+                end
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
                 Bref_SN, Binc_SN = ComplexFrequencies.BrefBinc_SN_from_Xin(
@@ -250,11 +279,22 @@ function GSN_radial(
         elseif boundary_condition == UP
             # Solve for Xup
             if isa(omega, Real)
-                # NOTE For now we do *not* implement intelligent switching between the Riccati and the GSN form
-                # Actually solve for Phiup first
-                Phiupsoln = Solutions.solve_Phiup(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=infinity_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
-                # Then convert to Xup
-                Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
+                if method == "auto"
+                    # For real frequencies, we can use the Riccati form
+                    method = "Riccati"
+                end
+
+                if method == "Riccati"
+                    # Actually solve for Phiup first
+                    Phiupsoln = Solutions.solve_Phiup(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=infinity_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
+                    # Then convert to Xup
+                    Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
+                elseif method == "linear"
+                    Phiupsoln = nothing
+                    Xupsoln = Solutions.solve_Xup(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=infinity_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
+                else
+                    error("Method must be either 'Riccati' or 'linear'")
+                end
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
                 Cref_SN, Cinc_SN = Solutions.CrefCinc_SN_from_Xup(s, m, a, omega, lambda, Xupsoln, rsin; order=horizon_expansion_order)
@@ -278,6 +318,11 @@ function GSN_radial(
                     UNIT_GSN_TRANS
                 )
             else
+                if method == "auto"
+                    # For complex frequencies, we solve the linear form
+                    method = "linear"
+                end
+
                 p = omega - m*Kerr.omega_horizon(a)
 
                 # First solve for r in terms of rho,
@@ -290,16 +335,28 @@ function GSN_radial(
                     rsmp, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                 )
 
-                Phiupsoln, _, _ = ComplexFrequencies.solve_Phiup(
-                    s, m, a, -angle(omega), -angle(p),
-                    omega, lambda, r_from_rho,
-                    rsmp, rho_min, rho_max;
-                    initialconditions_order=infinity_expansion_order, dtype=data_type,
-                    odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
-                )
-
-                # Then convert to Xup
-                Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
+                if method == "Riccati"
+                    Phiupsoln, _, _ = ComplexFrequencies.solve_Phiup(
+                        s, m, a, -angle(omega), -angle(p),
+                        omega, lambda, r_from_rho,
+                        rsmp, rho_min, rho_max;
+                        initialconditions_order=infinity_expansion_order, dtype=data_type,
+                        odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
+                    )
+                    # Then convert to Xup
+                    Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
+                elseif method == "linear"
+                    Phiupsoln = nothing
+                    Xupsoln, _, _ = ComplexFrequencies.solve_Xup(
+                        s, m, a, -angle(omega), -angle(p),
+                        omega, lambda, r_from_rho,
+                        rsmp, rho_min, rho_max;
+                        initialconditions_order=infinity_expansion_order, dtype=data_type,
+                        odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
+                    )
+                else
+                    error("Method must be either 'Riccati' or 'linear'")
+                end
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
                 Cref_SN, Cinc_SN = ComplexFrequencies.CrefCinc_SN_from_Xup(
@@ -481,7 +538,7 @@ end
 (gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
 
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -503,14 +560,14 @@ In this case, only `s`, `l`, `m`, `a`, `omega`, `boundary_condition` will be par
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0
+    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0
 )
     if omega == 0
         return Teukolsky_radial(s, l, m, a, 0, boundary_condition)
     else
 
         # Solve for the GSN solution
-        gsn_func = GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+        gsn_func = GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method=method, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
 
         # Convert asymptotic amplitudes from GSN to Teukolsky formalism
         if gsn_func.boundary_condition == IN
