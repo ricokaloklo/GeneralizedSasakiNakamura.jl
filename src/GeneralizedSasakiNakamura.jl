@@ -124,7 +124,7 @@ function Base.show(io::IO, teuk_func::TeukolskyRadialFunction)
 end
 
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -142,6 +142,7 @@ specifying `data_type` (e.g. `Complex{BigFloat}` for complex arbitrary precision
 
 With complex values of `omega`, the GSN function is solved along a rotated path on the complex plane of $r_*$, 
 where the path consists of two broken line segments parametrized by a real variable/a new coordinate $\rho$.
+At $\rho = 0$, the path intersects with the real axis at $r_{*} = r_{*}^{\rm{mp}}$ (`rsmp`, default to be 0).
 The angle with which the path is rotated is determined by the frequency $\omega$, the Kerr spin parameter $a$ and the azimuthal index $m$, 
 such that the GSN function still behaves like a plane wave near the horizon and spatial infinity. 
 In particular, the new coordinate $\rho$ is chosen such that $\rho = r_{*}$ when the path is rotated back to the real axis. 
@@ -159,7 +160,7 @@ Return a `GSNRadialFunction` object which contains all the information about the
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE
+    data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0
 )
     if omega == 0
         return GSN_radial(s, l, m, a, omega, boundary_condition)
@@ -208,13 +209,13 @@ function GSN_radial(
 
                 r_from_rho = ComplexFrequencies.solve_r_from_rho(
                     a, -angle(p), -angle(omega),
-                    0, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
+                    rsmp, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                 )
 
                 Phiinsoln, _, _ = ComplexFrequencies.solve_Phiin(
                     s, m, a, -angle(omega), -angle(p),
                     omega, lambda, r_from_rho,
-                    0, rho_min, rho_max;
+                    rsmp, rho_min, rho_max;
                     initialconditions_order=horizon_expansion_order, dtype=data_type,
                     odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
                 )
@@ -224,11 +225,11 @@ function GSN_radial(
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
                 Bref_SN, Binc_SN = ComplexFrequencies.BrefBinc_SN_from_Xin(
-                    s, m, a, -angle(omega), omega, lambda, Xinsoln, r_from_rho, 0, rho_max; order=infinity_expansion_order
+                    s, m, a, -angle(omega), omega, lambda, Xinsoln, r_from_rho, rsmp, rho_max; order=infinity_expansion_order
                 )
 
                 # Construct the full, 'semi-analytical' GSN solution *in rho*
-                semianalytical_Xinsoln_rho(rho) = ComplexFrequencies.semianalytical_Xin(s, m, a, -angle(omega), -angle(p), omega, lambda, Xinsoln, r_from_rho, 0, rho_min, rho_max, horizon_expansion_order, infinity_expansion_order, rho)
+                semianalytical_Xinsoln_rho(rho) = ComplexFrequencies.semianalytical_Xin(s, m, a, -angle(omega), -angle(p), omega, lambda, Xinsoln, r_from_rho, rsmp, rho_min, rho_max, horizon_expansion_order, infinity_expansion_order, rho)
 
                 return GSNRadialFunction(
                     mode,
@@ -286,13 +287,13 @@ function GSN_radial(
 
                 r_from_rho = ComplexFrequencies.solve_r_from_rho(
                     a, -angle(p), -angle(omega),
-                    0, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
+                    rsmp, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                 )
 
                 Phiupsoln, _, _ = ComplexFrequencies.solve_Phiup(
                     s, m, a, -angle(omega), -angle(p),
                     omega, lambda, r_from_rho,
-                    0, rho_min, rho_max;
+                    rsmp, rho_min, rho_max;
                     initialconditions_order=infinity_expansion_order, dtype=data_type,
                     odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
                 )
@@ -302,11 +303,11 @@ function GSN_radial(
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
                 Cref_SN, Cinc_SN = ComplexFrequencies.CrefCinc_SN_from_Xup(
-                    s, m, a, -angle(p), omega, lambda, Xupsoln, r_from_rho, 0, rho_min; order=horizon_expansion_order
+                    s, m, a, -angle(p), omega, lambda, Xupsoln, r_from_rho, rsmp, rho_min; order=horizon_expansion_order
                 )
 
                 # Construct the full, 'semi-analytical' GSN solution *in rho*
-                semianalytical_Xupsoln_rho(rho) = ComplexFrequencies.semianalytical_Xup(s, m, a, -angle(omega), -angle(p), omega, lambda, Xupsoln, r_from_rho, 0, rho_min, rho_max, horizon_expansion_order, infinity_expansion_order, rho)
+                semianalytical_Xupsoln_rho(rho) = ComplexFrequencies.semianalytical_Xup(s, m, a, -angle(omega), -angle(p), omega, lambda, Xupsoln, r_from_rho, rsmp, rho_min, rho_max, horizon_expansion_order, infinity_expansion_order, rho)
 
                 return GSNRadialFunction(
                     mode,
@@ -328,8 +329,8 @@ function GSN_radial(
             # Construct Xdown from Xin and Xup, instead of solving the ODE numerically with the boundary condition
 
             # Solve for Xin *and* Xup first
-            Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
-            Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+            Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+            Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
 
             # Xdown is a linear combination of Xin and Xup with the following coefficients
             Btrans = Xin.transmission_amplitude # Should really be just 1
@@ -362,8 +363,8 @@ function GSN_radial(
             # Construct Xout from Xin and Xup, instead of solving the ODE numerically with the boundary condition
 
             # Solve for Xin *and* Xup first
-            Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
-            Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+            Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+            Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout, horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
 
             # Xout is a linear combination of Xin and Xup with the following coefficients
             Btrans = Xin.transmission_amplitude # Should really be just 1
@@ -426,7 +427,7 @@ function GSN_radial(
 end
 
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+    GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
@@ -434,7 +435,7 @@ with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-
 Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 """
-function GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+function GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
     # The maximum expansion order to use
     _MAX_horizon_expansion_order = 100
     _MAX_infinity_expansion_order = 100
@@ -450,11 +451,11 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=
         Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout,
             horizon_expansion_order=_DEFAULT_horizon_expansion_order,
             infinity_expansion_order=_DEFAULT_infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
         Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout,
             horizon_expansion_order=_DEFAULT_horizon_expansion_order,
             infinity_expansion_order=_DEFAULT_infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
 
         # Bump up the expansion order until the solution is "sane"
         while(!Solutions.check_XinXup_sanity(Xin, Xup))
@@ -465,11 +466,11 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=
             Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout,
                 horizon_expansion_order=new_horizon_expansion_order,
                 infinity_expansion_order=new_infinity_expansion_order,
-                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
             Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout,
                 horizon_expansion_order=new_horizon_expansion_order,
                 infinity_expansion_order=new_infinity_expansion_order,
-                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
         end
     end
 
@@ -480,7 +481,7 @@ end
 (gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
 
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -502,14 +503,14 @@ In this case, only `s`, `l`, `m`, `a`, `omega`, `boundary_condition` will be par
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE
+    data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0
 )
     if omega == 0
         return Teukolsky_radial(s, l, m, a, 0, boundary_condition)
     else
 
         # Solve for the GSN solution
-        gsn_func = GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+        gsn_func = GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
 
         # Convert asymptotic amplitudes from GSN to Teukolsky formalism
         if gsn_func.boundary_condition == IN
@@ -593,7 +594,7 @@ function Teukolsky_radial(
 end
 
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
@@ -601,21 +602,21 @@ with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-
 Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 """
-function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
     if omega == 0
         Rin = Teukolsky_radial(s, l, m, a, omega, IN)
         Rup = Teukolsky_radial(s, l, m, a, omega, UP)
     else
         # NOTE This is not the most efficient implementation but ensures self-consistency
-        Xin, Xup = GSN_radial(s, l, m, a, omega; rsin=rsin, rsout=rsout, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance) # This is simply to figure out what expansion orders to use
+        Xin, Xup = GSN_radial(s, l, m, a, omega; rsin=rsin, rsout=rsout, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp) # This is simply to figure out what expansion orders to use
         Rin = Teukolsky_radial(s, l, m, a, omega, IN, Xin.rsin, Xin.rsout;
             horizon_expansion_order=Xin.horizon_expansion_order,
             infinity_expansion_order=Xin.infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
         Rup = Teukolsky_radial(s, l, m, a, omega, UP, Xup.rsin, Xup.rsout;
             horizon_expansion_order=Xup.horizon_expansion_order,
             infinity_expansion_order=Xup.infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
     end
 
     return (Rin, Rup)
