@@ -144,11 +144,10 @@ specifying `data_type` (e.g. `Complex{BigFloat}` for complex arbitrary precision
 
 With complex values of `omega`, the GSN function is solved along a rotated path on the complex plane of $r_*$, 
 where the path consists of two broken line segments parametrized by a real variable/a new coordinate $\rho$.
-At $\rho = 0$, the path intersects with the real axis at $r_{*} = r_{*}^{\rm{mp}}$ (`rsmp`, default to be 0).
 The angle with which the path is rotated is determined by the frequency $\omega$, the Kerr spin parameter $a$ and the azimuthal index $m$, 
 such that the GSN function still behaves like a plane wave near the horizon and spatial infinity. 
-In particular, the new coordinate $\rho$ is chosen such that $\rho = r_{*}$ when the path is rotated back to the real axis. 
-This means that the tortoise coordinate $r_{*}$ is effectively $\rho$.
+At $\rho = 0$, the path intersects with the real axis at $r_{*} = r_{*}^{\rm{mp}}$ (`rsmp`, default to be 0).
+Both the numerical and semi-analytical GSN solutions are evaluated as functions of $\rho$ instead of the now-complex $r_{*}$.
 
 While the numerical GSN solution is only accurate in the range `[rsin, rsout]`, 
 the full GSN solution is constructed by smoothly attaching the asymptotic solutions near horizon (up to `horizon_expansion_order`-th order) 
