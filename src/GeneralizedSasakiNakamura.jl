@@ -555,6 +555,9 @@ with the normalization convention that the transmission amplitude is normalized 
 
 Note, however, when `omega = 0`, the exact Teukolsky function expressed using Gauss hypergeometric functions will be returned (i.e., instead of using the GSN formalism). 
 In this case, only `s`, `l`, `m`, `a`, `omega`, `boundary_condition` will be parsed.
+
+With complex values of `omega`, the Teukolsky function is evaluated as a function of $r$,
+where the value at the corresponding location $\rho = r_{*}(r) \in \mathbb{R}$ along the rotated integration path on the complex plane is returned.
 """
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
