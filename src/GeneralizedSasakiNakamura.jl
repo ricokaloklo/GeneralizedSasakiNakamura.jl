@@ -124,7 +124,7 @@ function Base.show(io::IO, teuk_func::TeukolskyRadialFunction)
 end
 
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
+    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -146,7 +146,7 @@ With complex values of `omega`, the GSN function is solved along a rotated path 
 where the path consists of two broken line segments parametrized by a real variable/a new coordinate $\rho$.
 The angle with which the path is rotated is determined by the frequency $\omega$, the Kerr spin parameter $a$ and the azimuthal index $m$, 
 such that the GSN function still behaves like a plane wave near the horizon and spatial infinity. 
-At $\rho = 0$, the path intersects with the real axis at $r_{*} = r_{*}^{\rm{mp}}$ (`rsmp`, default to be 0).
+At $\rho = 0$, the path intersects with the real axis at $r_{*} = r_{*}^{\rm{mp}}$ (`rsmp`, default to be nothing, which means it will be determined automatically).
 Both the numerical and semi-analytical GSN solutions are evaluated as functions of $\rho$ instead of the now-complex $r_{*}$.
 
 While the numerical GSN solution is only accurate in the range `[rsin, rsout]`, 
@@ -161,7 +161,7 @@ Return a `GSNRadialFunction` object which contains all the information about the
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0
+    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing
 )
     if omega == 0
         return GSN_radial(s, l, m, a, omega, boundary_condition)
@@ -223,10 +223,17 @@ function GSN_radial(
                 rho_min = rsin
                 rho_max = rsout
 
-                r_from_rho = ComplexFrequencies.solve_r_from_rho(
-                    a, -angle(p), -angle(omega),
-                    rsmp, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
-                )
+                if isnothing(rsmp)
+                    r_from_rho, rsmp = ComplexFrequencies.solve_r_from_rho(
+                        a, -angle(p), -angle(omega),
+                        rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
+                    )
+                else
+                    r_from_rho = ComplexFrequencies.solve_r_from_rho(
+                        a, -angle(p), -angle(omega),
+                        rsmp, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
+                    )
+                end
 
                 if method == "Riccati"
                     Phiinsoln, _, _ = ComplexFrequencies.solve_Phiin(
@@ -329,10 +336,17 @@ function GSN_radial(
                 rho_min = rsin
                 rho_max = rsout
 
-                r_from_rho = ComplexFrequencies.solve_r_from_rho(
-                    a, -angle(p), -angle(omega),
-                    rsmp, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
-                )
+                if isnothing(rsmp)
+                    r_from_rho, rsmp = ComplexFrequencies.solve_r_from_rho(
+                        a, -angle(p), -angle(omega),
+                        rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
+                    )
+                else
+                    r_from_rho = ComplexFrequencies.solve_r_from_rho(
+                        a, -angle(p), -angle(omega),
+                        rsmp, rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
+                    )
+                end
 
                 if method == "Riccati"
                     Phiupsoln, _, _ = ComplexFrequencies.solve_Phiup(
@@ -483,7 +497,7 @@ function GSN_radial(
 end
 
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
+    GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
@@ -491,7 +505,7 @@ with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-
 Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 """
-function GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
+function GSN_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing)
     # The maximum expansion order to use
     _MAX_horizon_expansion_order = 100
     _MAX_infinity_expansion_order = 100
@@ -537,7 +551,7 @@ end
 (gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
 
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -562,7 +576,7 @@ where the value at the corresponding location $\rho = r_{*}(r) \in \mathbb{R}$ a
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0
+    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing
 )
     if omega == 0
         return Teukolsky_radial(s, l, m, a, 0, boundary_condition)
@@ -653,7 +667,7 @@ function Teukolsky_radial(
 end
 
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
@@ -661,7 +675,7 @@ with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-
 Note that the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 """
-function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=0)
+function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing)
     if omega == 0
         Rin = Teukolsky_radial(s, l, m, a, omega, IN)
         Rup = Teukolsky_radial(s, l, m, a, omega, UP)
