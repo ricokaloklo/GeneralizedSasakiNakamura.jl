@@ -8,6 +8,8 @@ using ..InitialConditions
 using ..Solutions
 
 using DifferentialEquations
+using Optimization
+using OptimizationOptimJL
 
 _DEFAULTDATATYPE = Solutions._DEFAULTDATATYPE
 _DEFAULTSOLVER = Solutions._DEFAULTSOLVER
@@ -76,6 +78,47 @@ function solve_r_from_rho(
     # Stitch together the two solutions
     r_from_rho(rho) = rho >= 0 ? rho <= rho_pos_end ? r_from_rhopos(rho) : NaN : rho >= rho_neg_end ? r_from_rhoneg(rho) : NaN
     return r_from_rho
+end
+
+function solve_r_from_rho(
+    a, beta_neg, beta_pos,
+    rho_neg_end, rho_pos_end;
+    sign_neg=1, sign_pos=1,
+    search_range=-5:0.05:5,
+    dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER,
+    reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE
+)
+    # Some helper functions
+    solve_r_from_rho_rsmp(rsmp) = solve_r_from_rho(
+        a, beta_neg, beta_pos, rsmp, rho_neg_end, rho_pos_end;
+        sign_neg=sign_neg, sign_pos=sign_pos,
+        dtype=dtype, odealgo=odealgo,
+        reltol=reltol, abstol=abstol
+    )
+
+    # Solve r(rho) for all rsmp to be searched first
+    r_from_rho_rsmps = [solve_r_from_rho_rsmp(rsmp) for rsmp in search_range]
+    allowed_rsmp_idx = []
+
+    for idx in eachindex(search_range)
+        # Check, approximately, if |r(rho)| -> infinity as rho -> infinity
+        if abs(r_from_rho_rsmps[idx](rho_pos_end)) > abs(r_from_rho_rsmps[idx](0))
+            # Check if Im(r(rho)) changes sign, up to rho = 100, by computing a checksum (literally)
+            checksum = sum(sign.(imag.(r_from_rho_rsmps[idx].(range(0, 100, length=100)))))
+            if abs(checksum) >= 99
+                if abs(r_from_rho_rsmps[idx](rho_neg_end) - r_plus(a)) < 1
+                    push!(allowed_rsmp_idx, idx)
+                end
+            end
+        end
+    end
+
+    if !isempty(allowed_rsmp_idx)
+        idx_to_use = sort(allowed_rsmp_idx)[1]
+        return r_from_rho_rsmps[idx_to_use], search_range[idx_to_use]
+    else
+        return solve_r_from_rho_rsmp(0), 0
+    end
 end
 
 function GSN_linear_eqn!(du, u, p, rho)
