@@ -8,8 +8,6 @@ using ..InitialConditions
 using ..Solutions
 
 using DifferentialEquations
-using Optimization
-using OptimizationOptimJL
 
 _DEFAULTDATATYPE = Solutions._DEFAULTDATATYPE
 _DEFAULTSOLVER = Solutions._DEFAULTSOLVER
