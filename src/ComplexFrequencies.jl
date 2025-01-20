@@ -115,12 +115,12 @@ function solve_r_from_rho(
         
         # Get the asymptotic behavior of sF and sU at ρ -> ∞
         # We want sF -> 0 as ρ -> +∞.
-        Finf = GeneralizedSasakiNakamura.Potentials.sF(s, m, a, omega, lambda, sol(rho_max))
+        Finf = GeneralizedSasakiNakamura.Potentials.sF(s, m, a, omega, lambda, sol(rho_pos_end))
         # We want sU -> -ω^2 as ρ -> +∞.
-        Uinf = GeneralizedSasakiNakamura.Potentials.sU(s, m, a, omega, lambda, sol(rho_max)) + omega^2
+        Uinf = GeneralizedSasakiNakamura.Potentials.sU(s, m, a, omega, lambda, sol(rho_pos_end)) + omega^2
         
         # Since the two potentials at ρ -> -∞ can possibly be oscillatory, we take the mean value of the potentials, as that should also tend to the correct value.
-        RHO = rho_min:0.1:rho_min+100
+        RHO = rho_neg_end:0.1:rho_neg_end+100
         F = GeneralizedSasakiNakamura.Potentials.sF.(s, m, a, omega, lambda, sol.(RHO))
         U = GeneralizedSasakiNakamura.Potentials.sU.(s, m, a, omega, lambda, sol.(RHO))
         Fmean = sum(F)/length(F)
