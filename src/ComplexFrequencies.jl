@@ -8,6 +8,8 @@ using ..InitialConditions
 using ..Solutions
 
 using DifferentialEquations
+using Optimization
+using OptimizationOptimJL
 
 _DEFAULTDATATYPE = Solutions._DEFAULTDATATYPE
 _DEFAULTSOLVER = Solutions._DEFAULTSOLVER
@@ -79,10 +81,11 @@ function solve_r_from_rho(
 end
 
 function solve_r_from_rho(
-    a, beta_neg, beta_pos,
+    s, l, m, a, omega, 
+    beta_neg, beta_pos,
     rho_neg_end, rho_pos_end;
     sign_neg=1, sign_pos=1,
-    search_range=-5:0.05:5,
+    rsmp_initial=0.0,
     dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER,
     reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE
 )
@@ -93,29 +96,54 @@ function solve_r_from_rho(
         dtype=dtype, odealgo=odealgo,
         reltol=reltol, abstol=abstol
     )
+    
+    lambda = SpinWeightedSpheroidalHarmonics.spectral.Teukolsky_lambda_const(a*omega, s, l, m)
+    p = omega - m*GeneralizedSasakiNakamura.Kerr.omega_horizon(a)
 
-    # Solve r(rho) for all rsmp to be searched first
-    r_from_rho_rsmps = [solve_r_from_rho_rsmp(rsmp) for rsmp in search_range]
-    allowed_rsmp_idx = []
-
-    for idx in eachindex(search_range)
-        # Check, approximately, if |r(rho)| -> infinity as rho -> infinity
-        if abs(r_from_rho_rsmps[idx](rho_pos_end)) > abs(r_from_rho_rsmps[idx](0))
-            # Check if Im(r(rho)) changes sign, up to rho = 100, by computing a checksum (literally)
-            checksum = sum(sign.(imag.(r_from_rho_rsmps[idx].(range(0, 100, length=100)))))
-            if abs(checksum) >= 99
-                if abs(r_from_rho_rsmps[idx](rho_neg_end) - r_plus(a)) < 1
-                    push!(allowed_rsmp_idx, idx)
-                end
-            end
-        end
+    # The loss function, to be used in the optimization.
+    function asymptotic_behavior_of_sFsU(rsmp)
+        """
+        This function solves for r(ρ) and then checks if the asymptotic behavior of sF and sU in the limit ρ → ∞ are satisfied.
+            We want sF -> 0 as ρ -> ±∞.
+            We want sU -> -ω^2 as ρ -> +∞, and sU -> -p^2 as ρ -> -∞.
+        The indput is a vector rsmp = [r_star_matchingpoint].
+        The output is the squared sum of the conditions.
+        """
+        # Solve for r(ρ)
+        sol = GeneralizedSasakiNakamura.ComplexFrequencies.solve_r_from_rho(
+            a, -angle(p), -angle(omega), rsmp[1], rho_neg_end, rho_pos_end; sign_neg=GeneralizedSasakiNakamura.ComplexFrequencies.determine_sign(p), sign_pos=GeneralizedSasakiNakamura.ComplexFrequencies.determine_sign(omega))
+        
+        # Get the asymptotic behavior of sF and sU at ρ -> ∞
+        # We want sF -> 0 as ρ -> +∞.
+        Finf = GeneralizedSasakiNakamura.Potentials.sF(s, m, a, omega, lambda, sol(rho_max))
+        # We want sU -> -ω^2 as ρ -> +∞.
+        Uinf = GeneralizedSasakiNakamura.Potentials.sU(s, m, a, omega, lambda, sol(rho_max)) + omega^2
+        
+        # Since the two potentials at ρ -> -∞ can possibly be oscillatory, we take the mean value of the potentials, as that should also tend to the correct value.
+        RHO = rho_min:0.1:rho_min+100
+        F = GeneralizedSasakiNakamura.Potentials.sF.(s, m, a, omega, lambda, sol.(RHO))
+        U = GeneralizedSasakiNakamura.Potentials.sU.(s, m, a, omega, lambda, sol.(RHO))
+        Fmean = sum(F)/length(F)
+        Umean = sum(U)/length(U)
+    
+        # We want sF -> 0 as ρ -> -∞.
+        For = Fmean
+        # We want sU -> -p^2 as ρ -> -∞.
+        Uor = Umean + p^2
+        return abs(Finf^2 + For^2 + Uinf^2 + Uor^2)
     end
+    
+    # Initialize the optimization problem
+    prob = OptimizationProblem(asymptotic_behavior_of_sFsU, [rsmp_initial])
+    # Solve the optimization problem using NelderMead
+    optimal_rsmp = solve(prob, NelderMead())
 
-    if !isempty(allowed_rsmp_idx)
-        idx_to_use = sort(allowed_rsmp_idx)[1]
-        return r_from_rho_rsmps[idx_to_use], search_range[idx_to_use]
+    # Check if the optimization was successful
+    if optimal_rsmp.retcode == ReturnCode.Success
+        return solve_r_from_rho_rsmp(optimal_rsmp.minimizer[1]), optimal_rsmp.minimizer[1]
+    # If the optimization was not successful, use the initial matching point
     else
-        return solve_r_from_rho_rsmp(0), 0
+        return solve_r_from_rho_rsmp(rsmp_initial), rsmp_initial
     end
 end
 
