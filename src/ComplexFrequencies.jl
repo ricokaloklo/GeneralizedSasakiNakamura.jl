@@ -101,7 +101,7 @@ function solve_r_from_rho(
     p = omega - m*GeneralizedSasakiNakamura.Kerr.omega_horizon(a)
 
     # The loss function, to be used in the optimization.
-    function asymptotic_behavior_of_sFsU(rsmp)
+    function asymptotic_behavior_of_sFsU(rsmp, P)
         """
         This function solves for r(ρ) and then checks if the asymptotic behavior of sF and sU in the limit ρ → ∞ are satisfied.
             We want sF -> 0 as ρ -> ±∞.
@@ -134,7 +134,8 @@ function solve_r_from_rho(
     end
     
     # Initialize the optimization problem
-    prob = OptimizationProblem(asymptotic_behavior_of_sFsU, [rsmp_initial])
+    param = []
+    prob = OptimizationProblem(asymptotic_behavior_of_sFsU, [rsmp_initial], param)
     # Solve the optimization problem using NelderMead
     optimal_rsmp = solve(prob, NelderMead())
 
