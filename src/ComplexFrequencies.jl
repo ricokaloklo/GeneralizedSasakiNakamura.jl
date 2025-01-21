@@ -101,38 +101,38 @@ function solve_r_from_rho(
     # The loss function, to be used in the optimization.
     function asymptotic_behavior_of_sFsU(u, _)
         #=
-        This function solves for r(\rho) and then checks if the asymptotic behavior of sF and sU in the limit \rho → \pm \infty are satisfied.
+        This function solves for r(\rho) and then checks if the asymptotic behavior of
+        sF and sU in the limit \rho \to \pm \infty are satisfied.
+
         We want
-            sF -> 0 as \rho \to \pm \infty
-            sU -> -ω^2 as \rho \to \infty, and sU -> -p^2 as \rho \to -\infty
+            sF \to 0 as \rho \to \pm \infty
+            sU \to -ω^2 as \rho \to \infty, and sU -> -p^2 as \rho \to -\infty
         =#
         # Solve for r(ρ)
         sol = solve_r_from_rho_rsmp(u[1])
 
-        # Get the asymptotic behavior of sF and sU at ρ -> ∞
-        # We want sF -> 0 as ρ -> +∞
+        # Get the asymptotic behavior of sF and sU as \rho \to \infty
         sF_rhoout = sF(s, m, a, omega, lambda, sol(rho_pos_end))
-        # We want sU -> -ω^2 as ρ -> +∞
         sU_rhoout = sU(s, m, a, omega, lambda, sol(rho_pos_end)) + omega^2
         
-        # Since the two potentials at ρ -> -∞ can possibly be oscillatory, we take the mean value of the potentials, as that should also tend to the correct value.
+        # Get the asymptotic behavior of sF and sU as \rho \to -\infty
+        # NOTE Since r approaches r_+ counterclockwise in the complex r plane,
+        # we check the "average" behavior for convergence
         rhos = rho_neg_end:0.1:rho_neg_end + abs(rho_neg_end)/10
-        # We want sF -> 0 as ρ -> -∞
         sF_rhoin = sum(sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
-        # We want sU -> -p^2 as ρ -> -∞
         sU_rhoin = sum(sU.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos) + p^2
     
         return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
     optim_prob = OptimizationProblem(asymptotic_behavior_of_sFsU, [0.0], ())
-    optim_soln = solve(optim_prob, NelderMead())
+    optim_soln = solve(optim_prob, NelderMead(); maxiters=50)
 
     # Check if the optimization was successful
     if optim_soln.retcode == ReturnCode.Success
         return solve_r_from_rho_rsmp(optim_soln.u[1]), optim_soln.u[1]
-    # If the optimization was not successful, use the initial matching point
     else
+        # If the optimization was not successful, use rsmp = 0
         return solve_r_from_rho_rsmp(0), 0
     end
 end
