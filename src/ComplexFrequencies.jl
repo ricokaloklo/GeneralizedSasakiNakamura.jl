@@ -8,6 +8,8 @@ using ..InitialConditions
 using ..Solutions
 
 using DifferentialEquations
+using Optimization
+using OptimizationOptimJL
 
 _DEFAULTDATATYPE = Solutions._DEFAULTDATATYPE
 _DEFAULTSOLVER = Solutions._DEFAULTSOLVER
@@ -79,14 +81,16 @@ function solve_r_from_rho(
 end
 
 function solve_r_from_rho(
-    a, beta_neg, beta_pos,
+    s, m, a, omega, lambda,
+    beta_neg, beta_pos,
     rho_neg_end, rho_pos_end;
     sign_neg=1, sign_pos=1,
-    search_range=-5:0.05:5,
     dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER,
     reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE
 )
     # Some helper functions
+    p = omega - m*omega_horizon(a)
+
     solve_r_from_rho_rsmp(rsmp) = solve_r_from_rho(
         a, beta_neg, beta_pos, rsmp, rho_neg_end, rho_pos_end;
         sign_neg=sign_neg, sign_pos=sign_pos,
@@ -94,27 +98,41 @@ function solve_r_from_rho(
         reltol=reltol, abstol=abstol
     )
 
-    # Solve r(rho) for all rsmp to be searched first
-    r_from_rho_rsmps = [solve_r_from_rho_rsmp(rsmp) for rsmp in search_range]
-    allowed_rsmp_idx = []
+    # The loss function, to be used in the optimization.
+    function asymptotic_behavior_of_sFsU(u, _)
+        #=
+        This function solves for r(\rho) and then checks if the asymptotic behavior of
+        sF and sU in the limit \rho \to \pm \infty are satisfied.
 
-    for idx in eachindex(search_range)
-        # Check, approximately, if |r(rho)| -> infinity as rho -> infinity
-        if abs(r_from_rho_rsmps[idx](rho_pos_end)) > abs(r_from_rho_rsmps[idx](0))
-            # Check if Im(r(rho)) changes sign, up to rho = 100, by computing a checksum (literally)
-            checksum = sum(sign.(imag.(r_from_rho_rsmps[idx].(range(0, 100, length=100)))))
-            if abs(checksum) >= 99
-                if abs(r_from_rho_rsmps[idx](rho_neg_end) - r_plus(a)) < 1
-                    push!(allowed_rsmp_idx, idx)
-                end
-            end
-        end
+        We want
+            sF \to 0 as \rho \to \pm \infty
+            sU \to -ω^2 as \rho \to \infty, and sU -> -p^2 as \rho \to -\infty
+        =#
+        # Solve for r(ρ)
+        sol = solve_r_from_rho_rsmp(u[1])
+
+        # Get the asymptotic behavior of sF and sU as \rho \to \infty
+        sF_rhoout = sF(s, m, a, omega, lambda, sol(rho_pos_end))
+        sU_rhoout = sU(s, m, a, omega, lambda, sol(rho_pos_end)) + omega^2
+        
+        # Get the asymptotic behavior of sF and sU as \rho \to -\infty
+        # NOTE Since r approaches r_+ counterclockwise in the complex r plane,
+        # we check the "average" behavior for convergence
+        rhos = rho_neg_end:0.1:rho_neg_end + abs(rho_neg_end)/10
+        sF_rhoin = sum(sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
+        sU_rhoin = sum(sU.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos) + p^2
+    
+        return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
-    if !isempty(allowed_rsmp_idx)
-        idx_to_use = sort(allowed_rsmp_idx)[1]
-        return r_from_rho_rsmps[idx_to_use], search_range[idx_to_use]
+    optim_prob = OptimizationProblem(asymptotic_behavior_of_sFsU, [0.0], ())
+    optim_soln = solve(optim_prob, NelderMead(); maxiters=50)
+
+    # Check if the optimization was successful
+    if optim_soln.retcode == ReturnCode.Success
+        return solve_r_from_rho_rsmp(optim_soln.u[1]), optim_soln.u[1]
     else
+        # If the optimization was not successful, use rsmp = 0
         return solve_r_from_rho_rsmp(0), 0
     end
 end

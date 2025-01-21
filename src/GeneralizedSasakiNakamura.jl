@@ -225,7 +225,8 @@ function GSN_radial(
 
                 if isnothing(rsmp)
                     r_from_rho, rsmp = ComplexFrequencies.solve_r_from_rho(
-                        a, -angle(p), -angle(omega),
+                        s, m, a, omega, lambda,
+                        -angle(p), -angle(omega),
                         rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                     )
                 else
@@ -338,7 +339,8 @@ function GSN_radial(
 
                 if isnothing(rsmp)
                     r_from_rho, rsmp = ComplexFrequencies.solve_r_from_rho(
-                        a, -angle(p), -angle(omega),
+                        s, m, a, omega, lambda,
+                        -angle(p), -angle(omega),
                         rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                     )
                 else
