@@ -100,43 +100,40 @@ function solve_r_from_rho(
 
     # The loss function, to be used in the optimization.
     function asymptotic_behavior_of_sFsU(u, _)
-        """
+        #=
         This function solves for r(\rho) and then checks if the asymptotic behavior of sF and sU in the limit \rho → \pm \infty are satisfied.
         We want
             sF -> 0 as \rho \to \pm \infty
             sU -> -ω^2 as \rho \to \infty, and sU -> -p^2 as \rho \to -\infty
-        """
+        =#
         # Solve for r(ρ)
         sol = solve_r_from_rho_rsmp(u[1])
 
         # Get the asymptotic behavior of sF and sU at ρ -> ∞
         # We want sF -> 0 as ρ -> +∞
-        sF_inf = sF(s, m, a, omega, lambda, sol(rho_pos_end))
+        sF_rhoout = sF(s, m, a, omega, lambda, sol(rho_pos_end))
         # We want sU -> -ω^2 as ρ -> +∞
-        sU_inf = sU(s, m, a, omega, lambda, sol(rho_pos_end)) + omega^2
+        sU_rhoout = sU(s, m, a, omega, lambda, sol(rho_pos_end)) + omega^2
         
         # Since the two potentials at ρ -> -∞ can possibly be oscillatory, we take the mean value of the potentials, as that should also tend to the correct value.
         rhos = rho_neg_end-100:0.1:rho_neg_end
         # We want sF -> 0 as ρ -> -∞
-        sF_hor = sum(GeneralizedSasakiNakamura.Potentials.sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
+        sF_rhoin = sum(sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
         # We want sU -> -p^2 as ρ -> -∞
-        sU_hor = sum(GeneralizedSasakiNakamura.Potentials.sU.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos) + p^2
+        sU_rhoin = sum(sU.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos) + p^2
     
-        return abs(sF_inf^2 + sF_hor^2 + sU_inf^2 + sU_hor^2)
+        return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
-    
-    # Initialize the optimization problem
-    param = []
-    prob = OptimizationProblem(asymptotic_behavior_of_sFsU, [rsmp_initial], param)
-    # Solve the optimization problem using NelderMead
-    optimal_rsmp = solve(prob, NelderMead())
+
+    optim_prob = OptimizationProblem(asymptotic_behavior_of_sFsU, [0.0], ())
+    optim_soln = solve(optim_prob, NelderMead())
 
     # Check if the optimization was successful
-    if optimal_rsmp.retcode == ReturnCode.Success
-        return solve_r_from_rho_rsmp(optimal_rsmp.minimizer[1]), optimal_rsmp.minimizer[1]
+    if optim_soln.retcode == ReturnCode.Success
+        return solve_r_from_rho_rsmp(optim_soln.u[1]), optim_soln.u[1]
     # If the optimization was not successful, use the initial matching point
     else
-        return solve_r_from_rho_rsmp(rsmp_initial), rsmp_initial
+        return solve_r_from_rho_rsmp(0), 0
     end
 end
 
