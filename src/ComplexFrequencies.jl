@@ -81,56 +81,48 @@ function solve_r_from_rho(
 end
 
 function solve_r_from_rho(
-    s, l, m, a, omega, 
+    s, m, a, omega, lambda,
     beta_neg, beta_pos,
     rho_neg_end, rho_pos_end;
     sign_neg=1, sign_pos=1,
-    rsmp_initial=0.0,
     dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER,
     reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE
 )
     # Some helper functions
+    p = omega - m*omega_horizon(a)
+
     solve_r_from_rho_rsmp(rsmp) = solve_r_from_rho(
         a, beta_neg, beta_pos, rsmp, rho_neg_end, rho_pos_end;
         sign_neg=sign_neg, sign_pos=sign_pos,
         dtype=dtype, odealgo=odealgo,
         reltol=reltol, abstol=abstol
     )
-    
-    lambda = SpinWeightedSpheroidalHarmonics.spectral.Teukolsky_lambda_const(a*omega, s, l, m)
-    p = omega - m*GeneralizedSasakiNakamura.Kerr.omega_horizon(a)
 
     # The loss function, to be used in the optimization.
-    function asymptotic_behavior_of_sFsU(rsmp, P)
+    function asymptotic_behavior_of_sFsU(u, _)
         """
-        This function solves for r(ρ) and then checks if the asymptotic behavior of sF and sU in the limit ρ → ∞ are satisfied.
-            We want sF -> 0 as ρ -> ±∞.
-            We want sU -> -ω^2 as ρ -> +∞, and sU -> -p^2 as ρ -> -∞.
-        The indput is a vector rsmp = [r_star_matchingpoint].
-        The output is the squared sum of the conditions.
+        This function solves for r(\rho) and then checks if the asymptotic behavior of sF and sU in the limit \rho → \pm \infty are satisfied.
+        We want
+            sF -> 0 as \rho \to \pm \infty
+            sU -> -ω^2 as \rho \to \infty, and sU -> -p^2 as \rho \to -\infty
         """
         # Solve for r(ρ)
-        sol = GeneralizedSasakiNakamura.ComplexFrequencies.solve_r_from_rho(
-            a, -angle(p), -angle(omega), rsmp[1], rho_neg_end, rho_pos_end; sign_neg=GeneralizedSasakiNakamura.ComplexFrequencies.determine_sign(p), sign_pos=GeneralizedSasakiNakamura.ComplexFrequencies.determine_sign(omega))
-        
+        sol = solve_r_from_rho_rsmp(u[1])
+
         # Get the asymptotic behavior of sF and sU at ρ -> ∞
-        # We want sF -> 0 as ρ -> +∞.
-        Finf = GeneralizedSasakiNakamura.Potentials.sF(s, m, a, omega, lambda, sol(rho_pos_end))
-        # We want sU -> -ω^2 as ρ -> +∞.
-        Uinf = GeneralizedSasakiNakamura.Potentials.sU(s, m, a, omega, lambda, sol(rho_pos_end)) + omega^2
+        # We want sF -> 0 as ρ -> +∞
+        sF_inf = sF(s, m, a, omega, lambda, sol(rho_pos_end))
+        # We want sU -> -ω^2 as ρ -> +∞
+        sU_inf = sU(s, m, a, omega, lambda, sol(rho_pos_end)) + omega^2
         
         # Since the two potentials at ρ -> -∞ can possibly be oscillatory, we take the mean value of the potentials, as that should also tend to the correct value.
-        RHO = rho_neg_end:0.1:rho_neg_end+100
-        F = GeneralizedSasakiNakamura.Potentials.sF.(s, m, a, omega, lambda, sol.(RHO))
-        U = GeneralizedSasakiNakamura.Potentials.sU.(s, m, a, omega, lambda, sol.(RHO))
-        Fmean = sum(F)/length(F)
-        Umean = sum(U)/length(U)
+        rhos = rho_neg_end-100:0.1:rho_neg_end
+        # We want sF -> 0 as ρ -> -∞
+        sF_hor = sum(GeneralizedSasakiNakamura.Potentials.sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
+        # We want sU -> -p^2 as ρ -> -∞
+        sU_hor = sum(GeneralizedSasakiNakamura.Potentials.sU.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos) + p^2
     
-        # We want sF -> 0 as ρ -> -∞.
-        For = Fmean
-        # We want sU -> -p^2 as ρ -> -∞.
-        Uor = Umean + p^2
-        return abs(Finf^2 + For^2 + Uinf^2 + Uor^2)
+        return abs(sF_inf^2 + sF_hor^2 + sU_inf^2 + sU_hor^2)
     end
     
     # Initialize the optimization problem
