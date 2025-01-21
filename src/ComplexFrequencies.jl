@@ -116,7 +116,7 @@ function solve_r_from_rho(
         sU_rhoout = sU(s, m, a, omega, lambda, sol(rho_pos_end)) + omega^2
         
         # Since the two potentials at ρ -> -∞ can possibly be oscillatory, we take the mean value of the potentials, as that should also tend to the correct value.
-        rhos = rho_neg_end-100:0.1:rho_neg_end
+        rhos = rho_neg_end:0.1:rho_neg_end + abs(rho_neg_end)/10
         # We want sF -> 0 as ρ -> -∞
         sF_rhoin = sum(sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
         # We want sU -> -p^2 as ρ -> -∞
