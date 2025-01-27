@@ -79,6 +79,7 @@ This is a composite struct type that stores the output from [`GSN_radial`](@ref)
 | `boundary_condition` | a [BoundaryCondition](@ref) object storing which boundary condition this function satisfies |
 | `rsin` | numerical inner boundary $r_{*}^{\mathrm{in}}/M$ where the GSN equation is numerically evolved ($r_{*}$ is a tortoise coordinate) |
 | `rsout` | numerical outer boundary $r_{*}^{\mathrm{out}}/M$ where the GSN equation is numerically evolved ($r_{*}$ is a tortoise coordinate) |
+| `rsmp` | The matching point in tortoise coordinate $r_{*}^{\mathrm{mp}}$ if used  |
 | `horizon_expansion_order` | order of the asymptotic expansion at the horizon |
 | `infinity_expansion_order` | order of the asymptotic expansion at infinity |
 | `transmission_amplitude` | transmission amplitude in the GSN formalism of this function |

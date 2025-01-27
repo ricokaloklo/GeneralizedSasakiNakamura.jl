@@ -63,6 +63,7 @@ struct GSNRadialFunction
     boundary_condition::BoundaryCondition # The boundary condition that this radial function statisfies
     rsin # The numerical inner boundary where the GSN equation is numerically evolved
     rsout # The numerical outer boundary where the GSN equation is numerically evolved
+    rsmp # The matching point in tortoise coordinate if used
     horizon_expansion_order::Union{Int, Missing} # The order of the asymptotic expansion at the horizon
     infinity_expansion_order::Union{Int, Missing} # The order of the asymptotic expansion at infinity
     transmission_amplitude # In GSN formalism
@@ -82,6 +83,7 @@ function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
     println(io, "    boundary_condition=$(gsn_func.boundary_condition),")
     println(io, "    rsin=$(gsn_func.rsin),")
     println(io, "    rsout=$(gsn_func.rsout),")
+    println(io, "    rsmp=$(gsn_func.rsmp),")
     println(io, "    horizon_expansion_order=$(gsn_func.horizon_expansion_order),")
     println(io, "    infinity_expansion_order=$(gsn_func.infinity_expansion_order),")
     println(io, "    transmission_amplitude=$(gsn_func.transmission_amplitude),")
@@ -200,6 +202,7 @@ function GSN_radial(
                     IN,
                     rsin,
                     rsout,
+                    rsmp,
                     horizon_expansion_order,
                     infinity_expansion_order,
                     data_type(1),
@@ -272,6 +275,7 @@ function GSN_radial(
                     IN,
                     rsin,
                     rsout,
+                    rsmp,
                     horizon_expansion_order,
                     infinity_expansion_order,
                     data_type(1),
@@ -314,6 +318,7 @@ function GSN_radial(
                     UP,
                     rsin,
                     rsout,
+                    rsmp,
                     horizon_expansion_order,
                     infinity_expansion_order,
                     data_type(1),
@@ -386,6 +391,7 @@ function GSN_radial(
                     UP,
                     rsin,
                     rsout,
+                    rsmp,
                     horizon_expansion_order,
                     infinity_expansion_order,
                     data_type(1),
@@ -421,6 +427,7 @@ function GSN_radial(
                 DOWN,
                 rsin,
                 rsout,
+                rsmp,
                 horizon_expansion_order,
                 infinity_expansion_order,
                 data_type(1),
@@ -455,6 +462,7 @@ function GSN_radial(
                 OUT,
                 rsin,
                 rsout,
+                rsmp,
                 horizon_expansion_order,
                 infinity_expansion_order,
                 data_type(1),
@@ -483,6 +491,7 @@ function GSN_radial(
         return GSNRadialFunction(
                 teuk_func.mode,
                 boundary_condition,
+                missing,
                 missing,
                 missing,
                 missing,
