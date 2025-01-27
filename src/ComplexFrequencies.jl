@@ -125,8 +125,9 @@ function solve_r_from_rho(
         return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
-    optim_prob = OptimizationProblem(asymptotic_behavior_of_sFsU, [0.0], ())
-    optim_soln = solve(optim_prob, NelderMead(); maxiters=50)
+    optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU, Optimization.AutoFiniteDiff())
+    optim_prob = OptimizationProblem(optim_func, [0.0], ())
+    optim_soln = solve(optim_prob, BFGS(); maxiters=50)
 
     # Check if the optimization was successful
     if optim_soln.retcode == ReturnCode.Success
