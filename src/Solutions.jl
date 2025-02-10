@@ -3,6 +3,7 @@ module Solutions
 using DifferentialEquations
 using ForwardDiff
 using HypergeometricFunctions
+using StaticArrays
 using ..Kerr
 using ..Transformation
 using ..Coordinates
@@ -17,7 +18,7 @@ _DEFAULTSOLVER = AutoVern9(Rosenbrock23(autodiff=false))
 _DEFAULTTOLERANCE = 1e-12
 
 # First-order non-linear ODE form of the GSN equation
-function GSN_Riccati_eqn!(du, u, p, rs)
+function GSN_Riccati_eqn(u, p, rs)
     r = r_from_rstar(p.a, rs)
     _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
     _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
@@ -30,12 +31,11 @@ function GSN_Riccati_eqn!(du, u, p, rs)
     u[1] = Phi
     u[2] = dPhidrs
     =#
-    du[1] = u[2]
-    du[2] = -1im*_sU + _sF*u[2] - 1im*u[2]*u[2]
+    return SA[u[2], -1im*_sU + _sF*u[2] - 1im*u[2]*u[2]]
 end
 
 # Second-order linear ODE form of the GSN equation
-function GSN_linear_eqn!(du, u, p, rs)
+function GSN_linear_eqn(u, p, rs)
     r = r_from_rstar(p.a, rs)
     _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
     _sU = sU(p.s, p.m, p.a, p.omega, p.lambda, r)
@@ -47,8 +47,7 @@ function GSN_linear_eqn!(du, u, p, rs)
     therefore
     X'' - sF X' - sU X = 0 => u[2]' - sF u[2] - sU u[1] = 0 => u[2]' = sF u[2] + sU u[1]
     =#
-    du[1] = u[2]
-    du[2] = _sF*u[2] + _sU*u[1]
+    return SA[u[2], _sF*u[2] + _sU*u[1]]
 end
 
 function PhiPhiprime_from_XXprime(X, Xprime)
@@ -78,10 +77,10 @@ function solve_Phiup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialcondi
     Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order)
     # Convert initial conditions for Xup for Phi
     Phi, Phiprime = PhiPhiprime_from_XXprime(Xup_rsout, Xupprime_rsout)
-    u0 = [dtype(Phi); dtype(Phiprime)]
+    u0 = SA[dtype(Phi); dtype(Phiprime)]
     rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(GSN_Riccati_eqn!, u0, rsspan, p)
+    odeprob = ODEProblem(GSN_Riccati_eqn, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
     return odesoln
 end
@@ -95,10 +94,10 @@ function solve_Phiin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialcondi
     Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order)
     # Convert initial conditions for Xin for PhiRe PhiIm
     Phi, Phiprime = PhiPhiprime_from_XXprime(Xin_rsin, Xinprime_rsin)
-    u0 = [dtype(Phi); dtype(Phiprime)]
+    u0 = SA[dtype(Phi); dtype(Phiprime)]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(GSN_Riccati_eqn!, u0, rsspan, p)
+    odeprob = ODEProblem(GSN_Riccati_eqn, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
     return odesoln
 end
@@ -110,10 +109,10 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditi
     end
     # Initial conditions at rs = rsout, the outer boundary
     Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order)
-    u0 = [dtype(Xup_rsout); dtype(Xupprime_rsout)]
+    u0 = SA[dtype(Xup_rsout); dtype(Xupprime_rsout)]
     rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(GSN_linear_eqn!, u0, rsspan, p)
+    odeprob = ODEProblem(GSN_linear_eqn, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
@@ -124,10 +123,10 @@ function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditi
     end
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
     Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order)
-    u0 = [dtype(Xin_rsin); dtype(Xinprime_rsin)]
+    u0 = SA[dtype(Xin_rsin); dtype(Xinprime_rsin)]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    odeprob = ODEProblem(GSN_linear_eqn!, u0, rsspan, p)
+    odeprob = ODEProblem(GSN_linear_eqn, u0, rsspan, p)
     odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
 end
 
@@ -400,7 +399,7 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matr
         # Throw an error, this spin weight is not supported
         throw(DomainError(s, "Currently only spin weight s of 0, +/-1, +/-2 are supported"))
     end 
-    return [M11 M12; M21 M22]
+    return SA[M11 M12; M21 M22]
 end
 
 function Teukolsky_radial_function_from_Sasaki_Nakamura_function(s::Int, m::Int, a, omega, lambda, Xsoln)
@@ -421,7 +420,7 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(s::Int, m::Int,
     overall_conversion_matrix(r) = Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
     X(rs) = Xsoln(rs)[1]
     Xprime(rs) = Xsoln(rs)[2]
-    Rsoln = (r -> overall_conversion_matrix(r) * [X(rstar_from_r(a, r)); Xprime(rstar_from_r(a, r))])
+    Rsoln = (r -> overall_conversion_matrix(r) * SA[X(rstar_from_r(a, r)); Xprime(rstar_from_r(a, r))])
     return Rsoln
 end
 
