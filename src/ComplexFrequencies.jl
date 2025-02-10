@@ -432,7 +432,7 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         _r = r_from_rho(rho)
         if isnan(_r)
             # Resolve r_from_rho
-            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rho, rhoout)
+            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rho, rhoout; sign_neg=determine_sign(p), sign_pos=determine_sign(omega))
             _r = r_from_rho(rho)
         end
         # _rs = rs_mp + rho * exp(1im*beta_neg)
@@ -458,7 +458,7 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         _r = r_from_rho(rho)
         if isnan(_r)
             # Resolve r_from_rho
-            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rhoin, rho)
+            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rhoin, rho; sign_neg=determine_sign(p), sign_pos=determine_sign(omega))
             _r = r_from_rho(rho)
         end
         # _rs = rs_mp + rho * exp(1im*beta_pos)
@@ -498,7 +498,7 @@ function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         _r = r_from_rho(rho)
         if isnan(_r)
             # Resolve r_from_rho
-            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rho, rhoout)
+            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rho, rhoout; sign_neg=determine_sign(p), sign_pos=determine_sign(omega))
             _r = r_from_rho(rho)
         end
         # _rs = rs_mp + rho * exp(1im*beta_neg)
@@ -527,7 +527,7 @@ function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         _r = r_from_rho(rho)
         if isnan(_r)
             # Resolve r_from_rho
-            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rhoin, rho)
+            r_from_rho = solve_r_from_rho(a, beta_neg, beta_pos, rs_mp, rhoin, rho; sign_neg=determine_sign(p), sign_pos=determine_sign(omega))
             _r = r_from_rho(rho)
         end
 
