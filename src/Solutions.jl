@@ -524,8 +524,20 @@ function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; o
         r;
         order=order
     )
+    dgin_dr(r) = dgansatz_dr(
+        ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+        a,
+        r;
+        order=order
+    )
     A1 = gin(rin) * exp(-1im*p*rsin)
     gout(r) = gansatz(
+        ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+        a,
+        r;
+        order=order
+    )
+    dgout_dr(r) = dgansatz_dr(
         ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
         a,
         r;
@@ -534,8 +546,8 @@ function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; o
     A2 = gout(rin) * exp(1im*p*rsin)
 
     _DeltaOverr2pa2 = Delta(a, rin)/(rin^2 + a^2)
-    A3 = (_DeltaOverr2pa2 * ForwardDiff.derivative(gin, rin) - 1im*p*gin(rin)) * exp(-1im*p*rsin)
-    A4 = (_DeltaOverr2pa2 * ForwardDiff.derivative(gout, rin) + 1im*p*gout(rin)) * exp(1im*p*rsin)
+    A3 = (_DeltaOverr2pa2 * dgin_dr(rin) - 1im*p*gin(rin)) * exp(-1im*p*rsin)
+    A4 = (_DeltaOverr2pa2 * dgout_dr(rin) + 1im*p*gout(rin)) * exp(1im*p*rsin)
 
     X(rs) = Xupsoln(rs)[1]
     Xprime(rs) = Xupsoln(rs)[2]
@@ -554,8 +566,20 @@ function BrefBinc_SN_from_Xin(s::Int, m::Int, a, omega, lambda, Xinsoln, rsout; 
         r;
         order=order
     )
+    dfin_dr(r) = dfansatz_dr(
+        ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+        omega,
+        r;
+        order=order
+    )
     A1 = fin(rout) * exp(-1im*omega*rsout)
     fout(r) = fansatz(
+        ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+        omega,
+        r;
+        order=order
+    )
+    dfout_dr(r) = dfansatz_dr(
         ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
         omega,
         r;
@@ -564,8 +588,8 @@ function BrefBinc_SN_from_Xin(s::Int, m::Int, a, omega, lambda, Xinsoln, rsout; 
     A2 = fout(rout) * exp(1im*omega*rsout)
 
     _DeltaOverr2pa2 = Delta(a, rout)/(rout^2 + a^2)
-    A3 = (_DeltaOverr2pa2 * ForwardDiff.derivative(fin, rout) - 1im*omega*fin(rout)) * exp(-1im*omega*rsout)
-    A4 = (_DeltaOverr2pa2 * ForwardDiff.derivative(fout, rout) + 1im*omega*fout(rout)) * exp(1im*omega*rsout)
+    A3 = (_DeltaOverr2pa2 * dfin_dr(rout) - 1im*omega*fin(rout)) * exp(-1im*omega*rsout)
+    A4 = (_DeltaOverr2pa2 * dfout_dr(rout) + 1im*omega*fout(rout)) * exp(1im*omega*rsout)
 
     X(rs) = Xinsoln(rs)[1]
     Xprime(rs) = Xinsoln(rs)[2]
@@ -589,11 +613,17 @@ function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizo
             r;
             order=horizon_expansionorder
         )
+        dgin_dr(r) = dgansatz_dr(
+            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+            a,
+            r;
+            order=horizon_expansionorder
+        )
 
         _Xin = gin(_r)*exp(-1im*p*rs) # Evaluate at *this* rs
 
         _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
-        _dXindrs = (_DeltaOverr2pa2 * ForwardDiff.derivative(gin, _r) - 1im*p*gin(_r))*exp(-1im*p*rs)
+        _dXindrs = (_DeltaOverr2pa2 * dgin_dr(_r) - 1im*p*gin(_r))*exp(-1im*p*rs)
 
         return (_Xin, _dXindrs)
     elseif rs > rsout
@@ -609,7 +639,19 @@ function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizo
             r;
             order=infinity_expansionorder
         )
+        dfin_dr(r) = dfansatz_dr(
+            ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+            omega,
+            r;
+            order=infinity_expansionorder
+        )
         fout(r) = fansatz(
+            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+            omega,
+            r;
+            order=infinity_expansionorder
+        )
+        dfout_dr(r) = dfansatz_dr(
             ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
             omega,
             r;
@@ -619,7 +661,7 @@ function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizo
         _Xin = Bref_SN*fout(_r)*exp(1im*omega*rs) + Binc_SN*fin(_r)*exp(-1im*omega*rs)
 
         _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
-        _dXindrs = Bref_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(fout, _r) + 1im*omega*fout(_r))*exp(1im*omega*rs) + Binc_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(fin, _r) - 1im*omega*fin(_r))*exp(-1im*omega*rs)
+        _dXindrs = Bref_SN*(_DeltaOverr2pa2 * dfout_dr(_r) + 1im*omega*fout(_r))*exp(1im*omega*rs) + Binc_SN*(_DeltaOverr2pa2 * dfin_dr(_r) - 1im*omega*fin(_r))*exp(-1im*omega*rs)
         
         return (_Xin, _dXindrs)
     else
@@ -646,7 +688,19 @@ function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizo
             r;
             order=horizon_expansionorder
         )
+        dgin_dr(r) = dgansatz_dr(
+            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+            a,
+            r;
+            order=horizon_expansionorder
+        )
         gout(r) = gansatz(
+            ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+            a,
+            r;
+            order=horizon_expansionorder
+        )
+        dgout_dr(r) = dgansatz_dr(
             ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
             a,
             r;
@@ -656,7 +710,7 @@ function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizo
         _Xup = Cinc_SN*gout(_r)*exp(1im*p*rs) + Cref_SN*gin(_r)*exp(-1im*p*rs) # Evaluate at *this* rs
 
         _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
-        _dXupdrs = Cinc_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(gout, _r) + 1im*p*gout(_r))*exp(1im*p*rs) + Cref_SN*(_DeltaOverr2pa2 * ForwardDiff.derivative(gin, _r) - 1im*p*gin(_r))*exp(-1im*p*rs)
+        _dXupdrs = Cinc_SN*(_DeltaOverr2pa2 * dgout_dr(_r) + 1im*p*gout(_r))*exp(1im*p*rs) + Cref_SN*(_DeltaOverr2pa2 * dgin_dr(_r) - 1im*p*gin(_r))*exp(-1im*p*rs)
 
         return (_Xup, _dXupdrs)
     elseif rs > rsout
@@ -668,11 +722,17 @@ function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizo
             r;
             order=infinity_expansionorder
         )
+        dfout_dr(r) = dfansatz_dr(
+            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+            omega,
+            r;
+            order=infinity_expansionorder
+        )
 
         _Xup = fout(_r)*exp(1im*omega*rs)
 
         _DeltaOverr2pa2 = Delta(a, _r)/(_r^2 + a^2)
-        _dXupdrs = (_DeltaOverr2pa2 * ForwardDiff.derivative(fout, _r) + 1im*omega*fout(_r)) * exp(1im*omega*rs)
+        _dXupdrs = (_DeltaOverr2pa2 * dfout_dr(_r) + 1im*omega*fout(_r)) * exp(1im*omega*rs)
         
         return (_Xup, _dXupdrs)
     else
