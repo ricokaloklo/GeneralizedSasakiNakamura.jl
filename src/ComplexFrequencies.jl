@@ -455,6 +455,8 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         # Extend the numerical solution to the analytical ansatz from rhoout to infinity
 
         Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, beta_pos, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=infinity_expansionorder)
+
+        p = omega - m*omega_horizon(a)
         _r = r_from_rho(rho)
         if isnan(_r)
             # Resolve r_from_rho
@@ -524,6 +526,7 @@ function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         return (_Xup, _dXup_drs)
     elseif rho > rhoout
         # Extend the numerical solution to the analytical ansatz from rhoout to infinity
+        p = omega - m*omega_horizon(a)
         _r = r_from_rho(rho)
         if isnan(_r)
             # Resolve r_from_rho
