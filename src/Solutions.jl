@@ -74,7 +74,7 @@ function solve_Phiup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialcondi
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
     end
     # Initial conditions at rs = rsout, the outer boundary
-    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order)
+    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order, dtype=dtype)
     # Convert initial conditions for Xup for Phi
     Phi, Phiprime = PhiPhiprime_from_XXprime(Xup_rsout, Xupprime_rsout)
     u0 = SA[dtype(Phi); dtype(Phiprime)]
@@ -91,7 +91,7 @@ function solve_Phiin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialcondi
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
     end
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
-    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order)
+    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order, dtype=dtype)
     # Convert initial conditions for Xin for PhiRe PhiIm
     Phi, Phiprime = PhiPhiprime_from_XXprime(Xin_rsin, Xinprime_rsin)
     u0 = SA[dtype(Phi); dtype(Phiprime)]
@@ -108,7 +108,7 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditi
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
     end
     # Initial conditions at rs = rsout, the outer boundary
-    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order)
+    Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order, dtype=dtype)
     u0 = SA[dtype(Xup_rsout); dtype(Xupprime_rsout)]
     rsspan = (rsout, rsin) # Integrate from rsout to rsin *inward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
@@ -122,7 +122,7 @@ function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditi
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
     end
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
-    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order)
+    Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order, dtype=dtype)
     u0 = SA[dtype(Xin_rsin); dtype(Xinprime_rsin)]
     rsspan = (rsin, rsout) # Integrate from rsin to rsout *outward*
     p = (s=s, m=m, a=a, omega=omega, lambda=lambda)
@@ -513,20 +513,20 @@ function residual_GSNEqn_from_Phisoln(s::Int, m::Int, a, omega, lambda, Phisoln)
     return rs -> second_deriv(rs) - _sF(rs)*first_deriv(rs) - _sU(rs)*X(rs)
 end
 
-function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; order=0)
+function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; order=0, dtype=_DEFAULTDATATYPE)
     p = omega - m*omega_horizon(a)
 
     rin = r_from_rstar(a, rsin)
     # Computing A1, A2, A3, A4
     gin(r) = gansatz(
-        ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+        ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
         a,
         r;
         order=order
     )
     A1 = gin(rin) * exp(-1im*p*rsin)
     gout(r) = gansatz(
-        ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+        ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
         a,
         r;
         order=order
@@ -545,18 +545,18 @@ function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; o
     return -(A4*C1 - A2*C2)/(A2*A3 - A1*A4), -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4)
 end
 
-function BrefBinc_SN_from_Xin(s::Int, m::Int, a, omega, lambda, Xinsoln, rsout; order=3)
+function BrefBinc_SN_from_Xin(s::Int, m::Int, a, omega, lambda, Xinsoln, rsout; order=3, dtype=_DEFAULTDATATYPE)
     rout = r_from_rstar(a, rsout)
     # Computing A1, A2, A3, A4
     fin(r) = fansatz(
-        ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+        ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
         omega,
         r;
         order=order
     )
     A1 = fin(rout) * exp(-1im*omega*rsout)
     fout(r) = fansatz(
-        ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+        ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
         omega,
         r;
         order=order
@@ -575,7 +575,7 @@ function BrefBinc_SN_from_Xin(s::Int, m::Int, a, omega, lambda, Xinsoln, rsout; 
     return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
 end
 
-function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizon_expansionorder, infinity_expansionorder, rs)
+function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizon_expansionorder, infinity_expansionorder, rs; dtype=_DEFAULTDATATYPE)
     _r = r_from_rstar(a, rs) # Evaluate at this r
 
     if rs < rsin
@@ -584,7 +584,7 @@ function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizo
         # Construct the analytical ansatz
         p = omega - m*omega_horizon(a)
         gin(r) = gansatz(
-            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
             a,
             r;
             order=horizon_expansionorder
@@ -600,17 +600,17 @@ function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizo
         # Extend the numerical solution to the analytical ansatz from rsout to infinity
 
         # Obtain the coefficients by imposing continuity in X and dX/drs
-        Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, omega, lambda, Xinsoln, rsout; order=infinity_expansionorder)
+        Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, omega, lambda, Xinsoln, rsout; order=infinity_expansionorder, dtype=dtype)
 
         # Construct the analytical ansatz
         fin(r) = fansatz(
-            ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+            ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
             omega,
             r;
             order=infinity_expansionorder
         )
         fout(r) = fansatz(
-            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
             omega,
             r;
             order=infinity_expansionorder
@@ -628,26 +628,26 @@ function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizo
     end 
 end
 
-function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizon_expansionorder, infinity_expansionorder, rs)
+function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizon_expansionorder, infinity_expansionorder, rs; dtype=_DEFAULTDATATYPE)
     _r = r_from_rstar(a, rs) # Evaluate at this r
 
     if rs < rsin
         # Extend the numerical solution to the analytical ansatz from rsin to horizon
 
         # Obtain the coefficients by imposing continuity in X and dX/drs
-        Cref_SN, Cinc_SN = CrefCinc_SN_from_Xup(s, m, a, omega, lambda, Xupsoln, rsin; order=horizon_expansionorder)
+        Cref_SN, Cinc_SN = CrefCinc_SN_from_Xup(s, m, a, omega, lambda, Xupsoln, rsin; order=horizon_expansionorder, dtype=dtype)
         # with coefficient Cref_SN for the left-going and Cinc_SN for the right-going mode
 
         # Construct the analytical ansatz
         p = omega - m*omega_horizon(a)
         gin(r) = gansatz(
-            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
             a,
             r;
             order=horizon_expansionorder
         )
         gout(r) = gansatz(
-            ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord),
+            ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
             a,
             r;
             order=horizon_expansionorder
@@ -663,7 +663,7 @@ function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizo
         # Extend the numerical solution to the analytical ansatz from rsout to infinity
 
         fout(r) = fansatz(
-            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord),
+            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
             omega,
             r;
             order=infinity_expansionorder

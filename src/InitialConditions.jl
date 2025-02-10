@@ -8,6 +8,7 @@ export Xup_initialconditions, Xin_initialconditions
 export fansatz, gansatz, dfansatz_dr, dgansatz_dr
 
 const I = 1im # Mathematica being Mathematica
+_DEFAULTDATATYPE = AsymptoticExpansionCoefficients._DEFAULTDATATYPE
 
 function fansatz(func, omega, r; order=3)
     # A template function that gives the asymptotic expansion at infinity
@@ -45,7 +46,7 @@ function dgansatz_dr(func, a, r; order=1)
     return ans
 end
 
-function Xup_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::Int=-1)
+function Xup_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::Int=-1, dtype=_DEFAULTDATATYPE)
     #=
     We have derived/shown the explicit expression for
     different physically-relevant spin weight (s=0, \pm 1, \pm2)
@@ -53,7 +54,7 @@ function Xup_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::I
     _default_order = 3
     order = (order == -1 ? _default_order : order)
 
-    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
     fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
     dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=order)
     rout = r_from_rstar(a, rsout)
@@ -65,7 +66,7 @@ function Xup_initialconditions(s::Int, m::Int, a, omega, lambda, rsout; order::I
     return phase*_fansatz, phase*(1im*omega*_fansatz + (Delta(a, rout)/(rout^2 + a^2))*_dfansatz_dr)
 end
 
-function Xin_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::Int=-1)
+function Xin_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::Int=-1, dtype=_DEFAULTDATATYPE)
     #=
     For Xin, which we obtain by integrating from r_* -> -inf (or r -> r_+),
 
@@ -75,7 +76,7 @@ function Xin_initialconditions(s::Int, m::Int, a, omega, lambda, rsin; order::In
     _default_order = 0
     order = (order == -1 ? _default_order : order)
 
-    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
     gin(r) = gansatz(ingoing_coeff_func, a, r; order=order)
     dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=order)
     rin = r_from_rstar(a, rsin)
