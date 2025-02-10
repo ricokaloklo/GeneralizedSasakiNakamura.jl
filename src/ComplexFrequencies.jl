@@ -188,8 +188,8 @@ function solve_Phi_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, si
     return odesoln
 end
 
-function Xup_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoout; order::Int=-1)
-    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+function Xup_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoout; order::Int=-1, dtype=_DEFAULTDATATYPE)
+    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
     fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
     dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=order)
 
@@ -215,7 +215,7 @@ function solve_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
     end
 
     # Initial conditions at rho = rhoout, the outer boundary
-    Xup_rhoout, Xupprime_rhoout = Xup_initialconditions(s, m, a, beta_pos, omega, lambda, r_from_rho, rs_mp, rhoout; order=initialconditions_order)
+    Xup_rhoout, Xupprime_rhoout = Xup_initialconditions(s, m, a, beta_pos, omega, lambda, r_from_rho, rs_mp, rhoout; order=initialconditions_order, dtype=dtype)
     u0 = SA[dtype(Xup_rhoout); dtype(Xupprime_rhoout)]
 
     # Solve the ODE to the matching point no matter what
@@ -247,7 +247,7 @@ function solve_Phiup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
     end
 
     # Initial conditions at rho = rhoout, the outer boundary
-    Xup_rhoout, Xupprime_rhoout = Xup_initialconditions(s, m, a, beta_pos, omega, lambda, r_from_rho, rs_mp, rhoout; order=initialconditions_order)
+    Xup_rhoout, Xupprime_rhoout = Xup_initialconditions(s, m, a, beta_pos, omega, lambda, r_from_rho, rs_mp, rhoout; order=initialconditions_order, dtype=dtype)
     # Convert initial conditions for Xup for Phi
     Phi, Phiprime = Solutions.PhiPhiprime_from_XXprime(Xup_rhoout, Xupprime_rhoout)
     u0 = SA[dtype(Phi); dtype(Phiprime)]
@@ -276,8 +276,8 @@ function solve_Phiup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
     return odesoln, odesoln_pos, odesoln_neg
 end
 
-function Xin_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoin; order::Int=-1)
-    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+function Xin_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoin; order::Int=-1, dtype=_DEFAULTDATATYPE)
+    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
     gin(r) = gansatz(ingoing_coeff_func, a, r; order=order)
     dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=order)
 
@@ -304,7 +304,7 @@ function solve_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_from_
     end
 
     # Initial conditions at rho = rhoin, the inner boundary
-    Xin_rhoin, Xinprime_rhoin = Xin_initialconditions(s, m, a, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin; order=initialconditions_order)
+    Xin_rhoin, Xinprime_rhoin = Xin_initialconditions(s, m, a, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin; order=initialconditions_order, dtype=dtype)
     u0 = SA[dtype(Xin_rhoin); dtype(Xinprime_rhoin)]
 
     # Solve the ODE to the matching point no matter what
@@ -336,7 +336,7 @@ function solve_Phiin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
     end
 
     # Initial conditions at rho = rhoin, the inner boundary
-    Xin_rhoin, Xinprime_rhoin = Xin_initialconditions(s, m, a, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin; order=initialconditions_order)
+    Xin_rhoin, Xinprime_rhoin = Xin_initialconditions(s, m, a, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin; order=initialconditions_order, dtype=type)
     # Convert initial conditions for Xin for Phi
     Phi, Phiprime = Solutions.PhiPhiprime_from_XXprime(Xin_rhoin, Xinprime_rhoin)
     u0 = SA[dtype(Phi); dtype(Phiprime)]
@@ -365,17 +365,17 @@ function solve_Phiin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
     return odesoln, odesoln_pos, odesoln_neg
 end
 
-function BrefBinc_SN_from_Xin(s::Int, m::Int, a, beta, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=10)
+function BrefBinc_SN_from_Xin(s::Int, m::Int, a, beta, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=10, dtype=_DEFAULTDATATYPE)
     rout = r_from_rho(rhoout)
 
-    ingoing_coeff_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    ingoing_coeff_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
     fin(r) = fansatz(ingoing_coeff_func, omega, r; order=order)
     dfin_dr(r) = dfansatz_dr(ingoing_coeff_func, omega, r; order=order)
     _fin = fin(rout)
     _dfin_dr = dfin_dr(rout)
     _phase_in = exp(-1im * abs(omega) * determine_sign(omega)*rhoout) * exp(-1im * omega * rs_mp)
 
-    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
     fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
     dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=order)
     _fout = fout(rout)
@@ -394,19 +394,19 @@ function BrefBinc_SN_from_Xin(s::Int, m::Int, a, beta, omega, lambda, Xinsoln, r
     return -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4), -(A4*C1 - A2*C2)/(A2*A3 - A1*A4)
 end
 
-function CrefCinc_SN_from_Xup(s::Int, m::Int, a, beta, omega, lambda, Xupsoln, r_from_rho, rs_mp, rhoin; order=10)
+function CrefCinc_SN_from_Xup(s::Int, m::Int, a, beta, omega, lambda, Xupsoln, r_from_rho, rs_mp, rhoin; order=10, dtype=_DEFAULTDATATYPE)
     p = omega - m*omega_horizon(a)
     rin = r_from_rho(rhoin)
     # rsin = rs_mp \pm rhoin * exp(1im*beta)
 
-    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
     gin(r) = gansatz(ingoing_coeff_func, a, r; order=order)
     dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=order)
     _gin = gin(rin)
     _dgin_dr = dgin_dr(rin)
     _phase_in = exp(-1im * abs(p) * determine_sign(p)*rhoin) * exp(-1im * p * rs_mp)
 
-    outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+    outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
     gout(r) = gansatz(outgoing_coeff_func, a, r; order=order)
     dgout_dr(r) = dgansatz_dr(outgoing_coeff_func, a, r; order=order)
     _gout = gout(rin)
@@ -425,7 +425,7 @@ function CrefCinc_SN_from_Xup(s::Int, m::Int, a, beta, omega, lambda, Xupsoln, r
     return -(A4*C1 - A2*C2)/(A2*A3 - A1*A4), -(-A3*C1 + A1*C2)/(A2*A3 - A1*A4)
 end
 
-function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoin, rhoout, horizon_expansionorder, infinity_expansionorder, rho)
+function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoin, rhoout, horizon_expansionorder, infinity_expansionorder, rho; dtype=_DEFAULTDATATYPE)
     if rho < rhoin
         # Extend the numerical solution to the analytical ansatz from rhoin to horizon
         p = omega - m*omega_horizon(a)
@@ -438,7 +438,7 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         # _rs = rs_mp + rho * exp(1im*beta_neg)
 
         # Construct the analytical ansatz
-        ingoing_coeff_func_hor(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+        ingoing_coeff_func_hor(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
         gin(r) = gansatz(ingoing_coeff_func_hor, a, r; order=horizon_expansionorder)
         dgin_dr(r) = dgansatz_dr(ingoing_coeff_func_hor, a, r; order=horizon_expansionorder)
         _gin = gin(_r)
@@ -454,7 +454,7 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
     elseif rho > rhoout
         # Extend the numerical solution to the analytical ansatz from rhoout to infinity
 
-        Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, beta_pos, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=infinity_expansionorder)
+        Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, beta_pos, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=infinity_expansionorder, dtype=dtype)
 
         p = omega - m*omega_horizon(a)
         _r = r_from_rho(rho)
@@ -466,14 +466,14 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         # _rs = rs_mp + rho * exp(1im*beta_pos)
 
         # Construct the analytical ansatz
-        ingoing_coeff_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+        ingoing_coeff_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
         fin(r) = fansatz(ingoing_coeff_func, omega, r; order=infinity_expansionorder)
         dfin_dr(r) = dfansatz_dr(ingoing_coeff_func, omega, r; order=infinity_expansionorder)
         _fin = fin(_r)
         _dfin_dr = dfin_dr(_r)
         _phase_in = exp(-1im * abs(omega) * determine_sign(omega)*rho) * exp(-1im * omega * rs_mp)
 
-        outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+        outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
         fout(r) = fansatz(outgoing_coeff_func, omega, r; order=infinity_expansionorder)
         dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=infinity_expansionorder)
         _fout = fout(_r)
@@ -490,11 +490,11 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
     end
 end
 
-function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, Xupsoln, r_from_rho, rs_mp, rhoin, rhoout, horizon_expansionorder, infinity_expansionorder, rho)
+function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, Xupsoln, r_from_rho, rs_mp, rhoin, rhoout, horizon_expansionorder, infinity_expansionorder, rho; dtype=_DEFAULTDATATYPE)
     if rho < rhoin
         # Extend the numerical solution to the analytical ansatz from rhoin to horizon
 
-        Cref_SN, Cinc_SN = CrefCinc_SN_from_Xup(s, m, a, beta_neg, omega, lambda, Xupsoln, r_from_rho, rs_mp, rhoin; order=horizon_expansionorder)
+        Cref_SN, Cinc_SN = CrefCinc_SN_from_Xup(s, m, a, beta_neg, omega, lambda, Xupsoln, r_from_rho, rs_mp, rhoin; order=horizon_expansionorder, dtype=dtype)
 
         p = omega - m*omega_horizon(a)
         _r = r_from_rho(rho)
@@ -506,14 +506,14 @@ function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         # _rs = rs_mp + rho * exp(1im*beta_neg)
 
         # Construct the analytical ansatz
-        ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+        ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
         gin(r) = gansatz(ingoing_coeff_func, a, r; order=horizon_expansionorder)
         dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=horizon_expansionorder)
         _gin = gin(_r)
         _dgin_dr = dgin_dr(_r)
         _phase_in = exp(-1im * abs(p) * determine_sign(p)* rho) * exp(-1im * p * rs_mp)
 
-        outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord)
+        outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
         gout(r) = gansatz(outgoing_coeff_func, a, r; order=horizon_expansionorder)
         dgout_dr(r) = dgansatz_dr(outgoing_coeff_func, a, r; order=horizon_expansionorder)
         _gout = gout(_r)
@@ -535,7 +535,7 @@ function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         end
 
         # Construct the analytical ansatz
-        outgoing_coeff_func_inf(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord)
+        outgoing_coeff_func_inf(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
         fout(r) = fansatz(outgoing_coeff_func_inf, omega, r; order=infinity_expansionorder)
         dfout_dr(r) = dfansatz_dr(outgoing_coeff_func_inf, omega, r; order=infinity_expansionorder)
         _fout = fout(_r)

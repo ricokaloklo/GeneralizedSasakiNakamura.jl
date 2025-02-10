@@ -210,7 +210,7 @@ _cached_ingoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Q
     Qcoeffs = [_DEFAULTDATATYPE(0.0)]
 )
 
-function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int)
+function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE)
     #=
     We have derived/shown the explicit expression for
     different physically-relevant spin weight (s=0, \pm 1, \pm2)
@@ -370,9 +370,9 @@ function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int
             Qcoeffs = _cached_ingoing_coefficients_at_inf.Qcoeffs
         else
             # Cannot re-use the cached results, re-compute from zero
-            expansion_coeffs = [_DEFAULTDATATYPE(1.0)] # order 0
-            Pcoeffs = [_DEFAULTDATATYPE(PminusInf_z(s, m, a, omega, lambda, 0))] # order 0
-            Qcoeffs = [_DEFAULTDATATYPE(0.0), _DEFAULTDATATYPE(0.0)] # the recurrence relation takes Q_{r+1}
+            expansion_coeffs = [data_type(1.0)] # order 0
+            Pcoeffs = [data_type(PminusInf_z(s, m, a, omega, lambda, 0))] # order 0
+            Qcoeffs = [data_type(0.0), data_type(0.0)] # the recurrence relation takes Q_{r+1}
         end
 
         # Compute Pcoeffs to the necessary order
@@ -625,7 +625,7 @@ _cached_outgoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :
     Qcoeffs = [_DEFAULTDATATYPE(0.0)]
 )
 
-function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int)
+function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE)
     #=
     We have derived/shown the explicit expression for
     different physically-relevant spin weight (s=0, \pm 1, \pm2)
@@ -772,9 +772,9 @@ function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::In
             Qcoeffs = _cached_outgoing_coefficients_at_inf.Qcoeffs
         else
             # Cannot re-use the cached results, re-compute from zero
-            expansion_coeffs = [_DEFAULTDATATYPE(1.0)] # order 0
-            Pcoeffs = [_DEFAULTDATATYPE(PplusInf_z(s, m, a, omega, lambda, 0))] # order 0
-            Qcoeffs = [_DEFAULTDATATYPE(0.0), _DEFAULTDATATYPE(0.0)] # the recurrence relation takes Q_{r+1}
+            expansion_coeffs = [data_type(1.0)] # order 0
+            Pcoeffs = [data_type(PplusInf_z(s, m, a, omega, lambda, 0))] # order 0
+            Qcoeffs = [data_type(0.0), data_type(0.0)] # the recurrence relation takes Q_{r+1}
         end
 
         # Compute Pcoeffs to the necessary order
@@ -1202,7 +1202,7 @@ _cached_outgoing_coefficients_at_hor::NamedTuple{(:expansion_coeffs, :Pcoeffs, :
     Qcoeffs = [_DEFAULTDATATYPE(0.0)]
 )
 
-function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int)
+function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE)
     global _cached_outgoing_coefficients_at_hor_params
     global _cached_outgoing_coefficients_at_hor
 
@@ -1218,9 +1218,9 @@ function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::In
         Qcoeffs = _cached_outgoing_coefficients_at_hor.Qcoeffs
     else
         # Cannot re-use the cached results, re-compute from zero
-        expansion_coeffs = [_DEFAULTDATATYPE(1.0)] # order 0
-        Pcoeffs = [_DEFAULTDATATYPE(PplusH(s, m, a, omega, lambda, 0))] # order 0
-        Qcoeffs = [_DEFAULTDATATYPE(0.0)] # order 0
+        expansion_coeffs = [data_type(1.0)] # order 0
+        Pcoeffs = [data_type(PplusH(s, m, a, omega, lambda, 0))] # order 0
+        Qcoeffs = [data_type(0.0)] # order 0
     end
 
     if order > 0
@@ -1648,7 +1648,7 @@ _cached_ingoing_coefficients_at_hor::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Q
     Qcoeffs = [_DEFAULTDATATYPE(0.0)]
 )
 
-function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int)
+function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE)
     global _cached_ingoing_coefficients_at_hor_params
     global _cached_ingoing_coefficients_at_hor
 
@@ -1664,9 +1664,9 @@ function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int
         Qcoeffs = _cached_ingoing_coefficients_at_hor.Qcoeffs
     else
         # Cannot re-use the cached results, re-compute from zero
-        expansion_coeffs = [_DEFAULTDATATYPE(1.0)] # order 0
-        Pcoeffs = [_DEFAULTDATATYPE(PminusH(s, m, a, omega, lambda, 0))] # order 0
-        Qcoeffs = [_DEFAULTDATATYPE(0.0)] # order 0
+        expansion_coeffs = [data_type(1.0)] # order 0
+        Pcoeffs = [data_type(PminusH(s, m, a, omega, lambda, 0))] # order 0
+        Qcoeffs = [data_type(0.0)] # order 0
     end
 
     if order > 0
