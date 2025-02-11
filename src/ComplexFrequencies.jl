@@ -127,7 +127,7 @@ function solve_r_from_rho(
     end
 
     optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU, Optimization.AutoFiniteDiff())
-    optim_prob = OptimizationProblem(optim_func, [0.0], ())
+    optim_prob = OptimizationProblem(optim_func, [0.0], (), lb = [rho_neg_end/10], ub = [rho_pos_end/100])
     optim_soln = solve(optim_prob, BFGS(); maxiters=50)
 
     # Check if the optimization was successful
