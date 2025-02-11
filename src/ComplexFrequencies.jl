@@ -37,7 +37,7 @@ function drdrho(u, p, rho)
 end
 
 function solve_r_from_rho(
-    a, beta, rs_mp, rho_end; sign=1,
+    a, beta, rs_mp, rho_end; verbose=true, sign=1,
     dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER,
     reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE
 )
@@ -48,7 +48,7 @@ function solve_r_from_rho(
 
     rhospan = (0, rho_end)
     odeprob = ODEProblem(drdrho, u0, rhospan, p)
-    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol, verbose=verbose)
 
     r_from_rho(rho) = odesoln(rho)[1] # Flatten the output
     return r_from_rho
@@ -58,21 +58,21 @@ end
 function solve_r_from_rho(
     a, beta_neg, beta_pos,
     rs_mp, rho_neg_end, rho_pos_end;
-    sign_neg=1, sign_pos=1,
+    sign_neg=1, sign_pos=1, verbose=true,
     dtype=_DEFAULTDATATYPE, odealgo=_DEFAULTSOLVER,
     reltol=_DEFAULTTOLERANCE, abstol=_DEFAULTTOLERANCE
 )
     # Obtain r_from_rho for positive rho
     r_from_rhopos = solve_r_from_rho(
         a, beta_pos, rs_mp, rho_pos_end; sign=sign_pos,
-        dtype=dtype, odealgo=odealgo,
+        dtype=dtype, odealgo=odealgo, verbose=verbose,
         reltol=reltol, abstol=abstol
     )
 
     # Obtain r_from_rho for negative rho
     r_from_rhoneg = solve_r_from_rho(
         a, beta_neg, rs_mp, rho_neg_end; sign=sign_neg,
-        dtype=dtype, odealgo=odealgo,
+        dtype=dtype, odealgo=odealgo, verbose=verbose,
         reltol=reltol, abstol=abstol
     )
 
@@ -96,7 +96,7 @@ function solve_r_from_rho(
         a, beta_neg, beta_pos, rsmp, rho_neg_end, rho_pos_end;
         sign_neg=sign_neg, sign_pos=sign_pos,
         dtype=dtype, odealgo=odealgo,
-        reltol=reltol, abstol=abstol
+        reltol=reltol, abstol=abstol, verbose=false
     )
 
     # The loss function, to be used in the optimization.
@@ -126,14 +126,12 @@ function solve_r_from_rho(
         return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
-    optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU, Optimization.AutoFiniteDiff())
-    optim_prob = OptimizationProblem(optim_func, [0.0], (), lb = [rho_neg_end/10], ub = [rho_pos_end/100])
-    optim_soln = solve(optim_prob, BFGS(); maxiters=50)
-
-    # Check if the optimization was successful
-    if optim_soln.retcode == ReturnCode.Success
+    try
+        optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU, Optimization.AutoFiniteDiff())
+        optim_prob = OptimizationProblem(optim_func, [0.0], (), lb = [rho_neg_end/100], ub = [rho_pos_end/100])
+        optim_soln = solve(optim_prob, BFGS(); maxiters=50)
         return solve_r_from_rho_rsmp(optim_soln.u[1]), optim_soln.u[1]
-    else
+    catch
         # If the optimization was not successful, use rsmp = 0
         return solve_r_from_rho_rsmp(0), 0
     end
