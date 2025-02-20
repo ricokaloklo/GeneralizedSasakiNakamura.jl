@@ -128,7 +128,8 @@ function solve_r_from_rho(
 
     try
         optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU, Optimization.AutoFiniteDiff())
-        optim_prob = OptimizationProblem(optim_func, [0.0], (), lb = [rho_neg_end/100], ub = [rho_pos_end/100])
+        # Lower and upper bound chosen such that |exp(-1im*p*rs_mp)| < 10 and  |exp(1im*omega*rs_mp)| < 10 respectively
+        optim_prob = OptimizationProblem(optim_func, [log(5)/imag(p)], (), lb = [log(10)/imag(p)], ub = [-log(10)/imag(omega)])
         optim_soln = solve(optim_prob, BFGS(); maxiters=50)
         return solve_r_from_rho_rsmp(optim_soln.u[1]), optim_soln.u[1]
     catch
