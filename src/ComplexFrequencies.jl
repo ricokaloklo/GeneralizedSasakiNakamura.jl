@@ -335,7 +335,7 @@ function solve_Phiin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
     end
 
     # Initial conditions at rho = rhoin, the inner boundary
-    Xin_rhoin, Xinprime_rhoin = Xin_initialconditions(s, m, a, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin; order=initialconditions_order, dtype=type)
+    Xin_rhoin, Xinprime_rhoin = Xin_initialconditions(s, m, a, beta_neg, omega, lambda, r_from_rho, rs_mp, rhoin; order=initialconditions_order, dtype=dtype)
     # Convert initial conditions for Xin for Phi
     Phi, Phiprime = Solutions.PhiPhiprime_from_XXprime(Xin_rhoin, Xinprime_rhoin)
     u0 = SA[dtype(Phi); dtype(Phiprime)]
