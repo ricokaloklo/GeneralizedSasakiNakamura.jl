@@ -126,6 +126,10 @@ function solve_r_from_rho(
         return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
+    if determine_sign(imag(omega)) >= 0
+        return solve_r_from_rho_rsmp(0), 0
+    end
+
     try
         optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU, Optimization.AutoFiniteDiff())
         # Lower and upper bound chosen such that 1/10 <= exp(|Im \omega| rsmp) <= 10 respectively
