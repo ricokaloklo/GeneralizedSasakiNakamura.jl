@@ -177,7 +177,7 @@ function solve_X_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, sign
     p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, sign=sign, r_from_rho=r_from_rho)
 
     odeprob = ODEProblem(GSN_linear_eqn, initial_conditions, rhospan, p)
-    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    odesoln = solve(odeprob, odealgo; maxiters=Inf, reltol=reltol, abstol=abstol)
 
     return odesoln
 end
@@ -186,7 +186,7 @@ function solve_Phi_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, si
     p = (s=s, m=m, a=a, beta=beta, omega=omega, lambda=lambda, sign=sign, r_from_rho=r_from_rho)
 
     odeprob = ODEProblem(GSN_Riccati_eqn, initial_conditions, rhospan, p)
-    odesoln = solve(odeprob, odealgo; reltol=reltol, abstol=abstol)
+    odesoln = solve(odeprob, odealgo; maxiters=Inf, reltol=reltol, abstol=abstol)
 
     return odesoln
 end
