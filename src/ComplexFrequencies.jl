@@ -119,7 +119,7 @@ function solve_r_from_rho(
         # Get the asymptotic behavior of sF and sU as \rho \to -\infty
         # NOTE Since r approaches r_+ counterclockwise in the complex r plane,
         # we check the "average" behavior for convergence
-        rhos = rho_neg_end:0.1:rho_neg_end + abs(rho_neg_end)/10
+        rhos = rho_neg_end:1:rho_neg_end + abs(rho_neg_end)/10
         sF_rhoin = sum(sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
         sU_rhoin = sum(sU.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos) + p^2
     
@@ -132,9 +132,9 @@ function solve_r_from_rho(
 
     try
         optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU, Optimization.AutoFiniteDiff())
-        # Lower and upper bound chosen such that 1/100 <= exp(|Im \omega| rsmp) <= 10 respectively
-        optim_prob = OptimizationProblem(optim_func, [-log(50)/abs(imag(omega))], (), lb = [-log(100)/abs(imag(omega))], ub = [log(10)/abs(imag(omega))])
-        optim_soln = solve(optim_prob, BFGS(); maxiters=50)
+        # Lower and upper bound chosen such that 1/100 <= exp(|Im \omega| rsmp) <= 100 respectively
+        optim_prob = OptimizationProblem(optim_func, [-log(50)/abs(imag(omega))], (), lb = [-log(100)/abs(imag(omega))], ub = [log(100)/abs(imag(omega))])
+        optim_soln = solve(optim_prob, ParticleSwarm(); maxiters=50)
         return solve_r_from_rho_rsmp(optim_soln.u[1]), optim_soln.u[1]
     catch
         # If the optimization was not successful, use rsmp = 0
