@@ -9,7 +9,14 @@ export rstar_from_r, r_from_rstar
 function rstar_from_rp(a, r_from_rp)
     rp = r_plus(a)
     rm = r_minus(a)
-    return rp + r_from_rp + (2*1*rp)/(rp-rm) * log(r_from_rp/(2*1)) - (2*1*rm)/(rp-rm) * log((r_from_rp+rp-rm)/(2*1))
+
+    if abs(a) < 1
+        return rp + r_from_rp + (2*1*rp)/(rp-rm) * log(r_from_rp/(2*1)) - (2*1*rm)/(rp-rm) * log((r_from_rp+rp-rm)/(2*1))
+    elseif abs(a) == 1
+        return rp + r_from_rp - log(4) + 2*(log(r_from_rp) - 1/(r_from_rp))
+    else
+        throw(ArgumentError("a must be in the range [-1, 1]"))
+    end
 end
 
 @doc raw"""
