@@ -9,7 +9,7 @@ using ..Solutions
 
 using DifferentialEquations
 using Optimization
-using OptimizationOptimJL
+using OptimizationNOMAD
 using StaticArrays
 
 _DEFAULTDATATYPE = Solutions._DEFAULTDATATYPE
@@ -131,10 +131,14 @@ function solve_r_from_rho(
     end
 
     try
-        optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU, Optimization.AutoFiniteDiff())
+        optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU)
         # Lower and upper bound chosen such that 1/100 <= exp(|Im \omega| rsmp) <= 100 respectively
         optim_prob = OptimizationProblem(optim_func, [-log(50)/abs(imag(omega))], (), lb = [-log(100)/abs(imag(omega))], ub = [log(100)/abs(imag(omega))])
-        optim_soln = solve(optim_prob, ParticleSwarm(); maxiters=50)
+        # Suppress output from NOMAD
+        _stdout = stdout
+        redirect_stdout(devnull)
+        optim_soln = solve(optim_prob, NOMADOpt(); maxiters=50)
+        redirect_stdout(_stdout)
         return solve_r_from_rho_rsmp(optim_soln.u[1]), optim_soln.u[1]
     catch
         # If the optimization was not successful, use rsmp = 0
