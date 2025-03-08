@@ -9,7 +9,7 @@ using ..Solutions
 
 using DifferentialEquations
 using Optimization
-using OptimizationNOMAD
+using OptimizationBBO
 using StaticArrays
 
 _DEFAULTDATATYPE = Solutions._DEFAULTDATATYPE
@@ -134,10 +134,7 @@ function solve_r_from_rho(
         optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU)
         # Lower and upper bound chosen such that 1/100 <= exp(|Im \omega| rsmp) <= 100 respectively
         optim_prob = OptimizationProblem(optim_func, [-log(50)/abs(imag(omega))], (), lb = [-log(100)/abs(imag(omega))], ub = [log(100)/abs(imag(omega))])
-        # Suppress output from NOMAD
-        _stdout = stdout
-        redirect_stdout(devnull)
-        optim_soln = solve(optim_prob, NOMADOpt(); maxiters=50)
+        optim_soln = solve(optim_prob, BBO_adaptive_de_rand_1_bin_radiuslimited(); maxiters=50)
         if optim_soln.objective > 1e-6
             throw(error("")) # Failback to rsmp = 0
         end
