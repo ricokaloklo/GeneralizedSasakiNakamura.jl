@@ -138,7 +138,9 @@ function solve_r_from_rho(
         _stdout = stdout
         redirect_stdout(devnull)
         optim_soln = solve(optim_prob, NOMADOpt(); maxiters=50)
-        redirect_stdout(_stdout)
+        if optim_soln.objective > 1e-6
+            throw(error("")) # Failback to rsmp = 0
+        end
         return solve_r_from_rho_rsmp(optim_soln.u[1]), optim_soln.u[1]
     catch
         # If the optimization was not successful, use rsmp = 0
