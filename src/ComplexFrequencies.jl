@@ -126,14 +126,18 @@ function solve_r_from_rho(
         return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
+    function objective_func(u, _)
+        return asymptotic_behavior_of_sFsU(u, nothing)
+    end
+
     if determine_sign(imag(omega)) >= 0
         return solve_r_from_rho_rsmp(0), 0
     end
 
     try
-        optim_func = OptimizationFunction(asymptotic_behavior_of_sFsU)
+        optim_func = OptimizationFunction(objective_func)
         # Lower and upper bound chosen such that 1/100 <= exp(|Im \omega| rsmp) <= 100 respectively
-        optim_prob = OptimizationProblem(optim_func, [-log(50)/abs(imag(omega))], (), lb = [-log(100)/abs(imag(omega))], ub = [log(100)/abs(imag(omega))])
+        optim_prob = OptimizationProblem(optim_func, [-log(25)/abs(imag(omega))], (), lb = [-log(100)/abs(imag(omega))], ub = [log(100)/abs(imag(omega))])
         optim_soln = solve(optim_prob, BBO_adaptive_de_rand_1_bin_radiuslimited(); maxiters=50)
         if optim_soln.objective > 1e-6
             throw(error("")) # Failback to rsmp = 0
