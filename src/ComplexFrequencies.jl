@@ -100,7 +100,7 @@ function solve_r_from_rho(
     )
 
     # The loss function, to be used in the optimization.
-    function asymptotic_behavior_of_sFsU(u, _)
+    function asymptotic_behaviors(u)
         #=
         This function solves for r(\rho) and then checks if the asymptotic behavior of
         sF and sU in the limit \rho \to \pm \infty are satisfied.
@@ -110,7 +110,7 @@ function solve_r_from_rho(
             sU \to -ω^2 as \rho \to \infty, and sU -> -p^2 as \rho \to -\infty
         =#
         # Solve for r(ρ)
-        sol = solve_r_from_rho_rsmp(u[1])
+        sol = solve_r_from_rho_rsmp(u)
 
         # Get the asymptotic behavior of sF and sU as \rho \to \infty
         sF_rhoout = sF(s, m, a, omega, lambda, sol(rho_pos_end))
@@ -123,30 +123,23 @@ function solve_r_from_rho(
         sF_rhoin = sum(sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
         sU_rhoin = sum(sU.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos) + p^2
     
+        #return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2) * max(abs(abs(sol(rho_neg_end)) - r_plus(a)), 1e-4) * 1/abs(abs(sol(rho_pos_end)) - r_minus(a))
         return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
-    function objective_func(u, _)
-        return asymptotic_behavior_of_sFsU(u, nothing)
-    end
-
-    if determine_sign(imag(omega)) >= 0
-        return solve_r_from_rho_rsmp(0), 0
-    end
-
-    try
-        optim_func = OptimizationFunction(objective_func)
-        # Lower and upper bound chosen such that 1/100 <= exp(|Im \omega| rsmp) <= 100 respectively
-        optim_prob = OptimizationProblem(optim_func, [-log(25)/abs(imag(omega))], (), lb = [-log(100)/abs(imag(omega))], ub = [log(100)/abs(imag(omega))])
-        optim_soln = solve(optim_prob, BBO_adaptive_de_rand_1_bin_radiuslimited(); maxiters=50)
-        if optim_soln.objective > 1e-6
-            throw(error("")) # Failback to rsmp = 0
+    # Lower and upper bound chosen such that 1/2 <= exp(|Im \omega| rsmp) <= 2 respectively
+    lb = -log(2)/abs(imag(omega))
+    ub = log(2)/abs(imag(omega))
+    rsmp_candidate = range(lb, ub, 50)
+    for rsmp in rsmp_candidate
+        objective_value = asymptotic_behaviors(rsmp)
+        if objective_value < 1e-11
+            return solve_r_from_rho_rsmp(rsmp), rsmp
         end
-        return solve_r_from_rho_rsmp(optim_soln.u[1]), optim_soln.u[1]
-    catch
-        # If the optimization was not successful, use rsmp = 0
-        return solve_r_from_rho_rsmp(0), 0
     end
+
+    # Found no candidate, revert to just 0
+    return solve_r_from_rho_rsmp(0), 0
 end
 
 function GSN_linear_eqn(u, p, rho)
