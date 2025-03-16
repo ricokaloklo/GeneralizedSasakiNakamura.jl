@@ -8,8 +8,6 @@ using ..InitialConditions
 using ..Solutions
 
 using DifferentialEquations
-using Optimization
-using OptimizationBBO
 using StaticArrays
 
 _DEFAULTDATATYPE = Solutions._DEFAULTDATATYPE
