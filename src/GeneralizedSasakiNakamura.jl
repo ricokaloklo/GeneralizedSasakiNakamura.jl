@@ -523,7 +523,7 @@ while the order of the asymptotic expansion at the horizon and infinity are dete
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
 while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
 """
-function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, method="auto")
     if omega == 0
         Xin = GSN_radial(s, l, m, a, omega, IN)
         Xup = GSN_radial(s, l, m, a, omega, UP)
@@ -532,11 +532,13 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAU
         Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rsin, _DEFAULT_rsout,
             horizon_expansion_order=_DEFAULT_horizon_expansion_order,
             infinity_expansion_order=_DEFAULT_infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing)
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
+        )
         Xup = GSN_radial(s, l, m, a, omega, UP, _DEFAULT_rsin, _DEFAULT_rsout,
             horizon_expansion_order=_DEFAULT_horizon_expansion_order,
             infinity_expansion_order=_DEFAULT_infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing)
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
+        )
 
         # For real frequencies, bump up the expansion order until the solution is "sane"
         # The maximum expansion order to use
@@ -558,22 +560,25 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAU
             Xin = GSN_radial(s, l, m, a, omega, IN, rsin, rsout,
                 horizon_expansion_order=new_horizon_expansion_order,
                 infinity_expansion_order=new_infinity_expansion_order,
-                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing)
+                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
+            )
             Xup = GSN_radial(s, l, m, a, omega, UP, rsin, rsout,
                 horizon_expansion_order=new_horizon_expansion_order,
                 infinity_expansion_order=new_infinity_expansion_order,
-                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing)
+                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
+            )
         end
     else
         # Solve for Xin and Xup using the default settings
         Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rhoin, _DEFAULT_rhoout,
             horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
             infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing)
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
+        )
         Xup = GSN_radial(s, l, m, a, omega, UP, _DEFAULT_rhoin, _DEFAULT_rhoout,
             horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
             infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
         )
         # Use a different strategy for complex frequencies, widen the integration domain until the solution is "sane"
         _MAX_absrho = 100000
@@ -586,15 +591,17 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAU
                 @warn "Failed to solve the equation within a reasonable range of rho."
                 continue
             end
+
             # Re-solve Xin and Xup using the updated settings
             Xin = GSN_radial(s, l, m, a, omega, IN, new_rhoin, new_rhoout,
                 horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
                 infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
-                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing)
+                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
+            )
             Xup = GSN_radial(s, l, m, a, omega, UP, new_rhoin, new_rhoout,
                 horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
                 infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
-                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing
+                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
             )
         end
     end

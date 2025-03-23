@@ -125,11 +125,11 @@ function solve_r_from_rho(
         return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
-    # Lower and upper bound chosen such that 1/20 <= exp(|Im \omega| rsmp) <= 1 respectively
-    rsmp_candidate = -log.(range(20, 1, length=20))./abs(imag(omega))
+    # Lower and upper bound chosen such that 1/100 <= exp(|Im \omega| rsmp) <= 1 respectively
+    rsmp_candidate = -log.(range(100, 1, length=20))./abs(imag(omega))
     for rsmp in rsmp_candidate
         objective_value = asymptotic_behaviors(rsmp)
-        if objective_value < 1e-11
+        if objective_value < 1e-10
             return solve_r_from_rho_rsmp(rsmp), rsmp
         end
     end
