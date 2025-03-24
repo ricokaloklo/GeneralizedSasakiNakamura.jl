@@ -49,44 +49,48 @@ Numerical solutions are *smoothly stitched* to analytical ansatzes near the hori
 </p>
 
 ### Easy to use
-The following code snippet lets you solve the (source-free) Teukolsky function (in frequency domain) for the mode $s=-2, \ell=2, m=2, a=0.7, \omega=0.5$ that satisfies the purely-ingoing boundary condition at the horizon:
+The following code snippet lets you solve the (source-free) Teukolsky function (in frequency domain) for the mode $s=-2, \ell=2, m=2, a=0.7, \omega=0.5$ that satisfies the purely-ingoing boundary condition at the horizon, $R^{\textrm{in}}$, and the purely-outgoing boundary condition at spatial infinity, $R^{\textrm{up}}$, respectively:
 ```julia
 using GeneralizedSasakiNakamura # This is going to take some time to pre-compile, mostly due to DifferentialEquations.jl
 
-# Specify which mode and what boundary condition
-s=-2; l=2; m=2; a=0.7; omega=0.5; bc=IN;
-# Specify where to match to ansatzes
-rsin=-20; rsout=250;
+# Specify which mode to solve
+s=-2; l=2; m=2; a=0.7; omega=0.5;
 
 # NOTE: julia uses 'just-ahead-of-time' compilation. Calling this the first time in each session will take some time
-R = Teukolsky_radial(s, l, m, a, omega, bc, rsin, rsout) 
+Rin, Rup = Teukolsky_radial(s, l, m, a, omega)
 ```
 That's it! If you run this on Julia REPL, it should give you something like this
 ```
+(TeukolskyRadialFunction(mode=Mode(s=-2, l=2, m=2, a=0.7, omega=0.5, lambda=1.696609401635342), boundary_condition=IN), TeukolskyRadialFunction(mode=Mode(s=-2, l=2, m=2, a=0.7, omega=0.5, lambda=1.696609401635342), boundary_condition=UP))
+```
+In Julia REPL, you can check out all the asymptotic amplitudes at a glimpse using something like
+```julia
+julia> Rin
 TeukolskyRadialFunction(
-    mode=Mode(s=-2, l=2, m=2, a=0.7, omega=0.5, lambda=1.6966094016353415),
+    mode=Mode(s=-2, l=2, m=2, a=0.7, omega=0.5, lambda=1.696609401635342),
     boundary_condition=IN,
     transmission_amplitude=1.0 + 0.0im,
-    incidence_amplitude=6.536587661197995 - 4.941203897068852im,
-    reflection_amplitude=-0.128246619129379 - 0.44048133496664404im,
+    incidence_amplitude=6.5365876612287765 - 4.9412038970871555im,
+    reflection_amplitude=-0.1282466191307726 - 0.440481334972911im,
     normalization_convention=UNIT_TEUKOLSKY_TRANS
 )
 ```
-For example, if we want to evaluate the Teukolsky function at the location $r = 10M$, simply do
+
+For example, if we want to evaluate the Teukolsky function $R^{\textrm{in}}$ at the location $r = 10M$, simply do
 ```julia
-R(10)
+Rin(10)
 ```
 This should give
 ```
-77.57508416832009 - 429.40290952257226im
+77.57508416835319 - 429.40290952262677im
 ```
 
 #### Solving for complex frequencies
 One can use the same interface to compute solutions with complex frequencies. For example, the QNM solution of the $s=-2, \ell=2, m=2, a=0.68$ fundamental tone can be obtained using
 ```julia
-R = Teukolsky_radial(-2, 2, 2, 0.68, 0.5239751-0.0815126im, UP, -50, 1000)
+Rin, Rup = Teukolsky_radial(-2, 2, 2, 0.68, 0.5239751-0.0815126im)
 ```
-It should give you something like
+We can check out the $R^{\textrm{up}}$ solution using
 ```julia
 TeukolskyRadialFunction(
     mode=Mode(s=-2, l=2, m=2, a=0.68, omega=0.5239751 - 0.0815126im, lambda=1.6550030805786855 + 0.3602676563885877im),
@@ -99,12 +103,12 @@ TeukolskyRadialFunction(
 ```
 We see that the incidence amplitude is indeed very small numerically as a QNM solution should. This can be accessed using
 ```julia
-R.incidence_amplitude
+Rup.incidence_amplitude
 ```
 
 This should give
 ```julia
--5.8212709177202876e-8 - 3.805329609843362e-7im
+-5.933706506001867e-8 - 3.8161927864782035e-7im
 ```
 
 ## How to cite
