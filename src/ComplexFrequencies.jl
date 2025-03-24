@@ -129,7 +129,7 @@ function solve_r_from_rho(
     rsmp_candidate = -log.(range(100, 1, length=20))./abs(imag(omega))
     for rsmp in rsmp_candidate
         objective_value = asymptotic_behaviors(rsmp)
-        if objective_value < 1e-10
+        if objective_value < 1e-7
             return solve_r_from_rho_rsmp(rsmp), rsmp
         end
     end
