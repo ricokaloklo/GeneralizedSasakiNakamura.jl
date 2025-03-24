@@ -126,7 +126,7 @@ function solve_r_from_rho(
     end
 
     # Lower and upper bound chosen such that 1/100 <= exp(|Im \omega| rsmp) <= 1 respectively
-    rsmp_candidate = -log.(range(100, 1, length=20))./abs(imag(omega))
+    rsmp_candidate = -log.(range(50, 1, length=20))./abs(imag(omega))
     for rsmp in rsmp_candidate
         objective_value = asymptotic_behaviors(rsmp)
         if objective_value < 1e-7
