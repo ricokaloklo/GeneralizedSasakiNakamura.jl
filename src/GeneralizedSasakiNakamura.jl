@@ -237,6 +237,9 @@ function GSN_radial(
                         -angle(p), -angle(omega),
                         rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                     )
+                    if isnan(rsmp)
+                        rsmp = 0 # Optimization has failed actually
+                    end
                 else
                     r_from_rho = ComplexFrequencies.solve_r_from_rho(
                         a, -angle(p), -angle(omega),
@@ -353,6 +356,9 @@ function GSN_radial(
                         -angle(p), -angle(omega),
                         rho_min, rho_max; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
                     )
+                    if isnan(rsmp)
+                        rsmp = 0 # Optimization has failed actually
+                    end
                 else
                     r_from_rho = ComplexFrequencies.solve_r_from_rho(
                         a, -angle(p), -angle(omega),
@@ -569,41 +575,48 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAU
             )
         end
     else
-        # Solve for Xin and Xup using the default settings
-        Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rhoin, _DEFAULT_rhoout,
-            horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
-            infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
-        )
-        Xup = GSN_radial(s, l, m, a, omega, UP, _DEFAULT_rhoin, _DEFAULT_rhoout,
-            horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
-            infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
-        )
         # Use a different strategy for complex frequencies, widen the integration domain until the solution is "sane"
         _MAX_absrho = 100000
         _STEP_absrho = 5000
-        while(Xin.rsmp == 0 || Xup.rsmp == 0)
-            new_rhoin = Xin.rsin - _STEP_absrho
-            new_rhoout = Xin.rsout + _STEP_absrho
 
-            if new_rhoout > _MAX_absrho
+        rhoin = -_STEP_absrho
+        rhoout = _STEP_absrho
+
+        p = omega - m*Kerr.omega_horizon(a)
+        lambda = spin_weighted_spheroidal_eigenvalue(s, l, m, a*omega)
+        _, rsmp = ComplexFrequencies.solve_r_from_rho(
+            s, m, a, omega, lambda,
+            -angle(p), -angle(omega),
+            rhoin, rhoout; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
+        )
+
+        while(isnan(rsmp))
+            rhoin -= _STEP_absrho
+            rhoout += _STEP_absrho
+
+            if rhoout > _MAX_absrho
                 @warn "Failed to solve the equation within a reasonable range of rho."
+                rsmp = 0
                 continue
             end
 
-            # Re-solve Xin and Xup using the updated settings
-            Xin = GSN_radial(s, l, m, a, omega, IN, new_rhoin, new_rhoout,
-                horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
-                infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
-                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
-            )
-            Xup = GSN_radial(s, l, m, a, omega, UP, new_rhoin, new_rhoout,
-                horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
-                infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
-                data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=nothing, method=method
+            _, rsmp = ComplexFrequencies.solve_r_from_rho(
+                s, m, a, omega, lambda,
+                -angle(p), -angle(omega),
+                rhoin, rhoout; sign_pos=ComplexFrequencies.determine_sign(omega), sign_neg=ComplexFrequencies.determine_sign(p)
             )
         end
+        # Solve Xin and Xup using the updated settings
+        Xin = GSN_radial(s, l, m, a, omega, IN, rhoin, rhoout,
+            horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
+            infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp, method=method
+        )
+        Xup = GSN_radial(s, l, m, a, omega, UP, rhoin, rhoout,
+            horizon_expansion_order=_DEFAULT_horizon_expansion_order_for_cplx_freq,
+            infinity_expansion_order=_DEFAULT_infinity_expansion_order_for_cplx_freq,
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp, method=method
+        )
     end
 
     return (Xin, Xup)

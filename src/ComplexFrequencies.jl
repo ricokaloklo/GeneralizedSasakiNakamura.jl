@@ -120,8 +120,7 @@ function solve_r_from_rho(
         rhos = rho_neg_end:1:rho_neg_end + abs(rho_neg_end)/10
         sF_rhoin = sum(sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
         sU_rhoin = sum(sU.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos) + p^2
-    
-        #return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2) * max(abs(abs(sol(rho_neg_end)) - r_plus(a)), 1e-4) * 1/abs(abs(sol(rho_pos_end)) - r_minus(a))
+
         return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
@@ -133,8 +132,8 @@ function solve_r_from_rho(
             return solve_r_from_rho_rsmp(rsmp), rsmp
         end
     end
-    # Found no candidate, revert to just 0
-    return solve_r_from_rho_rsmp(0), 0
+    # Found no candidate, revert to just 0 but return rsmp = NaN to signify optimization failure
+    return solve_r_from_rho_rsmp(0), NaN
 end
 
 function GSN_linear_eqn(u, p, rho)
