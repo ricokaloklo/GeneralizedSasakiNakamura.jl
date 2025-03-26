@@ -576,11 +576,12 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAU
         end
     else
         # Use a different strategy for complex frequencies, widen the integration domain until the solution is "sane"
+        _MIN_absrho = 5000
         _MAX_absrho = 50000
-        _STEP_absrho = 1000
+        _STEP_absrho = 5000
 
-        rhoin = -_STEP_absrho
-        rhoout = _STEP_absrho
+        rhoin = -_MIN_absrho
+        rhoout = _MIN_absrho
 
         p = omega - m*Kerr.omega_horizon(a)
         lambda = spin_weighted_spheroidal_eigenvalue(s, l, m, a*omega)
