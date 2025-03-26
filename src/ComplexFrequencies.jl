@@ -97,8 +97,7 @@ function solve_r_from_rho(
         reltol=reltol, abstol=abstol, verbose=false
     )
 
-    # The loss function, to be used in the optimization.
-    function asymptotic_behaviors(u)
+    function check_potential_behaviors(u)
         #=
         This function solves for r(\rho) and then checks if the asymptotic behavior of
         sF and sU in the limit \rho \to \pm \infty are satisfied.
@@ -106,6 +105,9 @@ function solve_r_from_rho(
         We want
             sF \to 0 as \rho \to \pm \infty
             sU \to -ω^2 as \rho \to \infty, and sU -> -p^2 as \rho \to -\infty
+
+        We also check for thhe behavior of sU in the "interaction" region, where
+        for numerical stability we do not want a sharp change in the potential.
         =#
         # Solve for r(ρ)
         sol = solve_r_from_rho_rsmp(u)
@@ -121,13 +123,26 @@ function solve_r_from_rho(
         sF_rhoin = sum(sF.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos)
         sU_rhoin = sum(sU.(s, m, a, omega, lambda, sol.(rhos)))/length(rhos) + p^2
 
+        _int_region_min = -50
+        _int_region_max = 50
+        _h = 0.01 # For finite differencing
+        int_rhos = _int_region_min:_h:_int_region_max
+        _sU(x) = sU(s, m, a, omega, lambda, sol(x))
+        int_sUs = _sU.(int_rhos)
+        dUdx = diff(int_sUs)./_h
+
+        _dUdx_max = 10
+        if maximum(real.(dUdx)) > _dUdx_max || maximum(imag.(dUdx)) > _dUdx_max
+            return NaN
+        end
+
         return abs(sF_rhoout^2 + sF_rhoin^2 + sU_rhoout^2 + sU_rhoin^2)
     end
 
     # Lower and upper bound chosen such that 1/50 <= exp(|Im \omega| rsmp) <= 1 respectively
     rsmp_candidate = -range(log(50)/abs(imag(omega)), 0, length=20)
     for rsmp in rsmp_candidate
-        objective_value = asymptotic_behaviors(rsmp)
+        objective_value = check_potential_behaviors(rsmp)
         if objective_value < 1e-7
             return solve_r_from_rho_rsmp(rsmp), rsmp
         end
