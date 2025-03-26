@@ -576,8 +576,8 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAU
         end
     else
         # Use a different strategy for complex frequencies, widen the integration domain until the solution is "sane"
-        _MAX_absrho = 100000
-        _STEP_absrho = 5000
+        _MAX_absrho = 50000
+        _STEP_absrho = 1000
 
         rhoin = -_STEP_absrho
         rhoout = _STEP_absrho
@@ -594,8 +594,8 @@ function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAU
             rhoin -= _STEP_absrho
             rhoout += _STEP_absrho
 
-            if rhoout > _MAX_absrho
-                @warn "Failed to solve the equation within a reasonable range of rho."
+            if rhoout >= _MAX_absrho
+                # Auto determination of rsmp has failed
                 rsmp = 0
                 continue
             end
