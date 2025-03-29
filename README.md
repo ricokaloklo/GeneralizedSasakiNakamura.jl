@@ -92,12 +92,13 @@ Rin, Rup = Teukolsky_radial(-2, 2, 2, 0.68, 0.5239751-0.0815126im)
 ```
 We can check out the $R^{\textrm{up}}$ solution using
 ```julia
+julia> Rup
 TeukolskyRadialFunction(
-    mode=Mode(s=-2, l=2, m=2, a=0.68, omega=0.5239751 - 0.0815126im, lambda=1.6550030805786855 + 0.3602676563885877im),
+    mode=Mode(s=-2, l=2, m=2, a=0.68, omega=0.5239751 - 0.0815126im, lambda=1.655003080578682 + 0.3602676563885877im),
     boundary_condition=UP,
     transmission_amplitude=1.0 + 0.0im,
-    incidence_amplitude=-5.8212709177202876e-8 - 3.805329609843362e-7im,
-    reflection_amplitude=1.1011632105029887 + 2.1300597368117247im,
+    incidence_amplitude=-5.850900444651249e-8 - 3.80716581300155e-7im,
+    reflection_amplitude=1.1011632133920028 + 2.1300597377432497im,
     normalization_convention=UNIT_TEUKOLSKY_TRANS
 )
 ```
@@ -108,7 +109,7 @@ Rup.incidence_amplitude
 
 This should give
 ```julia
--5.933706506001867e-8 - 3.8161927864782035e-7im
+-5.850900444651249e-8 - 3.80716581300155e-7im
 ```
 
 ## How to cite
