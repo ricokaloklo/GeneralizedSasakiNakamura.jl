@@ -753,21 +753,21 @@ while the order of the asymptotic expansion at the horizon and infinity are dete
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
 while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
 """
-function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE)
+function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, method="auto")
     if omega == 0
         Rin = Teukolsky_radial(s, l, m, a, omega, IN)
         Rup = Teukolsky_radial(s, l, m, a, omega, UP)
     else
         # NOTE This is not the most efficient implementation but ensures self-consistency
-        Xin, Xup = GSN_radial(s, l, m, a, omega; data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance)
+        Xin, Xup = GSN_radial(s, l, m, a, omega; data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, method=method)
         Rin = Teukolsky_radial(s, l, m, a, omega, IN, Xin.rsin, Xin.rsout;
             horizon_expansion_order=Xin.horizon_expansion_order,
             infinity_expansion_order=Xin.infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=Xin.rsmp)
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=Xin.rsmp, method=method)
         Rup = Teukolsky_radial(s, l, m, a, omega, UP, Xup.rsin, Xup.rsout;
             horizon_expansion_order=Xup.horizon_expansion_order,
             infinity_expansion_order=Xup.infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=Xup.rsmp)
+            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=Xup.rsmp, method=method)
     end
 
     return (Rin, Rup)
