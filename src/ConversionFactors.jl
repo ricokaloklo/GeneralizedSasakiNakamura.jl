@@ -168,7 +168,7 @@ function TeukolskyStarobinsky_abs_Csq(s::Int, m::Int, a, omega, lambda)
     E = lambda_minus2 + 2*a*m*omega - a^2*omega^2 + 2
     Q = E + a^2*omega^2 - 2*a*m*omega
     return begin
-        (Q^2 + 4*a*omega*m - 4*a^2*omega^2)*((Q-2)^2 + 36*a*omega*m - 36*a^2*omega^2) + (2*Q - 1)*(96*a^2*omega^2 - 48a*omega*m) + 144*omega^2(1-a^2)
+        (Q^2 + 4*a*omega*m - 4*a^2*omega^2)*((Q-2)^2 + 36*a*omega*m - 36*a^2*omega^2) + (2*Q - 1)*(96*a^2*omega^2 - 48a*omega*m) + 144*omega^2*(1-a^2)
     end
 end
 
