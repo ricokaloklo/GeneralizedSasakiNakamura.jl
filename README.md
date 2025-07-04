@@ -138,7 +138,11 @@ Additionally, if you have used this code's capability to solve for solutions wit
     eprint = "2504.00084",
     archivePrefix = "arXiv",
     primaryClass = "gr-qc",
-    month = "3",
+    doi = "10.1103/PhysRevD.111.124002",
+    journal = "Phys. Rev. D",
+    volume = "111",
+    number = "12",
+    pages = "124002",
     year = "2025"
 }
 ```
