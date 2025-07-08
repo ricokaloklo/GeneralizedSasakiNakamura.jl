@@ -130,5 +130,22 @@ If you have used this code in your research that leads to a publication, please 
 }
 ```
 
+Additionally, if you have used this code's capability to solve for solutions with complex frequencies, please also cite the following article:
+```
+@article{Lo:2025njp,
+    author = "Lo, Rico K. L. and Sabani, Leart and Cardoso, Vitor",
+    title = "{Quasinormal modes and excitation factors of Kerr black holes}",
+    eprint = "2504.00084",
+    archivePrefix = "arXiv",
+    primaryClass = "gr-qc",
+    doi = "10.1103/PhysRevD.111.124002",
+    journal = "Phys. Rev. D",
+    volume = "111",
+    number = "12",
+    pages = "124002",
+    year = "2025"
+}
+```
+
 ## License
 The package is licensed under the MIT License.
