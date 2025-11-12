@@ -1,14 +1,14 @@
 module GeneralizedSasakiNakamura
 
-include("Kerr.jl")
-include("Coordinates.jl")
-include("AsymptoticExpansionCoefficients.jl")
-include("InitialConditions.jl")
-include("ConversionFactors.jl")
-include("Transformation.jl")
-include("Potentials.jl")
-include("Solutions.jl")
-include("ComplexFrequencies.jl")
+include("Homogeneous/Kerr.jl")
+include("Homogeneous/Coordinates.jl")
+include("Homogeneous/AsymptoticExpansionCoefficients.jl")
+include("Homogeneous/InitialConditions.jl")
+include("Homogeneous/ConversionFactors.jl")
+include("Homogeneous/Transformation.jl")
+include("Homogeneous/Potentials.jl")
+include("Homogeneous/Solutions.jl")
+include("Homogeneous/ComplexFrequencies.jl")
 
 using .Coordinates
 export r_from_rstar, rstar_from_r # Useful to be exposed
