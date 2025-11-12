@@ -1,13 +1,14 @@
 name = "GeneralizedSasakiNakamura"
 uuid = "7d2aac85-6cc1-40c7-a4aa-e1a43f13f131"
-authors = ["Rico Ka Lok Lo"]
-version = "0.6.0"
+version = "0.7.0"
+authors = ["Rico Ka Lok Lo", "Yucheng Yin"]
 
 [deps]
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 HypergeometricFunctions = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
+KerrGeodesics = "53139c06-1eed-45f1-8780-9fca08ecab11"
 Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 SpinWeightedSpheroidalHarmonics = "680e17a6-2a17-48fd-ae01-e2b5a643bef0"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
@@ -18,6 +19,7 @@ DifferentialEquations = "7"
 ForwardDiff = "^0.10"
 HypergeometricFunctions = "^0.3.23"
 Interpolations = "^0.15"
+KerrGeodesics = "^0.1.7"
 Roots = "2"
 SpinWeightedSpheroidalHarmonics = "^1"
 StaticArrays = "^1.9.11"
