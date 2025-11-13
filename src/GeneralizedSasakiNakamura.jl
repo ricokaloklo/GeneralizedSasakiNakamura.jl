@@ -807,13 +807,34 @@ include("Inhomogeneous/GridSampling.jl")
 include("Inhomogeneous/ConvolutionIntegrals.jl")
 
 function Base.show(io::IO, ::MIME"text/plain", ysol::SolutionsY.YSolutionResult)
-    println(io, "YSolutionResult(")
-    print(io, "  basis = "); show(io, ysol.basis_type); println(io, ",")
-    print(io, "    mode = "); show(io, "text/plain", ysol.mode); println(io, ",")
-    print(io, "    asymptotic = "); show(io, "text/plain", ysol.asymptotic); println(io, ",")
-    println(io, "    solution = (X=(function), Y_inf=⟨function⟩, Yp_inf=⟨function⟩, Y_hor=⟨function⟩, Yp_hor=⟨function⟩)")
+    println(io, "YSolution(")
+    print(io, "    basis="); show(io, ysol.basis_type); println(io, ",")
+    print(io, "    mode="); show(io, "text/plain", ysol.mode); println(io, ",")
+    println(io, "    rin=$(ysol.asymptotic.rin),")
+    println(io, "    rout=$(ysol.asymptotic.rout),")
     print(io, ")")
 end
+
+function Base.show(io::IO, ::MIME"text/plain", teuk_mode::TeukolskyPointParticleMode)
+    println(io, "TeukolskyPointParticleMode(")
+    print(io, "    mode="); show(io, "text/plain", teuk_mode.mode); println(io, ",")
+    println(io, "    amplitude_inf=$(teuk_mode.amplitude_inf),")
+    println(io, "    energy_flux_inf=$(teuk_mode.energy_flux_inf),")
+    println(io, "    angular_momentum_flux_inf=$(teuk_mode.angular_momentum_flux_inf),")
+    println(io, "    Carter_const_flux_inf=$(teuk_mode.Carter_const_flux_inf),")
+    print(io, ")")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", gsn_mode::GSNPointParticleMode)
+    println(io, "GSNPointParticleMode(")
+    print(io, "    mode="); show(io, "text/plain", gsn_mode.mode); println(io, ",")
+    println(io, "    amplitude_inf=$(gsn_mode.amplitude_inf),")
+    println(io, "    energy_flux_inf=$(gsn_mode.energy_flux_inf),")
+    println(io, "    angular_momentum_flux_inf=$(gsn_mode.angular_momentum_flux_inf),")
+    println(io, "    Carter_const_flux_inf=$(gsn_mode.Carter_const_flux_inf),")
+    print(io, ")")
+end
+
 
 function Teukolsky_pointparticle_mode(
     s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x;
@@ -836,6 +857,23 @@ function Teukolsky_pointparticle_mode(
     else
         error("Currently only spin-2/gravitational perturbations are supported")
     end
+end
+
+function GSN_pointparticle_mode(
+    s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x;
+    N=2^8, K=2^6
+)
+    Teukolsky_mode = Teukolsky_pointparticle_mode(s, l, m, n, k, a, p, e, x; N=N, K=K)
+    return GSNPointParticleMode(
+        Teukolsky_mode.mode,
+        Teukolsky_mode.amplitude_inf/Teukolsky_mode.Y_solution.asymptotic.Bref,
+        Teukolsky_mode.energy_flux_inf,
+        Teukolsky_mode.angular_momentum_flux_inf,
+        Teukolsky_mode.Carter_const_flux_inf,
+        Teukolsky_mode.trajectory,
+        Teukolsky_mode.Y_solution,
+        Teukolsky_mode.SWSH
+    )
 end
 
 end
