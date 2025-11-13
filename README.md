@@ -137,7 +137,7 @@ To access for example the amplitude at infinity `amplitude_inf`
 julia> mode_info.amplitude_inf
 0.00023429507957491088 - 6.558414418883069e-5im
 ```
-which is exactly the value for $Z^{\infty}_{\ell m n k}$, where $R^{\rm inhomo}(r \to \infty) = Z^{\infty}_{\ell m n k} r^3 e^{i \omega r_*}$.
+which is the value for $Z^{\infty}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near infinity for that particular frequency.
 
 ## How to cite
 If you have used this code in your research that leads to a publication, please cite the following article:
