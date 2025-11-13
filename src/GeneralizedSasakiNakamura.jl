@@ -17,7 +17,8 @@ using .Solutions
 using SpinWeightedSpheroidalHarmonics
 using DifferentialEquations # Should have been compiled by now
 
-export GSN_radial, Teukolsky_radial
+export GSN_radial, Teukolsky_radial # Homogeneous solutions
+export GSN_pointparticle_mode, Teukolsky_pointparticle_mode # Inhomogeneous solutions
 
 # Default values
 _DEFAULT_rsin = -50
@@ -61,7 +62,6 @@ end
 function Base.show(io::IO, ::MIME"text/plain", mode::Mode)
     print(io, "Mode(s=$(mode.s), l=$(mode.l), m=$(mode.m), a=$(mode.a), omega=$(mode.omega), lambda=$(mode.lambda))")
 end
-
 
 struct GSNRadialFunction
     mode::Mode # Information about the mode
@@ -128,6 +128,28 @@ end
 
 function Base.show(io::IO, teuk_func::TeukolskyRadialFunction)
     print(io, "TeukolskyRadialFunction(mode=Mode(s=$(teuk_func.mode.s), l=$(teuk_func.mode.l), m=$(teuk_func.mode.m), a=$(teuk_func.mode.a), omega=$(teuk_func.mode.omega), lambda=$(teuk_func.mode.lambda)), boundary_condition=$(teuk_func.boundary_condition))")
+end
+
+struct GSNPointParticleMode
+    mode::Mode # Information about the mode, where the frequency will be computed from orbital parameters
+    amplitude_inf # In GSN formalism
+    energy_flux_inf # Identical in both formalisms
+    angular_momentum_flux_inf # Identical in both formalisms
+    Carter_const_flux_inf # Identical in both formalisms
+    trajectory
+    Y_solution # The Y solution used to compute the fluxes
+    SWSH # The spin-weighted spheroidal harmonics used to compute the fluxes
+end
+
+struct TeukolskyPointParticleMode
+    mode::Mode # Information about the mode, where the frequency will be computed from orbital parameters
+    amplitude_inf # In Teukolsky formalism
+    energy_flux_inf # Identical in both formalisms
+    angular_momentum_flux_inf # Identical in both formalisms
+    Carter_const_flux_inf # Identical in both formalisms
+    trajectory
+    Y_solution # The Y solution used to compute the fluxes
+    SWSH # The spin-weighted spheroidal harmonics used to compute the fluxes
 end
 
 @doc raw"""
@@ -626,6 +648,7 @@ end
 # The power of multiple dispatch
 (gsn_func::GSNRadialFunction)(rs) = gsn_func.GSN_solution(rs)[1] # Only return X(rs), discarding the first derivative
 
+
 @doc raw"""
     Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing)
 
@@ -775,5 +798,44 @@ end
 
 # The power of multiple dispatch
 (teuk_func::TeukolskyRadialFunction)(r) = teuk_func.Teukolsky_solution(r)[1] # Only return R(r), discarding the first derivative
+
+
+include("Inhomogeneous/AsymptoticExpansionCoefficientsY.jl")
+include("Inhomogeneous/InitialConditionsY.jl")
+include("Inhomogeneous/SolutionsY.jl")
+include("Inhomogeneous/GridSampling.jl")
+include("Inhomogeneous/ConvolutionIntegrals.jl")
+
+function Base.show(io::IO, ::MIME"text/plain", ysol::SolutionsY.YSolutionResult)
+    println(io, "YSolutionResult(")
+    print(io, "  basis = "); show(io, ysol.basis_type); println(io, ",")
+    print(io, "    mode = "); show(io, "text/plain", ysol.mode); println(io, ",")
+    print(io, "    asymptotic = "); show(io, "text/plain", ysol.asymptotic); println(io, ",")
+    println(io, "    solution = (X=(function), Y_inf=⟨function⟩, Yp_inf=⟨function⟩, Y_hor=⟨function⟩, Yp_hor=⟨function⟩)")
+    print(io, ")")
+end
+
+function Teukolsky_pointparticle_mode(
+    s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x;
+    N=2^8, K=2^6
+)
+    abs_s = abs(s)
+    if abs_s == 2
+        # For now, use trapezoidal rule to compute the convolution integral
+        output = ConvolutionIntegrals.convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N=N, K=K)
+        return TeukolskyPointParticleMode(
+            Mode(s, l, m, a, output["omega"], output["YSolution"].mode.lambda),
+            output["Amplitude"],
+            output["EnergyFlux"],
+            output["AngularMomentumFlux"],
+            output["CarterConstantFlux"],
+            output["Trajectory"],
+            output["YSolution"],
+            output["SWSH"]
+        )
+    else
+        error("Currently only spin-2/gravitational perturbations are supported")
+    end
+end
 
 end

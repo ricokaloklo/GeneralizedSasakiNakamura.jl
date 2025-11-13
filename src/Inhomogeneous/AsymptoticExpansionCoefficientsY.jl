@@ -1,7 +1,7 @@
 module AsymptoticExpansionCoefficientsY
 
 using SpecialFunctions
-using ..Homogeneous.AsymptoticExpansionCoefficients: outgoing_coefficient_at_inf, ingoing_coefficient_at_inf, outgoing_coefficient_at_hor, ingoing_coefficient_at_hor 
+using ..AsymptoticExpansionCoefficients: outgoing_coefficient_at_inf, ingoing_coefficient_at_inf, outgoing_coefficient_at_hor, ingoing_coefficient_at_hor 
 
 export Ypp_outgoing_inf_m2, Ypp_ingoing_inf_m2, Ypp_outgoing_hor_m2, Ypp_ingoing_hor_m2, Ypp_outgoing_inf_p2, Ypp_ingoing_inf_p2, Ypp_outgoing_hor_p2, Ypp_ingoing_hor_p2
 
