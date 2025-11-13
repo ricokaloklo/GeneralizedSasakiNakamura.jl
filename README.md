@@ -14,6 +14,8 @@ Both codes are capable of handling *complex* frequencies, and we use $M = 1$ con
 
 The paper describing both the GSN formalism and the implementation can be found in [2306.16469](https://arxiv.org/abs/2306.16469). A set of Mathematica notebooks deriving all the equations used in the code can be found in [10.5281/zenodo.8080241](https://zenodo.org/records/8080242).
 
+Starting from v0.7.0, the code is also capable of computing the gravitational waveform and fluxes at infinity due a test particle orbiting around a Kerr black hole in a _generic (eccentric, inclined) timelike bound orbit_ by solving the inhomogeneous SN equation using integration by parts.
+
 ## Installation
 To install the package using the Julia package manager, simply type the following in the Julia REPL:
 ```julia
@@ -112,6 +114,31 @@ This should give
 -5.850900444651249e-8 - 3.80716581300155e-7im
 ```
 
+#### Solving the inhomogeneous radial Teukolsky/SN equation with a point-particle source on a generic timelike bound orbit
+This can now be done easily with this code, starting from v0.7.0.
+Suppose we want to compute the inhomogeneous solution to the radial Teukolsky equation at infinity for the $s = -2$, $\ell = m = 2$ mode driven by a test particle on a bound geodesic with $a/M = 0.9, p = 6M, e = 0.7, x = \cos(\pi/4)$, one can simply do
+```julia
+mode_info = Teukolsky_pointparticle_mode(-2, 2, 2, 0, 0, 0.9, 6, 0.7, cos(π/4))
+```
+where $n$ and $k$ label the radial and polar modes, respectively.
+To have a glimpse of the output, one can do so with
+```julia
+julia> mode_info
+TeukolskyPointParticleMode(
+    mode=Mode(s=-2, l=2, m=2, a=0.9, omega=0.06568724726732737, lambda=3.6067890121199833),
+    amplitude_inf=0.00023429507957491088 - 6.558414418883069e-5im,
+    energy_flux_inf=1.091733010828344e-6,
+    angular_momentum_flux_inf=3.3240333740438795e-5,
+    Carter_const_flux_inf=5.890504440487091e-5,
+)
+```
+To access for example the amplitude at infinity `amplitude_inf`
+```julia
+julia> mode_info.amplitude_inf
+0.00023429507957491088 - 6.558414418883069e-5im
+```
+which is exactly the value for $Z^{\infty}_{\ell m n k}$, where $R^{\rm inhomo}(r \to \infty) = Z^{\infty}_{\ell m n k} r^3 e^{i \omega r_*}$.
+
 ## How to cite
 If you have used this code in your research that leads to a publication, please cite the following article:
 ```
@@ -146,6 +173,11 @@ Additionally, if you have used this code's capability to solve for solutions wit
     year = "2025"
 }
 ```
+
+If you have used this code's capability to solve for the gravitational waveform amplitude and fluxes at infinity with a test particle orbiting a Kerr black hole in a generic timelike bound and stable orbit (e.g., for extreme mass ratio inspiral waveforms), please cite the following article:
+```
+```
+
 
 ## License
 The package is licensed under the MIT License.
