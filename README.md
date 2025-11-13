@@ -120,7 +120,7 @@ Suppose we want to compute the inhomogeneous solution to the radial Teukolsky eq
 ```julia
 mode_info = Teukolsky_pointparticle_mode(-2, 2, 2, 0, 0, 0.9, 6, 0.7, cos(π/4))
 ```
-where $n$ and $k$ label the radial and polar modes, respectively.
+where $n = 0$ and $k = 0$ label the radial and polar modes, respectively.
 To have a glimpse of the output, one can do so with
 ```julia
 julia> mode_info
