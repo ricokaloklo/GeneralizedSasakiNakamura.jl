@@ -446,7 +446,7 @@ function convolution_integral_inclined_trapezoidal(a, p, x, s, l, m, k, K_sample
     # --------------------------
     # 2. Solve radial function and spherical harmonics
     # --------------------------
-    Y_soln = Y_solution(s, l, m, a, omega, 1; rsin = rsin, rsout = rsout)
+    Y_soln = Y_solution(s, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
     Binc = Y_soln.asymptotic.Binc
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega)  # Polar-dependent harmonics
     Y = Dict("params" => (s=s, l=l, m=m, a=a, omega=omega, lambda=SH.lambda),
