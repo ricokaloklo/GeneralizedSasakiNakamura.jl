@@ -120,3 +120,33 @@ This is a composite struct type that stores the output from [`Teukolsky_radial`]
 | `GSN_solution` | a [GSNRadialFunction](@ref) object storing the corresponding GSN function
 | `Teukolsky_solution` | Teukolsky solution where asymptotic solutions are smoothly attached; output is a vector $[ \hat{R}(r), d\hat{R}(r)/dr ]$ |
 | `normalization_convention` | a [NormalizationConvention](@ref) object storing which normalization convention this function adheres to |
+
+#### GSNPointParticleMode
+This is a composite struct type that stores the output from [`GSN_pointparticle_mode`](@ref)
+
+| field |    |
+| :--- | :--- |
+| `mode` | a [Mode](@ref) object storing information about the mode (including the frequency) |
+| `amplitude_inf` | the amplitude of the inhomogeneous GSN solution at infinity such that $X^{\infty}_{\ell m \omega} = $ `amplitude_inf` $ \times e^{i \omega r_*}$ |
+| `energy_flux_inf` | the energy flux emitted towards infinity |
+| `angular_momentum_flux_inf ` | the angular momentum flux towards infinity |
+| `Carter_const_flux_inf` | the Carter constant flux towards infinity |
+| `trajectory` | the trajectory/geodesic that the particle follows |
+| `Y_solution` | the auxiliary function $Y$ used in the calculation |
+| `SWSH` | the spin-weighted spheroidal harmonic` used in the calculation |
+| `method` | a named tuple storing the method and grid size used in computing the convolution integral |
+
+#### TeukolskyPointParticleMode
+This is a composite struct type that stores the output from [`Teukolsky_pointparticle_mode`](@ref)
+
+| field |    |
+| :--- | :--- |
+| `mode` | a [Mode](@ref) object storing information about the mode (including the frequency) |
+| `amplitude_inf` | the amplitude of the inhomogeneous Teukolsky solution at infinity such that $R^{\infty}_{\ell m \omega} = $ `amplitude_inf` $ \times r^{-(2s+1)} e^{i \omega r_*}$ |
+| `energy_flux_inf` | the energy flux emitted towards infinity |
+| `angular_momentum_flux_inf ` | the angular momentum flux towards infinity |
+| `Carter_const_flux_inf` | the Carter constant flux towards infinity |
+| `trajectory` | the trajectory/geodesic that the particle follows |
+| `Y_solution` | the auxiliary function $Y$ used in the calculation |
+| `SWSH` | the spin-weighted spheroidal harmonic` used in the calculation |
+| `method` | a named tuple storing the method and grid size used in computing the convolution integral |
