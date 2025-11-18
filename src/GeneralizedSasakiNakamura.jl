@@ -889,7 +889,7 @@ function Teukolsky_pointparticle_mode(
             output["Trajectory"],
             output["YSolution"],
             output["SWSH"],
-            (method, N, K)
+            (method=method, N=N, K=K)
         )
     else
         error("Currently only spin-2/gravitational perturbations are supported")
