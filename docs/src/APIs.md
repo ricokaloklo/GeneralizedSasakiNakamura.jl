@@ -1,19 +1,23 @@
 # APIs
 
-There are 4 functions that are exported, namely
+There are 6 functions that are exported, namely
 
 - [`Teukolsky_radial`](@ref)
 - [`GSN_radial`](@ref)
+- [`Teukolsky_pointparticle_mode`](@ref)
+- [`GSN_pointparticle_mode`] (@ref)
 - [`rstar_from_r`](@ref)
 - [`r_from_rstar`](@ref)
 
-and there are 5 custom types that are exported, i.e.
+and there are 7 custom types that are exported, i.e.
 
 - [BoundaryCondition](@ref)
 - [NormalizationConvention](@ref)
 - [Mode](@ref)
 - [GSNRadialFunction](@ref)
 - [TeukolskyRadialFunction](@ref)
+- [GSNPointParticleMode](@ref)
+- [TeukolskyPointParticleMode](@ref)
 
 Currently, only the exported functions and types are documented below. Documentations for private (i.e. unexported) functions will be added at a later stage.
 
@@ -32,6 +36,14 @@ rstar_from_r
 
 ```@docs
 r_from_rstar
+```
+
+```@docs
+Teukolsky_pointparticle_mode
+```
+
+```@docs
+GSN_radial
 ```
 
 ## Types
