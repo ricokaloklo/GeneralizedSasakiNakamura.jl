@@ -43,7 +43,7 @@ Teukolsky_pointparticle_mode
 ```
 
 ```@docs
-GSN_radial
+GSN_pointparticle_mode
 ```
 
 ## Types
