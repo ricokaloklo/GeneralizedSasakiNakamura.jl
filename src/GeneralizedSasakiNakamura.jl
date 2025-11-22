@@ -845,7 +845,7 @@ end
 
 Compute the amplitude of the inhomogeneous Teukolsky solution _at infinity_ due to a point particle on a generic timelike bound orbit around a Kerr black hole,
 with a spin parameter of `a`, for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `n` the radial index and `k` the polar index).
-The orbit is specified by `p` the semi-letus rectum, `e` the eccentricity and `x` the inclination parameter ($x \equiv \cos \theta_{\mathrm{inc}}$).
+The orbit is specified by `p` the semi-latus rectum, `e` the eccentricity and `x` the inclination parameter ($x \equiv \cos \theta_{\mathrm{inc}}$).
 
 In addition, we compute also the energy, angular momentum and Carter constant flux at infinity. Note that these values are formalism-independent.
 
@@ -901,7 +901,7 @@ end
 
 Compute the amplitude of the inhomogeneous GSN solution _at infinity_ due to a point particle on a generic timelike bound orbit around a Kerr black hole,
 with a spin parameter of `a`, for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `n` the radial index and `k` the polar index).
-The orbit is specified by `p` the semi-letus rectum, `e` the eccentricity and `x` the inclination parameter ($x \equiv \cos \theta_{\mathrm{inc}}$).
+The orbit is specified by `p` the semi-latus rectum, `e` the eccentricity and `x` the inclination parameter ($x \equiv \cos \theta_{\mathrm{inc}}$).
 
 In addition, we compute also the energy, angular momentum and Carter constant flux at infinity. Note that these values are formalism-independent.
 
