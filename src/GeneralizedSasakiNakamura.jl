@@ -796,10 +796,10 @@ end
 
 struct GSNPointParticleMode
     mode::Mode # Information about the mode, where the frequency will be computed from orbital parameters
-    amplitude_inf # In GSN formalism
-    energy_flux_inf # Identical in both formalisms
-    angular_momentum_flux_inf # Identical in both formalisms
-    Carter_const_flux_inf # Identical in both formalisms
+    amplitude # In GSN formalism
+    energy_flux # Identical in both formalisms
+    angular_momentum_flux # Identical in both formalisms
+    Carter_const_flux # Identical in both formalisms
     trajectory
     Y_solution # The Y solution used to compute the fluxes
     SWSH # The spin-weighted spheroidal harmonics used to compute the fluxes
@@ -808,10 +808,10 @@ end
 
 struct TeukolskyPointParticleMode
     mode::Mode # Information about the mode, where the frequency will be computed from orbital parameters
-    amplitude_inf # In Teukolsky formalism
-    energy_flux_inf # Identical in both formalisms
-    angular_momentum_flux_inf # Identical in both formalisms
-    Carter_const_flux_inf # Identical in both formalisms
+    amplitude # In Teukolsky formalism
+    energy_flux # Identical in both formalisms
+    angular_momentum_flux # Identical in both formalisms
+    Carter_const_flux # Identical in both formalisms
     trajectory
     Y_solution # The Y solution used to compute the fluxes
     SWSH # The spin-weighted spheroidal harmonics used to compute the fluxes
@@ -819,23 +819,44 @@ struct TeukolskyPointParticleMode
 end
 
 function Base.show(io::IO, ::MIME"text/plain", teuk_mode::TeukolskyPointParticleMode)
+    s = teuk_mode.mode.s
+    
+    if s == -2
+        frame_suffix = "_inf" 
+    elseif s == 2
+        frame_suffix = "_hor" 
+    else
+        error("Invalid spin weight s = $s. Teukolsky formalism requires s ∈ {-2, 2}.")
+    end
+
+    # Print structured output with frame-specific suffixes
     println(io, "TeukolskyPointParticleMode(")
     print(io, "    mode="); show(io, "text/plain", teuk_mode.mode); println(io, ",")
-    println(io, "    amplitude_inf=$(teuk_mode.amplitude_inf),")
-    println(io, "    energy_flux_inf=$(teuk_mode.energy_flux_inf),")
-    println(io, "    angular_momentum_flux_inf=$(teuk_mode.angular_momentum_flux_inf),")
-    println(io, "    Carter_const_flux_inf=$(teuk_mode.Carter_const_flux_inf),")
+    println(io, "    amplitude$frame_suffix=$(teuk_mode.amplitude),")
+    println(io, "    energy_flux$frame_suffix=$(teuk_mode.energy_flux),")
+    println(io, "    angular_momentum_flux$frame_suffix=$(teuk_mode.angular_momentum_flux),")
+    println(io, "    Carter_const_flux$frame_suffix=$(teuk_mode.Carter_const_flux),")
     println(io, "    method=$(teuk_mode.method),")
     print(io, ")")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", gsn_mode::GSNPointParticleMode)
+    s = gsn_mode.mode.s
+    
+    if s == -2
+        frame_suffix = "_inf" 
+    elseif s == 2
+        frame_suffix = "_hor" 
+    else
+        error("Invalid spin weight s = $s. GSN formalism requires s ∈ {-2, 2}.")
+    end
+
     println(io, "GSNPointParticleMode(")
     print(io, "    mode="); show(io, "text/plain", gsn_mode.mode); println(io, ",")
-    println(io, "    amplitude_inf=$(gsn_mode.amplitude_inf),")
-    println(io, "    energy_flux_inf=$(gsn_mode.energy_flux_inf),")
-    println(io, "    angular_momentum_flux_inf=$(gsn_mode.angular_momentum_flux_inf),")
-    println(io, "    Carter_const_flux_inf=$(gsn_mode.Carter_const_flux_inf),")
+    println(io, "    amplitude$frame_suffix=$(gsn_mode.amplitude),")
+    println(io, "    energy_flux$frame_suffix=$(gsn_mode.energy_flux),")
+    println(io, "    angular_momentum_flux$frame_suffix=$(gsn_mode.angular_momentum_flux),")
+    println(io, "    Carter_const_flux$frame_suffix=$(gsn_mode.Carter_const_flux),")
     println(io, "    method=$(gsn_mode.method),")
     print(io, ")")
 end
@@ -843,20 +864,17 @@ end
 @doc raw"""
     Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int, K::Int)
 
-Compute the amplitude of the inhomogeneous Teukolsky solution _at infinity_ due to a point particle on a generic timelike bound orbit around a Kerr black hole,
+Compute the amplitude of the inhomogeneous Teukolsky solution _at infinity_ (for s = - 2) and _at horizon_ (for s = + 2) due to a point particle on a generic timelike bound orbit around a Kerr black hole,
 with a spin parameter of `a`, for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `n` the radial index and `k` the polar index).
 The orbit is specified by `p` the semi-latus rectum, `e` the eccentricity and `x` the inclination parameter ($x \equiv \cos \theta_{\mathrm{inc}}$).
 
-In addition, we compute also the energy, angular momentum and Carter constant flux at infinity. Note that these values are formalism-independent.
+In addition, we compute also the energy, angular momentum and Carter constant flux at infinity (for s = - 2) and the horizon (for s = + 2). Note that these values are formalism-independent.
 
 The numerical method to compute the convolution integral is specified by `method` (default: `auto`), which can either be `trapezoidal` or `levin`.
 We sample the trajectory over a grid of size N x K, where N and K are the number of Chebyshev nodes in the radial and the polar direction, respectively.
 Note that they must be powers of 2.
 """
-function Teukolsky_pointparticle_mode(
-    s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1
-)
-    abs_s = abs(s)
+function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1)
     if method == "auto"
         # For now, choose "trapezoidal"
         method = "trapezoidal"
@@ -871,24 +889,36 @@ function Teukolsky_pointparticle_mode(
         K = K <= 0 ? 32 : K
     end
 
-    if abs_s == 2
-        if method == "trapezoidal"
-            output = ConvolutionIntegrals.convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N=N, K=K)
-        elseif method == "levin"
-            output = ConvolutionIntegrals.convolution_integral_levin(a, p, e, x, s, l, m, n, k; N=N, K=K)
-        else
-            error("Currently only support method = \"trapezoidal\" or \"levin\"")
-        end
+    if method == "trapezoidal"
+        output = ConvolutionIntegrals.convolution_integral_trapezoidal(a, p, e, x, l, m, n, k; N=N, K=K)
+    elseif method == "levin"
+        output = ConvolutionIntegrals.convolution_integral_levin(a, p, e, x, l, m, n, k; N=N, K=K)
+    else
+        error("Currently only support method = \"trapezoidal\" or \"levin\"")
+    end
 
+    if s == -2
         return TeukolskyPointParticleMode(
-            Mode(s, l, m, a, output["omega"], output["YSolution"].mode.lambda),
-            output["Amplitude"],
-            output["EnergyFlux"],
-            output["AngularMomentumFlux"],
-            output["CarterConstantFlux"],
+            Mode(s, l, m, a, output["omega"], output["YSolution"][1].mode.lambda),
+            output["Amplitude_inf"],
+            output["EnergyFlux_inf"],
+            output["AngularMomentumFlux_inf"],
+            output["CarterConstantFlux_inf"],
             output["Trajectory"],
-            output["YSolution"],
-            output["SWSH"],
+            output["YSolution"][1],
+            output["SWSH"][1],
+            (method=method, N=N, K=K)
+        )
+    elseif s == 2
+        return TeukolskyPointParticleMode(
+            Mode(s, l, m, a, output["omega"], output["YSolution"][2].mode.lambda),
+            output["Amplitude_hor"],
+            output["EnergyFlux_hor"],
+            output["AngularMomentumFlux_hor"],
+            output["CarterConstantFlux_hor"],
+            output["Trajectory"],
+            output["YSolution"][2],
+            output["SWSH"][2],
             (method=method, N=N, K=K)
         )
     else
@@ -899,26 +929,29 @@ end
 @doc raw"""
     GSN_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int, K::Int)
 
-Compute the amplitude of the inhomogeneous GSN solution _at infinity_ due to a point particle on a generic timelike bound orbit around a Kerr black hole,
+Compute the amplitude of the inhomogeneous GSN solution _at infinity_ (for s = - 2) and _at horizon_ (for s = + 2) due to a point particle on a generic timelike bound orbit around a Kerr black hole,
 with a spin parameter of `a`, for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `n` the radial index and `k` the polar index).
 The orbit is specified by `p` the semi-latus rectum, `e` the eccentricity and `x` the inclination parameter ($x \equiv \cos \theta_{\mathrm{inc}}$).
 
-In addition, we compute also the energy, angular momentum and Carter constant flux at infinity. Note that these values are formalism-independent.
+In addition, we compute also the energy, angular momentum and Carter constant flux at infinity (for s = - 2) and the horizon (for s = + 2). Note that these values are formalism-independent.
 
 The numerical method to compute the convolution integral is specified by `method` (default: `auto`), which can either be `trapezoidal` or `levin`.
 We sample the trajectory over a grid of size N x K, where N and K are the number of Chebyshev nodes in the radial and the polar direction, respectively.
 Note that they must be powers of 2.
 """
-function GSN_pointparticle_mode(
-    s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1
-)
+function GSN_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1)
     Teukolsky_mode = Teukolsky_pointparticle_mode(s, l, m, n, k, a, p, e, x; method=method, N=N, K=K)
+    if s == 2
+        T_to_SN = ConversionFactors.Btrans(s, m, a, Teukolsky_mode.mode.omega, Teukolsky_mode.mode.lambda)
+    elseif s == -2
+        T_to_SN = ConversionFactors.Ctrans(s, m, a, Teukolsky_mode.mode.omega, Teukolsky_mode.mode.lambda)
+    end
     return GSNPointParticleMode(
         Teukolsky_mode.mode,
-        Teukolsky_mode.amplitude_inf/Teukolsky_mode.Y_solution.asymptotic.Bref,
-        Teukolsky_mode.energy_flux_inf,
-        Teukolsky_mode.angular_momentum_flux_inf,
-        Teukolsky_mode.Carter_const_flux_inf,
+        Teukolsky_mode.amplitude / T_to_SN,
+        Teukolsky_mode.energy_flux,
+        Teukolsky_mode.angular_momentum_flux,
+        Teukolsky_mode.Carter_const_flux,
         Teukolsky_mode.trajectory,
         Teukolsky_mode.Y_solution,
         Teukolsky_mode.SWSH,
