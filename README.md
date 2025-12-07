@@ -139,6 +139,30 @@ julia> mode_info.amplitude_inf
 ```
 which is the value for $Z^{\infty}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near infinity for that particular frequency.
 
+If we want to compute the inhomogeneous solution to the radial Teukolsky equation at the event horizon for the 
+same set of parameters, we can simply change the sign of to $s = 2$
+```julia
+mode_info = Teukolsky_pointparticle_mode(2, 2, 2, 0, 0, 0.9, 6, 0.7, cos(π/4))
+```
+The output should be
+```julia
+julia> mode_info
+TeukolskyPointParticleMode(
+    mode=Mode(s=2, l=2, m=2, a=0.9, omega=0.06568724726732737, lambda=-0.3932109878800167),
+    amplitude_hor=0.006089946888787634 - 0.0014130019665122818im,
+    energy_flux_hor=-2.843814878427963e-9,
+    angular_momentum_flux_hor=-8.658651402621547e-8,
+    Carter_const_flux_hor=-1.5343956812841173e-7,
+    method=(method = "trapezoidal", N = 256, K = 64),
+)
+```
+To access for example the amplitude at the horizon `amplitude_hor`
+```julia
+julia> mode_info.amplitude_hor
+0.006089946888787634 - 0.0014130019665122818im
+```
+which is the value for $Z^{\mathrm{H}}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near the horizon for that particular frequency.
+
 ## How to cite
 If you have used this code in your research that leads to a publication, please cite the following article:
 ```
