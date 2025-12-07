@@ -11,6 +11,13 @@ using ..GridSampling
 
 export convolution_integral_trapezoidal, convolution_integral_levin
 
+function horizon_factor(ω, a, m)
+    rp = 1 + sqrt(1 - a^2)
+    κ = ω - a * m / (2 * rp)
+    ϵ0 = sqrt(1 - a^2) / (4 * rp)
+    return ω / (κ * (2 * rp)^3 * (κ^2 + 4 * ϵ0^2) * 64pi)
+end
+
 function trapezoidal_1d_integral(f::Vector{<:Number})
     # Get grid size: M = number of sampling points (1D)
     M = length(f)
@@ -251,7 +258,7 @@ function levin_2d_integral(f_vals::Matrix{<:Number}, g1_prime_vals::Vector{<:Num
     return integral_val
 end
 
-function convolution_integral_generic_trapezoidal(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
+function convolution_integral_generic_trapezoidal(a, p, e, x, l, m, n, k, N_sample, K_sample)
 
     KG = Kerr_Geodesics(a, p, e, x)
 
@@ -264,33 +271,42 @@ function convolution_integral_generic_trapezoidal(a, p, e, x, s, l, m, n, k, N_s
     rsin = min(-50.0, 50.0 * log10(1 - a))
     rsout = max(500.0, 10pi / abs(omega))
 
-    SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega)
-    λ = SH.lambda
-    Yin_soln = Y_solution(s, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
-    Binc = Yin_soln.asymptotic.Binc
+    SH_m2 = spin_weighted_spheroidal_harmonic(-2, l, m, a * omega)
+    SH_p2 = spin_weighted_spheroidal_harmonic(2, l, m, a * omega)
+    Yin_soln = Y_solution(-2, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
+    Yup_soln = Y_solution(2, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
 
     KG_samp = kerr_geo_generic_sample(KG, N_sample, K_sample)
-    Yin_samp = y_sample(Yin_soln, KG_samp)
-    SH_samp = swsh_sample(SH, KG_samp)
+    Yin_samp = y_sample_m2(Yin_soln, KG_samp)
+    Yup_samp = y_sample_p2(Yup_soln, KG_samp)
+    SH_m2_samp = swsh_sample(SH_m2, KG_samp)
+    SH_p2_samp = swsh_sample(SH_p2, KG_samp)
 
-    inte_in_samp = integrand_generic_sample(KG_samp, Yin_samp, SH_samp, n, k)
-    integral = trapezoidal_2d_integral(inte_in_samp) / Binc
+    inte_in_samp_m2 = integrand_generic_sample_m2(KG_samp, Yin_samp, SH_m2_samp, n, k)
+    inte_in_samp_p2 = integrand_generic_sample_p2(KG_samp, Yup_samp, SH_p2_samp, n, k)
+    integral_m2 = trapezoidal_2d_integral(inte_in_samp_m2)
+    integral_p2 = trapezoidal_2d_integral(inte_in_samp_p2)
     carter_samp = carter_ingredients_sample(KG_samp, a, m, omega)
     carter_factor = trapezoidal_1d_integral(carter_samp)
+    hf = horizon_factor(omega, a, m)
 
     return Dict(
-        "Amplitude" => integral,
+        "Amplitude_inf" => integral_m2,
+        "Amplitude_hor" => integral_p2,
         "omega" => omega,
-        "EnergyFlux" => abs2(integral)/(4.0pi*omega^2),
-        "AngularMomentumFlux" => m * abs2(integral) / (4.0pi * omega^3),
-        "CarterConstantFlux" => abs2(integral) * (carter_factor + k * ϒθ) / (2.0pi*omega^3),
+        "EnergyFlux_inf" => abs2(integral_m2)/(4.0pi*omega^2),
+        "AngularMomentumFlux_inf" => m * abs2(integral_m2) / (4.0pi * omega^3),
+        "CarterConstantFlux_inf" => abs2(integral_m2) * (carter_factor + k * ϒθ) / (2.0pi*omega^3),
+        "EnergyFlux_hor" => hf * abs2(integral_p2),
+        "AngularMomentumFlux_hor" => hf * m * abs2(integral_p2) / omega,
+        "CarterConstantFlux_hor" => 2 * hf * abs2(integral_p2) * (carter_factor + k * ϒθ) / omega,
         "Trajectory" => KG,
-        "YSolution" => Yin_soln,
-        "SWSH" => SH
+        "YSolution" => (Yin_soln, Yup_soln),
+        "SWSH" => (SH_m2, SH_p2)
     )
 end
 
-function convolution_integral_generic_levin(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
+function convolution_integral_generic_levin(a, p, e, x, l, m, n, k, N_sample, K_sample)
 
     KG = Kerr_Geodesics(a, p, e, x)
 
@@ -303,39 +319,52 @@ function convolution_integral_generic_levin(a, p, e, x, s, l, m, n, k, N_sample,
     rsin = min(-50.0, 50.0 * log10(1 - a))
     rsout = max(500.0, 10pi / abs(omega))
 
-    SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega)
-    λ = SH.lambda
-    Yin_soln = Y_solution(s, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
-    Binc = Yin_soln.asymptotic.Binc
+    SH_m2 = spin_weighted_spheroidal_harmonic(-2, l, m, a * omega)
+    SH_p2 = spin_weighted_spheroidal_harmonic(2, l, m, a * omega)
+    Yin_soln = Y_solution(-2, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
+    Yup_soln = Y_solution(2, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
 
     KG_samp = kerr_geo_generic_sample_cheby(KG, N_sample, K_sample)
-    Yin_samp = y_sample(Yin_soln, KG_samp)
-    SH_samp = swsh_sample(SH, KG_samp)
+    Yin_samp = y_sample_m2(Yin_soln, KG_samp)
+    Yup_samp = y_sample_p2(Yup_soln, KG_samp)
+    SH_m2_samp = swsh_sample(SH_m2, KG_samp)
+    SH_p2_samp = swsh_sample(SH_p2, KG_samp)
 
-    Jpp_grid_in, Jpm_grid_in, Jmp_grid_in, Jmm_grid_in, drphase_in, dθphase_in, rphaseL_in, rphaseR_in, θphaseL_in, θphaseR_in, prefactor_in = integrand_generic_sample_cheby(KG_samp, Yin_samp, SH_samp, n, k)
+    Jpp_grid_in, Jpm_grid_in, Jmp_grid_in, Jmm_grid_in, drphase_in, dθphase_in, rphaseL_in, rphaseR_in, θphaseL_in, θphaseR_in, prefactor_in = integrand_generic_sample_cheby_m2(KG_samp, Yin_samp, SH_m2_samp, n, k)
+    Jpp_grid_up, Jpm_grid_up, Jmp_grid_up, Jmm_grid_up, drphase_up, dθphase_up, rphaseL_up, rphaseR_up, θphaseL_up, θphaseR_up, prefactor_up = integrand_generic_sample_cheby_p2(KG_samp, Yup_samp, SH_p2_samp, n, k)
 
     integralpp_in = levin_2d_integral(Jpp_grid_in, drphase_in, dθphase_in, rphaseL_in, rphaseR_in, θphaseL_in, θphaseR_in)
     integralpm_in = levin_2d_integral(Jpm_grid_in, drphase_in, - dθphase_in, rphaseL_in, rphaseR_in, - θphaseL_in, - θphaseR_in)
     integralmp_in = levin_2d_integral(Jmp_grid_in, - drphase_in, dθphase_in, - rphaseL_in, - rphaseR_in, θphaseL_in, θphaseR_in)
     integralmm_in = levin_2d_integral(Jmm_grid_in, - drphase_in, - dθphase_in, - rphaseL_in, - rphaseR_in, - θphaseL_in, - θphaseR_in)
-    integral = (integralpp_in + integralpm_in + integralmp_in + integralmm_in) * prefactor_in / Binc
+    integral_in = (integralpp_in + integralpm_in + integralmp_in + integralmm_in) * prefactor_in
+    integralpp_up = levin_2d_integral(Jpp_grid_up, drphase_up, dθphase_up, rphaseL_up, rphaseR_up, θphaseL_up, θphaseR_up)
+    integralpm_up = levin_2d_integral(Jpm_grid_up, drphase_up, - dθphase_up, rphaseL_up, rphaseR_up, - θphaseL_up, - θphaseR_up)
+    integralmp_up = levin_2d_integral(Jmp_grid_up, - drphase_up, dθphase_up, - rphaseL_up, - rphaseR_up, θphaseL_up, θphaseR_up)
+    integralmm_up = levin_2d_integral(Jmm_grid_up, - drphase_up, - dθphase_up, - rphaseL_up, - rphaseR_up, - θphaseL_up, - θphaseR_up)
+    integral_up = (integralpp_up + integralpm_up + integralmp_up + integralmm_up) * prefactor_up
     KG_trap = kerr_geo_generic_sample(KG, N_sample, K_sample)
     carter_samp = carter_ingredients_sample(KG_trap, a, m, omega)
     carter_factor = trapezoidal_1d_integral(carter_samp)
+    hf = horizon_factor(omega, a, m)
 
     return Dict(
-        "Amplitude" => integral,
+        "Amplitud_inf" => integral_in,
+        "Amplitud_hor" => integral_up,
         "omega" => omega,
-        "EnergyFlux" => abs2(integral)/(4.0pi*omega^2),
-        "AngularMomentumFlux" => m * abs2(integral) / (4.0pi * omega^3),
-        "CarterConstantFlux" => abs2(integral) * (carter_factor + k * ϒθ) / (2.0pi*omega^3),
+        "EnergyFlux_inf" => abs2(integral_in)/(4.0pi*omega^2),
+        "AngularMomentumFlux_inf" => m * abs2(integral_in) / (4.0pi * omega^3),
+        "CarterConstantFlux_inf" => abs2(integral_in) * (carter_factor + k * ϒθ) / (2.0pi*omega^3),
+        "EnergyFlux_hor" => hf * abs2(integral_up),
+        "AngularMomentumFlux_hor" => hf * m * abs2(integral_up) / omega,
+        "CarterConstantFlux_hor" => 2 * hf * abs2(integral_up) * (carter_factor + k * ϒθ) / omega,
         "Trajectory" => KG,
-        "YSolution" => Yin_soln,
-        "SWSH" => SH
+        "YSolution" => (Yin_soln, Yup_soln),
+        "SWSH" => (SH_m2, SH_p2)
     )
 end
 
-function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sample)
+function convolution_integral_eccentric_trapezoidal(a, p, e, l, m, n, N_sample)
     # --------------------------
     # 1. Generate geodesic data (equatorial: θ fixed)
     # --------------------------
@@ -355,40 +384,52 @@ function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sampl
     # --------------------------
     # 2. Solve radial function and spherical harmonics
     # --------------------------
-    Y_soln = Y_solution(s, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
-    Binc = Y_soln.asymptotic.Binc
-    SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega)  # θ-fixed harmonics
+    Yin_soln = Y_solution(-2, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
+    Yup_soln = Y_solution(2, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
+    SH_m2 = spin_weighted_spheroidal_harmonic(-2, l, m, a * omega)  # θ-fixed harmonics
+    SH_p2 = spin_weighted_spheroidal_harmonic(2, l, m, a * omega)
     
     # --------------------------
     # 3. 1D sampling (radial only)
     # --------------------------
     KG_samp = kerr_geo_eccentric_sample(KG, N_sample)  # Equatorial sampling (θ fixed)
-    Y_samp = y_sample(Y_soln, KG_samp)                 # Radial function sampling 
-    S0 = SH(π/2, 0.0)      
-    S1 = SH(π/2, 0.0; theta_derivative=1)
-    S2 = (m^2 + (a * omega)^2 - s - 2 * a * omega * m - SH.lambda) * S0
+    Yin_samp = y_sample_m2(Yin_soln, KG_samp) 
+    Yup_samp = y_sample_p2(Yup_soln, KG_samp)
+    S0_m2 = SH_m2(π/2, 0.0)      
+    S1_m2 = SH_m2(π/2, 0.0; theta_derivative=1)
+    S2_m2 = (m^2 + (a * omega)^2 + 2 - 2 * a * omega * m - SH_m2.lambda) * S0_m2
+    S0_p2 = SH_p2(π/2, 0.0)      
+    S1_p2 = SH_p2(π/2, 0.0; theta_derivative=1)
+    S2_p2 = (m^2 + (a * omega)^2 - 2 - 2 * a * omega * m - SH_p2.lambda) * S0_p2
 
     # --------------------------
     # 4. 1D integrand and integral
     # --------------------------
-    inte_samp = integrand_eccentric_sample(KG_samp, Y_samp, (S0, S1, S2), n)  # No k
-    integral = trapezoidal_1d_integral(inte_samp) / Binc                        # 1D trapezoidal
+    inte_samp_m2 = integrand_eccentric_sample_m2(KG_samp, Yin_samp, (S0_m2, S1_m2, S2_m2), n)
+    inte_samp_p2 = integrand_eccentric_sample_p2(KG_samp, Yup_samp, (S0_p2, S1_p2, S2_p2), n)
+    integral_m2 = trapezoidal_1d_integral(inte_samp_m2)
+    integral_p2 = trapezoidal_1d_integral(inte_samp_p2)
+    hf = horizon_factor(omega, a, m)
     
     return Dict(
-        "Amplitude" => integral,
+        "Amplitude_inf" => integral_m2,
+        "Amplitude_hor" => integral_p2,
         "omega" => omega,
-        "EnergyFlux" => abs2(integral)/(4.0pi*omega^2),
-        "AngularMomentumFlux" => m * abs2(integral) / (4.0pi * omega^3),
-        "CarterConstantFlux" => 0.0,
+        "EnergyFlux_inf" => abs2(integral_m2)/(4.0pi*omega^2),
+        "AngularMomentumFlux_inf" => m * abs2(integral_m2) / (4.0pi * omega^3),
+        "CarterConstantFlux_inf" => 0.0,
+        "EnergyFlux_hor" => hf * abs2(integral_p2),
+        "AngularMomentumFlux_hor" => hf * m * abs2(integral_p2) / omega,
+        "CarterConstantFlux_hor" => 0.0,
         "Trajectory" => KG,
-        "YSolution" => Y_soln,
-        "SWSH" => SH
+        "YSolution" => (Yin_soln, Yup_soln),
+        "SWSH" => (SH_m2, SH_p2)
     )
 end
 
-function convolution_integral_eccentric_levin(a, p, e, x, s, l, m, n, N_sample)
+function convolution_integral_eccentric_levin(a, p, e, l, m, n, N_sample)
 
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = Kerr_Geodesics(a, p, e, 1.0)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -398,35 +439,49 @@ function convolution_integral_eccentric_levin(a, p, e, x, s, l, m, n, N_sample)
     rsin = min(-50.0, 50.0 * log10(1 - a))
     rsout = max(500.0, 10pi / abs(omega))
 
-    Y_soln = Y_solution(s, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
-    Binc = Y_soln.asymptotic.Binc
-    SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega)
+    Yin_soln = Y_solution(-2, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
+    Yup_soln = Y_solution(2, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
+    SH_m2 = spin_weighted_spheroidal_harmonic(-2, l, m, a * omega)
+    SH_p2 = spin_weighted_spheroidal_harmonic(2, l, m, a * omega)
 
     KG_samp = kerr_geo_eccentric_sample_cheby(KG, N_sample)
-    Y_samp = y_sample(Y_soln, KG_samp)                 # Radial function sampling 
-    S0 = SH(π/2, 0.0)      
-    S1 = SH(π/2, 0.0; theta_derivative=1)
-    S2 = (m^2 + (a * omega)^2 - s - 2 * a * omega * m - SH.lambda) * S0
+    Yin_samp = y_sample_m2(Yin_soln, KG_samp)   
+    Yup_samp = y_sample_p2(Yup_soln, KG_samp)     
+    S0_m2 = SH_m2(π/2, 0.0)      
+    S1_m2 = SH_m2(π/2, 0.0; theta_derivative=1)
+    S2_m2 = (m^2 + (a * omega)^2 + 2 - 2 * a * omega * m - SH_m2.lambda) * S0_m2
+    S0_p2 = SH_p2(π/2, 0.0)      
+    S1_p2 = SH_p2(π/2, 0.0; theta_derivative=1)
+    S2_p2 = (m^2 + (a * omega)^2 - 2 - 2 * a * omega * m - SH_p2.lambda) * S0_p2
 
-    Jp, Jm, drphase, rphaseL, rphaseR, prefactor = integrand_eccentric_sample_cheby(KG_samp, Y_samp, (S0, S1, S2), n)
+    Jp_in, Jm_in, drphase_in, rphaseL_in, rphaseR_in, prefactor_in = integrand_eccentric_sample_cheby_m2(KG_samp, Yin_samp, (S0_m2, S1_m2, S2_m2), n)
+    Jp_up, Jm_up, drphase_up, rphaseL_up, rphaseR_up, prefactor_up = integrand_eccentric_sample_cheby_p2(KG_samp, Yup_samp, (S0_p2, S1_p2, S2_p2), n)
     
-    integralp = levin_1d_integral(Jp, drphase, rphaseL, rphaseR)
-    integralm = levin_1d_integral(Jm, - drphase, - rphaseL, - rphaseR)
-    integral = (integralp + integralm) * prefactor / Binc
+    integralp_m2 = levin_1d_integral(Jp_in, drphase_in, rphaseL_in, rphaseR_in)
+    integralm_m2 = levin_1d_integral(Jm_in, - drphase_in, - rphaseL_in, - rphaseR_in)
+    integral_m2 = (integralp_m2 + integralm_m2) * prefactor_in
+    integralp_p2 = levin_1d_integral(Jp_up, drphase_up, rphaseL_up, rphaseR_up)
+    integralm_p2 = levin_1d_integral(Jm_up, - drphase_up, - rphaseL_up, - rphaseR_up)
+    integral_p2 = (integralp_p2 + integralm_p2) * prefactor_up
+    hf = horizon_factor(omega, a, m)
 
     return Dict(
-        "Amplitude" => integral,
+        "Amplitude_inf" => integral_m2,
+        "Amplitude_hor" => integral_p2,
         "omega" => omega,
-        "EnergyFlux" => abs2(integral)/(4.0pi*omega^2),
-        "AngularMomentumFlux" => m * abs2(integral) / (4.0pi * omega^3),
+        "EnergyFlux" => abs2(integral_m2)/(4.0pi*omega^2),
+        "AngularMomentumFlux" => m * abs2(integral_m2) / (4.0pi * omega^3),
         "CarterConstantFlux" => 0.0,
+        "EnergyFlux_hor" => hf * abs2(integral_p2),
+        "AngularMomentumFlux_hor" => hf * m * abs2(integral_p2) / omega,
+        "CarterConstantFlux_hor" => 0.0,
         "Trajectory" => KG,
-        "YSolution" => Y_soln,
-        "SWSH" => SH
+        "YSolution" => (Yin_soln, Yup_soln),
+        "SWSH" => (SH_m2, SH_p2)
     )
 end
 
-function convolution_integral_inclined_trapezoidal(a, p, x, s, l, m, k, K_sample)
+function convolution_integral_inclined_trapezoidal(a, p, x, l, m, k, K_sample)
     # --------------------------
     # 1. Generate geodesic data (radial fixed: r = p)
     # --------------------------
@@ -440,92 +495,122 @@ function convolution_integral_inclined_trapezoidal(a, p, x, s, l, m, k, K_sample
     omega = (m * ϒφ + k * ϒθ) / Γ  # No radial contribution (n omitted)
     
     # Radial solution parameters (r fixed, but retain for consistency)
-    rsin = min(-50.0, 50.0 * log10(1 - a))
-    rsout = max(500.0, 10pi / abs(omega))
+    rsin = min(-30.0, 30.0 * log10(1 - a))
+    rsout = max(200.0, 10pi / abs(omega))
     
     # --------------------------
     # 2. Solve radial function and spherical harmonics
     # --------------------------
-    Y_soln = Y_solution(s, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
-    Binc = Y_soln.asymptotic.Binc
-    SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega)  # Polar-dependent harmonics
-    Y = Dict("params" => (s=s, l=l, m=m, a=a, omega=omega, lambda=SH.lambda),
-            "asymptotic_amplitudes" => Y_soln.asymptotic.Binc,
-            "Y" => Y_soln.solution.Y_hor(rstar_from_r(a, p)),
-            "Yp" => Y_soln.solution.Yp_hor(rstar_from_r(a, p)),
-            "X" => Y_soln.solution.X(rstar_from_r(a, p)))
+    Yin_soln = Y_solution(-2, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
+    Yup_soln = Y_solution(2, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
+    SH_m2 = spin_weighted_spheroidal_harmonic(-2, l, m, a * omega) 
+    SH_p2 = spin_weighted_spheroidal_harmonic(2, l, m, a * omega)
+    Yin = Dict("params" => (s=-2, l=l, m=m, a=a, omega=omega, lambda=SH_m2.lambda),
+            "Binc" => Yin_soln.asymptotic.Binc,
+            "Y" => Yin_soln.solution.Y_hor(rstar_from_r(a, p)),
+            "Yp" => Yin_soln.solution.Yp_hor(rstar_from_r(a, p)),
+            "X" => Yin_soln.solution.X(rstar_from_r(a, p)))
+    Yup = Dict("params" => (s=2, l=l, m=m, a=a, omega=omega, lambda=SH_p2.lambda),
+            "Cinc" => Yup_soln.asymptotic.Cinc,
+            "Y" => Yup_soln.solution.Y_inf(rstar_from_r(a, p)),
+            "Yp" => Yup_soln.solution.Yp_inf(rstar_from_r(a, p)),
+            "X" => Yup_soln.solution.X(rstar_from_r(a, p)))
     # --------------------------
     # 3. 1D sampling (polar only)
     # --------------------------
-    KG_samp = kerr_geo_inclined_sample(KG, K_sample)  # Radial fixed sampling (r = p)              # Radial function (scalar for fixed r)
-    SH_samp = swsh_sample(SH, KG_samp)                # Polar harmonics sampling
+    KG_samp = kerr_geo_inclined_sample(KG, K_sample)  # Radial fixed sampling (r = p)   
+    SH_m2_samp = swsh_sample(SH_m2, KG_samp)                # Polar harmonics sampling
+    SH_p2_samp = swsh_sample(SH_p2, KG_samp)
     
     # --------------------------
     # 4. 1D integrand and integral
     # --------------------------
-    inte_samp = integrand_inclined_sample(KG_samp, Y, SH_samp, k)  # No n
-    integral = trapezoidal_1d_integral(inte_samp) / Binc                        # 1D trapezoidal
+    inte_samp_in = integrand_inclined_sample_m2(KG_samp, Yin, SH_m2_samp, k)
+    integral_in = trapezoidal_1d_integral(inte_samp_in)
+    inte_samp_up = integrand_inclined_sample_p2(KG_samp, Yup, SH_p2_samp, k)
+    integral_up = trapezoidal_1d_integral(inte_samp_up)
     carter_samp = carter_ingredients_sample(KG_samp, a, m, omega)
     carter_factor = trapezoidal_1d_integral(carter_samp)
+    hf = horizon_factor(omega, a, m)
     
     return Dict(
-        "Amplitude" => integral,
+        "Amplitude_inf" => integral_in,
+        "Amplitude_hor" => integral_up,
         "omega" => omega,
-        "EnergyFlux" => abs2(integral)/(4.0pi*omega^2),
-        "AngularMomentumFlux" => m * abs2(integral) / (4.0pi * omega^3),
-        "CarterConstantFlux" => abs2(integral) * (carter_factor + k * ϒθ) / (2.0pi*omega^3),
+        "EnergyFlux_inf" => abs2(integral_in)/(4.0pi*omega^2),
+        "AngularMomentumFlux_inf" => m * abs2(integral_in) / (4.0pi * omega^3),
+        "CarterConstantFlux_inf" => abs2(integral_in) * (carter_factor + k * ϒθ) / (2.0pi*omega^3),
+        "EnergyFlux_hor" => hf * abs2(integral_up),
+        "AngularMomentumFlux_hor" => hf * m * abs2(integral_up) / omega,
+        "CarterConstantFlux_hor" => 2 * hf * abs2(integral_up) * (carter_factor + k * ϒθ) / omega,
         "Trajectory" => KG,
-        "YSolution" => Y_soln,
-        "SWSH" => SH
+        "YSolution" => (Yin_soln, Yup_soln),
+        "SWSH" => (SH_m2, SH_p2)
     )
 end
 
-function convolution_integral_inclined_levin(a, p, e, x, s, l, m, k, K_sample)
+function convolution_integral_inclined_levin(a, p, x, l, m, k, K_sample)
 
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = Kerr_Geodesics(a, p, 0.0, x)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
     ϒθ = Frequencies["ϒθ"]
     ϒφ = Frequencies["ϒϕ"]
     omega = (m * ϒφ + k * ϒθ) / Γ
-    rsin = min(-50.0, 50.0 * log10(1 - a))
-    rsout = max(500.0, 10pi / abs(omega))
+    rsin = min(-30.0, 30.0 * log10(1 - a))
+    rsout = max(200.0, 10pi / abs(omega))
 
-    Y_soln = Y_solution(s, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
-    Binc = Y_soln.asymptotic.Binc
-    SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega)
+    Yin_soln = Y_solution(-2, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
+    Yup_soln = Y_solution(2, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
+    SH_m2 = spin_weighted_spheroidal_harmonic(-2, l, m, a * omega)
+    SH_p2 = spin_weighted_spheroidal_harmonic(2, l, m, a * omega)
 
     KG_samp = kerr_geo_inclined_sample_cheby(KG, K_sample)
-    Y = Dict("params" => (s=s, l=l, m=m, a=a, omega=omega, lambda=SH.lambda),
-            "asymptotic_amplitudes" => Y_soln.asymptotic.Binc,
-            "Y" => Y_soln.solution.Y_hor(rstar_from_r(a, p)),
-            "Yp" => Y_soln.solution.Yp_hor(rstar_from_r(a, p)),
-            "X" => Y_soln.solution.X(rstar_from_r(a, p)))
-    SH_samp = swsh_sample(SH, KG_samp)
+    Yin = Dict("params" => (s=-2, l=l, m=m, a=a, omega=omega, lambda=SH_m2.lambda),
+            "Binc" => Yin_soln.asymptotic.Binc,
+            "Y" => Yin_soln.solution.Y_hor(rstar_from_r(a, p)),
+            "Yp" => Yin_soln.solution.Yp_hor(rstar_from_r(a, p)),
+            "X" => Yin_soln.solution.X(rstar_from_r(a, p)))
+    Yup = Dict("params" => (s=2, l=l, m=m, a=a, omega=omega, lambda=SH_p2.lambda),
+            "Cinc" => Yup_soln.asymptotic.Cinc,
+            "Y" => Yup_soln.solution.Y_inf(rstar_from_r(a, p)),
+            "Yp" => Yup_soln.solution.Yp_inf(rstar_from_r(a, p)),
+            "X" => Yup_soln.solution.X(rstar_from_r(a, p)))
+    SH_m2_samp = swsh_sample(SH_m2, KG_samp)
+    SH_p2_samp = swsh_sample(SH_p2, KG_samp)
 
-    Jp, Jm, dθphase, θphaseL, θphaseR, prefactor = integrand_inclined_sample_cheby(KG_samp, Y, SH_samp, k)
+    Jp_in, Jm_in, dθphase_in, θphaseL_in, θphaseR_in, prefactor_in = integrand_inclined_sample_cheby_m2(KG_samp, Yin, SH_m2_samp, k)
+    Jp_up, Jm_up, dθphase_up, θphaseL_up, θphaseR_up, prefactor_up = integrand_inclined_sample_cheby_p2(KG_samp, Yup, SH_p2_samp, k)
     
-    integralp = levin_1d_integral(Jp, dθphase, θphaseL, θphaseR)
-    integralm = levin_1d_integral(Jm, - dθphase, - θphaseL, - θphaseR)
-    integral = (integralp + integralm) * prefactor / Binc
+    integralp_in = levin_1d_integral(Jp_in, dθphase_in, θphaseL_in, θphaseR_in)
+    integralm_in = levin_1d_integral(Jm_in, - dθphase_in, - θphaseL_in, - θphaseR_in)
+    integral_in = (integralp_in + integralm_in) * prefactor_in
+    integralp_up = levin_1d_integral(Jp_up, dθphase_up, θphaseL_up, θphaseR_up)
+    integralm_up = levin_1d_integral(Jm_up, - dθphase_up, - θphaseL_up, - θphaseR_up)
+    integral_up = (integralp_up + integralm_up) * prefactor_up
     KG_trap = kerr_geo_inclined_sample(KG, K_sample)
     carter_samp = carter_ingredients_sample(KG_trap, a, m, omega)
     carter_factor = trapezoidal_1d_integral(carter_samp)
+    hf = horizon_factor(omega, a, m)
 
     return Dict(
-        "Amplitude" => integral,
+        "Amplitude_inf" => integral_in,
+        "Amplitude_hor" => integral_up,
         "omega" => omega,
-        "EnergyFlux" => abs2(integral)/(4.0pi*omega^2),
-        "AngularMomentumFlux" => m * abs2(integral) / (4.0pi * omega^3),
-        "CarterConstantFlux" => abs2(integral) * (carter_factor + k * ϒθ) / (2.0pi*omega^3),
+        "EnergyFlux" => abs2(integral_in)/(4.0pi*omega^2),
+        "AngularMomentumFlux" => m * abs2(integral_in) / (4.0pi * omega^3),
+        "CarterConstantFlux" => abs2(integral_in) * (carter_factor + k * ϒθ) / (2.0pi*omega^3),
+        "EnergyFlux_hor" => hf * abs2(integral_up),
+        "AngularMomentumFlux_hor" => hf * m * abs2(integral_up) / omega,
+        "CarterConstantFlux_hor" => 2 * hf * abs2(integral_up) * (carter_factor + k * ϒθ) / omega,
         "Trajectory" => KG,
-        "YSolution" => Y_soln,
-        "SWSH" => SH
+        "YSolution" => (Yin_soln, Yup_soln),
+        "SWSH" => (SH_m2, SH_p2)
     )
 end
 
-function convolution_integral_circular_equatorial(a, p, s, l, m)
+function convolution_integral_circular_equatorial_m2(a, p, l, m)
 
     KG = Kerr_Geodesics(a, p, 0.0, 1.0)
     E = KG["Energy"]
@@ -543,25 +628,23 @@ function convolution_integral_circular_equatorial(a, p, s, l, m)
 
     rsin = min(-50.0, 50.0 * log10(1 - a))
     rsout = max(500.0, 10π / abs(ω))
-    Y_soln = Y_solution(s, l, m, a, ω, IN; rsin=rsin, rsout=rsout)
+    Y_soln = Y_solution(-2, l, m, a, ω, IN; rsin=rsin, rsout=rsout)
     Y = Y_soln.solution.Y_hor(rstar_from_r(a, r))
     Yp = Y_soln.solution.Yp_hor(rstar_from_r(a, r))
     X = Y_soln.solution.X(rstar_from_r(a, r))
     Binc = Y_soln.asymptotic.Binc 
 
     c = a * ω
-    SH = spin_weighted_spheroidal_harmonic(s, l, m, c)
+    SH = spin_weighted_spheroidal_harmonic(-2, l, m, c)
     S0 = SH(θ, 0.0)
     S1 = SH(θ, 0.0; theta_derivative=1)
     λ = SH.lambda
-    S2 = (m^2 + c^2 - s - 2c*m - λ) * S0
+    S2 = (m^2 + c^2 + 2 - 2c*m - λ) * S0
 
     ρ = -1.0 / r
     ρbar = -1.0 / r
 
     sinθ = sin(θ)
-    inv_sinθ = 1/sinθ
-    cotθ = cot(θ)
     L1 = -m + c
     L2 = -m + c
     L2p = -2.0
@@ -607,7 +690,114 @@ function convolution_integral_circular_equatorial(a, p, s, l, m)
     )
 end
 
-function convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N = 256, K = 256)
+function convolution_integral_circular_equatorial_p2(a, p, l, m)
+
+    KG = Kerr_Geodesics(a, p, 0.0, 1.0)
+    E = KG["Energy"]
+    Lz = KG["AngularMomentum"]
+    Γ = KG["Frequencies"]["ϒt"]
+    ϒφ = KG["Frequencies"]["ϒϕ"]
+    ω = m * ϒφ / Γ 
+
+    r = p
+    θ = π/2
+    r2 = r^2
+    Δ = r2 - 2*r + a^2 
+    rp = 1.0 + sqrt(1.0 - a^2)
+    rm = 1.0 - sqrt(1.0 - a^2)
+    rsin = min(-50.0, 50.0 * log10(1 - a))
+    rsout = max(500.0, 10π / abs(ω))
+
+    Y_soln = Y_solution(2, l, m, a, ω, UP; rsin=rsin, rsout=rsout)
+    Y = Y_soln.solution.Y_inf(rstar_from_r(a, r))
+    Yp = Y_soln.solution.Yp_inf(rstar_from_r(a, r))
+    X = Y_soln.solution.X(rstar_from_r(a, r))
+    Cinc = Y_soln.asymptotic.Cinc
+
+    c = a * ω
+    SH = spin_weighted_spheroidal_harmonic(2, l, m, c)
+    S0 = SH(θ, 0.0)
+    S1 = SH(θ, 0.0; theta_derivative=1)
+    λ = SH.lambda
+    S2 = (m^2 + c^2 - 2 - 2c*m - λ) * S0
+
+    ρ = -1.0 / r
+    ρbar = -1.0 / r
+
+    sinθ = sin(θ)
+    L1 = m - c
+    L2 = m - c
+    L2p = -2.0
+
+    L2S = S1 + L2 * S0
+    L1Sp = S2 + L1 * S1
+    L1L2S = L1Sp + L2p * S0 + L2 * S1 + L1 * L2 * S0
+    L1pL2pS = -r * L1L2S + 3im * a * L1 * S0 + 2im * a * S1 -1im * a * L2 * S0
+
+    rs = rstar_from_r(a, r)
+    log_term = log((r - rp)/(r - rm))
+    phase = exp(-(im*ω*rs - im*a*m*log_term/(2*sqrt(1 - a^2))))
+
+    Wll = 2.0 * ρbar * L1pL2pS * r2 * Y * phase
+    term_A = L2S + im*a*sinθ*(ρ - ρbar)*S0 
+    term_B = 2.0 * Y + r*Yp
+    term_C = L2S*(ρ + ρbar)*r*Y
+    Wlm = 4.0 * (r * ρbar * (term_A * term_B + term_C) / ρ) * phase
+    Wmm = 2.0 * S0 * ρbar * (X / sqrt(r^2 + a^2) + 2 * phase * (Y + 2 * r * Y * ρ + r * Yp * (2 + r * ρ))) / ρ
+
+    L = (E * (r2 + a^2) - a * Lz) / Δ 
+    M = - im * sinθ * (a*E - Lz / (sinθ^2))
+
+    J = Wll*L^2 + Wlm*L*M + Wmm*M^2
+
+    κ = ω - a * m / (2 * rp)
+    c0 = 24 + 12im * ω + λ * (10 + λ) - 12 * a * ω * (a * ω - m)
+    c1 = -32im * a * m - 8im * a * m * λ + 8im * a^2 * ω * (1 + λ)
+    c2 = 12 * a^2 - 24im * a * m - 24 * a^2 * m^2 + 24im * a^2 * ω + 48 * a^3 * m * ω - 24 * a^4 * ω^2
+    c3 = - 24im * a^3 * (a * ω - m) - 24 * a^2
+    c4 = 12 * a^4
+    η = c0 + c1 / rp + c2 / rp^2 + c3 / rp^3 + c4 / rp^4
+    factor = 2*sqrt(2)*rp^(3/2)*(((4*ω)*(im-4*ω)-a*m*(im-8*ω)-a^2*(m^2+2im*ω-4*ω^2))*rp^2
+            +a^2*(im-4*ω)*(a*m-2*ω)*rp)/(2*rp^3*(24+10*λ+λ^2+12im*ω)-rp^2*(8im*a*m*(11
+            +2*λ+6im*ω)+a^2*(24+24*m^2+10*λ+λ^2-28im*ω-16im*λ*ω+48*ω^2))+8im*a^3*rp*(m
+            *(7+λ-6im*ω)-a*ω*(4+λ))+12*a^5*ω*(a*ω-3*m))
+    ϵ0 = sqrt(1 - a^2) / (4 * rp)
+    energy_factor = ω / (κ * (2 * rp)^3 * (κ^2 + 4 * ϵ0^2) * 64pi)
+
+    integral = - im * π * factor * J * η / (κ * Cinc * Γ)
+
+    return Dict(
+        "Amplitude" => integral,
+        "omega" => ω,
+        "EnergyFlux" => abs2(integral) * energy_factor,
+        "AngularMomentumFlux" => abs2(integral) * energy_factor * m / ω,
+        "CarterConstantFlux" => 0.0,
+        "Trajectory" => KG,
+        "YSolution" => Y_soln,
+        "SWSH" => SH
+    )
+end
+
+function convolution_integral_circular_equatorial(a, p, l, m)
+    m2 = convolution_integral_circular_equatorial_m2(a, p, l, m)
+    p2 = convolution_integral_circular_equatorial_p2(a, p, l, m)
+    return Dict(
+        "Amplitude_inf" => m2["Amplitude"],
+        "Amplitude_hor" => p2["Amplitude"],
+        "omega" => m2["omega"],
+        "EnergyFlux_inf" => m2["EnergyFlux"],
+        "AngularMomentumFlux_inf" => m2["AngularMomentumFlux"],
+        "CarterConstantFlux_inf" => m2["CarterConstantFlux"],
+        "EnergyFlux_hor" => p2["EnergyFlux"],
+        "AngularMomentumFlux_hor" => p2["AngularMomentumFlux"],
+        "CarterConstantFlux_hor" => p2["CarterConstantFlux"],
+        "Trajectory" => m2["Trajectory"],
+        "YSolution" => (m2["YSolution"], p2["YSolution"]),
+        "SWSH" => (m2["SWSH"], p2["SWSH"])
+    )
+end
+
+function convolution_integral_trapezoidal(a, p, e, x, l, m, n, k; N = 256, K = 256)
     KG = Kerr_Geodesics(a, p, e, x)
     if typeof(KG) == Vector{String}
         return KG
@@ -626,7 +816,7 @@ function convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N = 256, K 
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_circular_equatorial(a, p, s, l, m)
+        return convolution_integral_circular_equatorial(a, p, l, m)
     elseif isapprox(e, 0.0; atol=1e-12) && !isapprox(abs(x), 1.0; atol=1e-12)
         if n != 0
             return Dict(
@@ -640,7 +830,7 @@ function convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N = 256, K 
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_inclined_trapezoidal(a, p, x, s, l, m, k, K)
+        return convolution_integral_inclined_trapezoidal(a, p, x, l, m, k, K)
     elseif !isapprox(e, 0.0; atol=1e-12) && isapprox(abs(x), 1.0; atol=1e-12)
         if k != 0
             return Dict(
@@ -654,13 +844,13 @@ function convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N = 256, K 
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N)
+        return convolution_integral_eccentric_trapezoidal(a, p, e, l, m, n, N)
     else
-        return convolution_integral_generic_trapezoidal(a, p, e, x, s, l, m, n, k, N, K)
+        return convolution_integral_generic_trapezoidal(a, p, e, x, l, m, n, k, N, K)
     end
 end
 
-function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
+function convolution_integral_levin(a, p, e, x, l, m, n, k; N = 256, K = 32)
     KG = Kerr_Geodesics(a, p, e, x)
     if typeof(KG) == Vector{String}
         return KG
@@ -679,7 +869,7 @@ function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_circular_equatorial(a, p, s, l, m)
+        return convolution_integral_circular_equatorial(a, p, l, m)
     elseif isapprox(e, 0.0; atol=1e-12) && !isapprox(abs(x), 1.0; atol=1e-12)
         if n != 0
             return Dict(
@@ -693,7 +883,7 @@ function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_inclined_levin(a, p, e, x, s, l, m, k, K)
+        return convolution_integral_inclined_levin(a, p, x, l, m, k, K)
     elseif !isapprox(e, 0.0; atol=1e-12) && isapprox(abs(x), 1.0; atol=1e-12)
         if k != 0
             return Dict(
@@ -707,9 +897,9 @@ function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_eccentric_levin(a, p, e, x, s, l, m, n, N)
+        return convolution_integral_eccentric_levin(a, p, e, l, m, n, N)
     else
-        return convolution_integral_generic_levin(a, p, e, x, s, l, m, n, k, N, K)
+        return convolution_integral_generic_levin(a, p, e, x, l, m, n, k, N, K)
     end
 end
 
