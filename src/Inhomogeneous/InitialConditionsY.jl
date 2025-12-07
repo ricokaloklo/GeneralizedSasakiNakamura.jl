@@ -10,6 +10,8 @@ export Y_initial_values_inf_m2, Y_initial_values_hor_m2
 export Y_and_Yp_ingoing_hor_m2, Y_and_Yp_outgoing_inf_m2
 export Y_initial_values_inf_p2, Y_initial_values_hor_p2
 export Y_and_Yp_ingoing_hor_p2, Y_and_Yp_outgoing_inf_p2
+export Y_initial_values_inf_up_m2, Y_initial_values_inf_up_p2
+export Y_and_Yp_outgoing_hor_m2, Y_and_Yp_outgoing_hor_p2
 
 _DEFAULT_infinity_expansion_order = 6
 _DEFAULT_horizon_expansion_order = 3
@@ -229,21 +231,13 @@ function Y_outgoing_hor_m2(func, a, r, order)
     return ans
 end
 
-function Y_outgoing_hor_p2(func, a, omega, m, r, order; continuation=false)
+function Y_outgoing_hor_p2(func, a, omega, m, r, order)
     ans = 0.0 + 0.0im
     rp = 1 + sqrt(1 - a^2)
     q = (a * rp * m + 2 * a^2 * omega - 4 * rp * omega) / (rp * sqrt(1 - a^2))
 
-    function wrapped_func(n)
-        if continuation && n == 0
-            return 0.0 + 0.0im  
-        else
-            return func(n)     
-        end
-    end
-
     for n in 0:order
-        ans += wrapped_func(n) * (r - rp) ^ (n + 2 - im * q) / ((n + 1 - im * q) * (n + 2 - im * q))
+        ans += func(n) * (r - rp) ^ (n + 2 - im * q) / ((n + 1 - im * q) * (n + 2 - im * q))
     end
     return ans
 end
@@ -267,40 +261,24 @@ function Yp_ingoing_hor_p2(func, a, r, order)
     return ans
 end
 
-function Y_ingoing_hor_m2(func, a, omega, m, r, order; continuation=false)
+function Y_ingoing_hor_m2(func, a, omega, m, r, order)
     ans = 0.0 + 0.0im
     rp = 1 + sqrt(1 - a^2)
     q = (a * rp * m + 2 * a^2 * omega - 4 * rp * omega) / (rp * sqrt(1 - a^2))
 
-    function wrapped_func(n)
-        if continuation && n == 0
-            return 0.0 + 0.0im  
-        else
-            return func(n)     
-        end
-    end
-
     for n in 0:order
-        ans += wrapped_func(n) * (r - rp) ^ (n + 2 + im * q) / ((n + 1 + im * q) * (n + 2 + im * q))
+        ans += func(n) * (r - rp) ^ (n + 2 + im * q) / ((n + 1 + im * q) * (n + 2 + im * q))
     end
 
     return ans
 end
 
-function Y_ingoing_hor_p2(func, a, r, order; continuation=false)
+function Y_ingoing_hor_p2(func, a, r, order)
     ans = 0.0 + 0.0im
     rp = 1 + sqrt(1 - a^2)
 
-    function wrapped_func(n)
-        if continuation && n == 0
-            return 0.0 + 0.0im  
-        else
-            return func(n)     
-        end
-    end
-
     for n in 0:order
-        ans += wrapped_func(n) * (r - rp) ^ (n + 2) / ((n + 1) * (n + 2))
+        ans += func(n) * (r - rp) ^ (n + 2) / ((n + 1) * (n + 2))
     end
     return ans
 end
@@ -375,6 +353,40 @@ function Y_initial_values_hor_m2(m::Int, a, omega, lambda, Cinc, Cref, rsin; ord
     end
 end
 
+function Y_initial_values_inf_up_m2(m::Int, a, omega, lambda, rsout; order::Int=-1)
+    #=
+    The default order is set to 3 since we have derived the analytical expressions of the them.
+    Currently, the horizon expansion is truncated up to order of 3.
+    =#
+    _default_order = _DEFAULT_horizon_expansion_order
+    order = (order == -1 ? _default_order : order)
+
+    Ypp_out(ord) = Ypp_outgoing_inf_m2(m, a, omega, lambda, ord)
+
+    rout = r_from_rstar(a, rsout)
+    Yp_out(r) = Yp_outgoing_inf_m2(Ypp_out, r, order)
+    Y_out(r) = Y_outgoing_inf_m2(Ypp_out, r, order)
+
+    return Y_out(rout), Yp_out(rout) * (rout^2 - 2 * rout +a^2) / (rout^2 + a^2)
+end
+
+function Y_initial_values_inf_up_p2(m::Int, a, omega, lambda, rsout; order::Int=-1)
+    #=
+    The default order is set to 3 since we have derived the analytical expressions of the them.
+    Currently, the horizon expansion is truncated up to order of 3.
+    =#
+    _default_order = _DEFAULT_horizon_expansion_order
+    order = (order == -1 ? _default_order : order)
+
+    Ypp_out(ord) = Ypp_outgoing_inf_p2(m, a, omega, lambda, ord)
+
+    rout = r_from_rstar(a, rsout)
+    Yp_out(r) = Yp_outgoing_inf_p2(Ypp_out, omega, r, order)
+    Y_out(r) = Y_outgoing_inf_p2(Ypp_out, omega, r, order)
+
+    return Y_out(rout), Yp_out(rout) * (rout^2 - 2 * rout +a^2) / (rout^2 + a^2)
+end
+
 function Y_initial_values_hor_p2(m::Int, a, omega, lambda, Cinc, Cref, rsin; order::Int=-1, ifrs = false)
     #=
     The default order is set to 3 since we have derived the analytical expressions of the them.
@@ -405,9 +417,20 @@ function Y_and_Yp_ingoing_hor_m2(m::Int, a, omega, lambda; order::Int=-1)
     Ypp_in(ord) = Ypp_ingoing_hor_m2(m, a, omega, lambda, ord)
 
     Yp_in(r) = Yp_ingoing_hor_m2(Ypp_in, a, omega, m, r, order)
-    Y_in(r) = Y_ingoing_hor_m2(Ypp_in, a, omega, m, r, order; continuation=true)
+    Y_in(r) = Y_ingoing_hor_m2(Ypp_in, a, omega, m, r, order)
 
     return Y_in, Yp_in
+end
+
+function Y_and_Yp_outgoing_hor_m2(m::Int, a, omega, lambda; order::Int=-1)
+    _default_order = _DEFAULT_horizon_expansion_order
+    order = (order == -1 ? _default_order : order)
+    Ypp_out(ord) = Ypp_outgoing_hor_m2(m, a, omega, lambda, ord)
+
+    Yp_out(r) = Yp_outgoing_hor_m2(Ypp_out, a, r, order)
+    Y_out(r) = Y_outgoing_hor_m2(Ypp_out, a, r, order)
+
+    return Y_out, Yp_out
 end
 
 function Y_and_Yp_ingoing_hor_p2(m::Int, a, omega, lambda; order::Int=-1)
@@ -416,9 +439,20 @@ function Y_and_Yp_ingoing_hor_p2(m::Int, a, omega, lambda; order::Int=-1)
     Ypp_in(ord) = Ypp_ingoing_hor_p2(m, a, omega, lambda, ord)
 
     Yp_in(r) = Yp_ingoing_hor_p2(Ypp_in, a, r, order)
-    Y_in(r) = Y_ingoing_hor_p2(Ypp_in, a, r, order; continuation=true)
+    Y_in(r) = Y_ingoing_hor_p2(Ypp_in, a, r, order)
 
     return Y_in, Yp_in
+end
+
+function Y_and_Yp_outgoing_hor_p2(m::Int, a, omega, lambda; order::Int=-1)
+    _default_order = _DEFAULT_horizon_expansion_order
+    order = (order == -1 ? _default_order : order)
+    Ypp_out(ord) = Ypp_outgoing_hor_p2(m, a, omega, lambda, ord)
+
+    Yp_out(r) = Yp_outgoing_hor_p2(Ypp_out, a, omega, m, r, order)
+    Y_out(r) = Y_outgoing_hor_p2(Ypp_out, a, omega, m, r, order)
+
+    return Y_out, Yp_out
 end
 
 function Y_and_Yp_outgoing_inf_m2(m::Int, a, omega, lambda; order::Int=-1)
