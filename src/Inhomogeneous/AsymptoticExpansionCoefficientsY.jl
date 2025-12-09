@@ -42,7 +42,7 @@ function a_plus_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEF
 
     # The relation between C_plus_hor and a_plus_hor is given by Eq.(F19) of RL2024
 
-    aplus_hor = data_type(C_plus_hor * omega^order)
+    aplus_hor = data_type(C_plus_hor)
 
     return aplus_hor
 end
@@ -53,7 +53,7 @@ function a_minus_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DE
 
     # The relation between C_minus_hor and a_minus_hor is given by Eq.(F19) of RL2024
 
-    aminus_hor = data_type(C_minus_hor * omega^order)
+    aminus_hor = data_type(C_minus_hor)
 
     return aminus_hor
 end
@@ -324,42 +324,44 @@ function Ypp_ingoing_hor_m2(m::Int, a, omega, lambda, order::Int; data_type=_DEF
     end
 
     ap = sqrt(1 - a^2)
-    YHm0 = (2^(-((2*im*a*(1 + ap)*m + a^2*(-1 + 4*im*omega) + (1 + ap)*(1 - 8*im*omega)) / (2*(1 - a^2 + ap)))) 
-            * (1 - a^2)^(-((im*a*(m - 2*a*omega)) / (2*(1 - a^2 + ap)))) * exp((im*(-a^3*m + a*(1 + ap)*m 
-            - 8*(1 + ap)*omega + 4*a^2*(2 + ap)*omega)) / (2*(1 - a^2 + ap)))) / (1 + ap)^(5/2)
+    YHm0 = (2^(-(2*im*a*(1 + ap)*m + a^2*(-1 + 4*im*omega) + (1 + ap)*(1 - 8*im*omega))/(2*(1 - a^2 + ap))) 
+            * (1 - a^2)^(-(im*a*(m - 2*a*omega))/(2*(1 - a^2 + ap))) * exp((im*(-a^3*m + a*(1 + ap)*m 
+            - 8*(1 + ap)*omega + 4*a^2*(2 + ap)*omega))/(2*(1 - a^2 + ap)))) / (1 + ap)^(5/2)
 
     if order == 0
         return YHm0
     elseif order == 1
         CHm1 = a_minus_hor(-2, m, a, omega, lambda, 1; data_type=data_type)
-        return ((1 / (2 * ap * (1 - a^2 + ap))) * (-5 - ap - im*a^3*m - 4*im*omega - 4*im*ap*omega 
-                + a^2*(5 + ap + 2*im*(3 + 2*ap)*omega) - 2*(-1 + a^2)*(1 + ap)*CHm1)) * YHm0
+        return ((5 + ap + im*a^3*m + 4*im*(1 + ap)*omega + a^2*(-5 - ap - 2*im*(3 + 2*ap)*omega) 
+                + 2*(-1 + a^2)*(1 + ap)*CHm1) / (2*(-1 + a^2)*(1 + ap))) * YHm0
     elseif order == 2
         CHm1 = a_minus_hor(-2, m, a, omega, lambda, 1; data_type=data_type)
         CHm2 = a_minus_hor(-2, m, a, omega, lambda, 2; data_type=data_type)
-        return ((1 / (8 * a^4 * (-1 + a^2)^2)) * (-48 * (-1 + ap) +a^2 * (-114 + 90 * ap + a * (
-                -15 * im * (-1 + ap) * m + 7 * im * a^2 * (-3 + 2 * ap) * m + 2 * a^4 * m * (im * (3 + ap) + (2 - 4 * ap) * omega) +
-                a^5 * (3 + m^2 + 8 * (im - 2 * omega) * omega) - a * (-87 + 36 * ap + 2 * im * (5 - 17 * ap) * omega + 8 * (1 + ap) * omega^2) +
-                2 * a^3 * (-3 * (4 + ap) + (-1 + ap) * m^2 + omega * (im - 18 * im * ap + 10 * omega + 8 * ap * omega)))) 
-                + 4 * a^2 * (-1 + a^2) * (4 - 4 * ap + a^2 * (-3 + 4 * ap - im * a * (-1 + ap) * m + a^2 * (-1 - 4 * im * omega) 
-                + 2 * im * (1 + ap) * omega)) * CHm1 + 8 * a^4 * (-1 + a^2)^2 * CHm2)) * YHm0
+        return ((1 / (8 * a^4 * (-1 + a^2)^2)) * ( -48*(-1 + ap) + a^2*(-114 + 90*ap + a*(-15*im*(-1 + ap)*m 
+                + 7*im*a^2*(-3 + 2*ap)*m + 2*a^4*m*(im*(3 + ap) + (2 - 4*ap)*omega) + a^5*(3 + m^2 
+                + 8*(im - 2*omega)*omega) - a*(-87 + 36*ap + 2*im*(5 - 17*ap)*omega + 8*(1 + ap)*omega^2) 
+                + 2*a^3*(-3*(4 + ap) + (-1 + ap)*m^2 + omega*(im - 18*im*ap + 10*omega + 8*ap*omega)) )) 
+                + 4*a^2*(-1 + a^2)*(4 - 4*ap + a^2*(-3 + 4*ap - im*a*(-1 + ap)*m + a^2*(-1 - 4*im*omega) 
+                + 2*im*(1 + ap)*omega)) * CHm1 + 8*a^4*(-1 + a^2)^2*CHm2 )) * YHm0
     elseif order == 3
         CHm1 = a_minus_hor(-2, m, a, omega, lambda, 1; data_type=data_type)
         CHm2 = a_minus_hor(-2, m, a, omega, lambda, 2; data_type=data_type)
         CHm3 = a_minus_hor(-2, m, a, omega, lambda, 3; data_type=data_type)
         return ((1 / (48 * a^6 * (-1 + a^2)^3)) * ( -768*(-1 + ap) + a^2*(96*(-29 + 25*ap) + a*(-264*im*(-1 + ap)*m 
                 + im*a^2*(-709 + 577*ap)*m + a^4*m*(619*im - 358*im*ap + 6*(20 - 21*ap)*omega) + 6*a*(619 - 435*ap 
-                + 64*im*(-1 + ap)*omega) + a^8*m*(-9*im*(1 + ap) - im*(-3 + ap)*m^2 + 84*omega + 24*ap*(1 + 2*im*omega)*omega) 
-                + a^9*(-3*(5 + m^2) - 12*im*(3 + m^2)*omega + 48*omega^2 + 64*im*omega^3) + a^6*m*(3*im*(-55 + 18*ap) 
-                + 4*im*(-1 + ap)*m^2 + 6*omega*(-34 + 19*ap - 2*im*(1 + ap)*omega)) + a^5*(345 - 150*ap + (72 - 51*ap)*m^2 
-                + 2*im*(-484 + 115*ap)*omega + 4*omega^2*(39 + 75*ap + 2*im*(15 + 13*ap)*omega)) + 3*a^7*(25 + 6*ap 
-                + m^2*(-9 + 2*ap - 6*im*(-1 + ap)*omega) - 2*im*omega*(-58 - 15*ap - 2*im*(11 + 20*ap)*omega + 8*(3 
-                + 2*ap)*omega^2)) + a^3*(3*(-701 + 370*ap) + 42*(-1 + ap)*m^2 - 8*im*omega*(-130 + 88*ap + (1 + ap)
-                *omega*(-9*im + 4*omega))) )) + 6*a^2*(-1 + a^2)*(-48*(-1 + ap) + a^2*(-114 + 90*ap - 15*im*a*(-1 + ap)*m 
-                + 7*im*a^3*(-3 + 2*ap)*m + 2*a^5*m*(im*(3 + ap) + (2 - 4*ap)*omega) + a^6*(3 + m^2 + 8*(im - 2*omega)*omega) 
-                - a^2*(-87 + 36*ap + 2*im*(5 - 17*ap)*omega + 8*(1 + ap)*omega^2) + 2*a^4*(-3*(4 + ap) + (-1 + ap)*m^2 
-                + omega*(im - 18*im*ap + 10*omega + 8*ap*omega)) )) * CHm1 + 4*a^2*(-1 + a^2)*(4 - 4*ap + a^2*(-3 + 4*ap 
-                - im*a*(-1 + ap)*m + a^2*(-1 - 4*im*omega) + 2*im*(1 + ap)*omega)) * CHm2 + 2*a^2*(-1 + a^2)*CHm3 )) * YHm0
+                + 64*im*(-1 + ap)*omega) + a^8*m*(-9*im*(1 + ap) - im*(-3 + ap)*m^2 + 84*omega + 24*ap*(1 
+                + 2*im*omega)*omega) + a^9*(-3*(5 + m^2) - 12*im*(3 + m^2)*omega + 48*omega^2 + 64*im*omega^3) 
+                + a^6*m*(3*im*(-55 + 18*ap) + 4*im*(-1 + ap)*m^2 + 6*omega*(-34 + 19*ap - 2*im*(1 + ap)*omega)) 
+                + a^5*(345 - 150*ap + (72 - 51*ap)*m^2 + 2*im*(-484 + 115*ap)*omega + 4*omega^2*(39 + 75*ap 
+                + 2*im*(15 + 13*ap)*omega)) + 3*a^7*(25 + 6*ap + m^2*(-9 + 2*ap - 6*im*(-1 + ap)*omega) 
+                - 2*im*omega*(-58 - 15*ap - 2*im*(11 + 20*ap)*omega + 8*(3 + 2*ap)*omega^2)) + a^3*(3*(-701 + 370*ap) 
+                + 42*(-1 + ap)*m^2 - 8*im*omega*(-130 + 88*ap + (1 + ap)*omega*(-9*im + 4*omega))))) + 6*a^2*(-1 
+                + a^2)*(-48*(-1 + ap) + a^2*(-114 + 90*ap - 15*im*a*(-1 + ap)*m + 7*im*a^3*(-3 + 2*ap)*m 
+                + 2*a^5*m*(im*(3 + ap) + (2 - 4*ap)*omega) + a^6*(3 + m^2 + 8*(im - 2*omega)*omega) - a^2*(-87 
+                + 36*ap + 2*im*(5 - 17*ap)*omega + 8*(1 + ap)*omega^2) + 2*a^4*(-3*(4 + ap) + (-1 + ap)*m^2 
+                + omega*(im - 18*im*ap + 10*omega + 8*ap*omega)))) * CHm1 + 4*a^2*(-1 + a^2)*(4 - 4*ap + a^2*(-3 
+                + 4*ap - im*a*(-1 + ap)*m + a^2*(-1 - 4*im*omega) + 2*im*(1 + ap)*omega)) * CHm2 + 2*a^2*(-1 
+                + a^2)*CHm3 )) * YHm0
     else
         throw(DomainError(order, "Currently horizontal expansion orders only up to 3 are supported"))
     end
