@@ -188,39 +188,39 @@ using Plots, LaTeXStrings
 
 Construct the source term 
 
-$\mathcal{W}_{nn}=f_0(r)e^{i\chi(r)}+\int_{r}^\infty f_1(r_1)e^{i\chi(r_1)}d r_1+\int_r^\infty dr_1\int_{r_1}^\infty f_2(r_2)e^{i\chi(r_2)}dr_2$,
+$\mathcal{W}_{nn}=f_0(r)e^{i\chi(r)}+\int_{r}^\infty f_1(r_1)e^{i\chi(r_1)}d r_1+\int_r^\infty dr_1\int_{r_1}^\infty f_2(r_2)e^{i\chi(r_2)}dr_2,$
 
 where
 
-$f_0(r)=\frac{\mathscr{A}}{\omega^2}w_{nn}^{(0)}(r)$, 
+$f_0(r)=\frac{\mathscr{A}}{\omega^2}w_{nn}^{(0)}(r),$ 
 
-$f_1(r)=\frac{\mathscr{A}}{\omega^2}\left[{w_{nn}^{(0)}}'(r)+i\xi(r)w_{nn}^{(0)}(r)+w_{nn}^{(1)}(r)\right]$, 
+$f_1(r)=\frac{\mathscr{A}}{\omega^2}\left[{w_{nn}^{(0)}}'(r)+i\xi(r)w_{nn}^{(0)}(r)+w_{nn}^{(1)}(r)\right],$ 
 
-$f_2(r)=\frac{\mathscr{A}}{\omega^2}\left[{w_{nn}^{(1)}}'(r)+i\xi(r)w_{nn}^{(1)}(r)\right]$,
+$f_2(r)=\frac{\mathscr{A}}{\omega^2}\left[{w_{nn}^{(1)}}'(r)+i\xi(r)w_{nn}^{(1)}(r)\right],$
 
-$\chi(r)=\omega \left[t(r)+r_*(r)\right]$,
+$\chi(r)=\omega \left[t(r)+r_*(r)\right],$
 
 with
 
-$w_{nn}^{(0)}(r)=\frac{1}{2}r^2\rho\bar{\rho}^2u^r \mathscr{L}_1^\dagger\left[\rho^{-4}\mathscr{L}_2^\dagger\left(\rho^3S\right)\right]$,
+$w_{nn}^{(0)}(r)=\frac{1}{2}r^2\rho\bar{\rho}^2u^r \mathscr{L}_1^\dagger\left[\rho^{-4}\mathscr{L}_2^\dagger\left(\rho^3S\right)\right],$
 
-$w_{nn}^{(1)}(r)=w_{nn}^{(0)}(r)\left(\frac{\mathcal{N}}{u^r}\right)'\frac{u^r}{\mathcal{N}}+{w_{nn}^{(0)}}'(r)+i\xi(r)w_{nn}^{(0)}(r)$.
+$w_{nn}^{(1)}(r)=w_{nn}^{(0)}(r)\left(\frac{\mathcal{N}}{u^r}\right)'\frac{u^r}{\mathcal{N}}+{w_{nn}^{(0)}}'(r)+i\xi(r)w_{nn}^{(0)}(r).$
 
 In our case $\xi(r)\equiv 0$, $\mathscr{A}=-1$ and 
 
-$u^t=\frac{r^2+a^2}{\Delta^2}$,
+$u^t=\frac{r^2+a^2}{\Delta^2},$
 
-$u^r=-\sqrt{\frac{2r}{r^2+a^2}}$,
+$u^r=-\sqrt{\frac{2r}{r^2+a^2}},$
 
-$\mathcal{N}=u^t+\frac{\Sigma}{\Delta}u^r=\frac{r^2+a^2}{\Delta}\left(1-\sqrt{\frac{2r}{r^2+a^2}}\right)$.
+$\mathcal{N}=u^t+\frac{\Sigma}{\Delta}u^r=\frac{r^2+a^2}{\Delta}\left(1-\sqrt{\frac{2r}{r^2+a^2}}\right).$
 
 One can see that $\mathcal{N}(r\to r_+)$ is non-vanishing but hard to compute directly because both the denominator and the term in the bracket are zero in the limit. We also need its first- and second-order derivatives with respect to $r$. So we expand them into series of $x=r-r_+$ when $r_*\to-\infty$, namely
 
-$\mathcal{N}(r\to r_+)=n^0_0+n^0_1x+n^0_2x^2+\dots$,
+$\mathcal{N}(r\to r_+)=n^0_0+n^0_1x+n^0_2x^2+\dots,$
 
-$\mathcal{N}'(r\to r_+)=n^1_0+n^1_1x+n^1_2x^2+\dots$,
+$\mathcal{N}'(r\to r_+)=n^1_0+n^1_1x+n^1_2x^2+\dots,$
 
-$\mathcal{N}''(r\to r_+)=n^2_0+n^2_1x+n^2_2x^2+\dots$.
+$\mathcal{N}''(r\to r_+)=n^2_0+n^2_1x+n^2_2x^2+\dots.$
 
 If $x<3\times10^{-3}$, we can reach the $10^{-12}$ relative tolerance by truncating at $n_5^{0,1,2}$.
 
@@ -279,23 +279,23 @@ end
 
 We define 
 
-$P = \frac{1}{2}r^2\rho\bar{\rho}^2=-\frac{r^2}{2(r-ia)(r+ia)^2}$,
+$P = \frac{1}{2}r^2\rho\bar{\rho}^2=-\frac{r^2}{2(r-ia)(r+ia)^2},$
 
-$Q = \mathscr{L}_1^\dagger\left[\rho^{-4}\mathscr{L}_2^\dagger\left(\rho^3S\right)\right] = 4(ia-r)\left.\frac{\partial^2{}_{-2}S_{\ell 0}^{a\omega}(\theta)}{\partial\theta^2}\right|_{\theta=0}$,
+$Q = \mathscr{L}_1^\dagger\left[\rho^{-4}\mathscr{L}_2^\dagger\left(\rho^3S\right)\right] = 4(ia-r)\left.\frac{\partial^2{}_{-2}S_{\ell 0}^{a\omega}(\theta)}{\partial\theta^2}\right|_{\theta=0},$
 
-$U = u^r$.
+$U = u^r.$
 
 The components in $f_{0,1,2}$ will be
 
-$w_{nn}^{(0)} = PUQ$,
+$w_{nn}^{(0)} = PUQ,$
 
-${w_{nn}^{(0)}}' = P'UQ+PU'Q+PUQ'$,
+${w_{nn}^{(0)}}' = P'UQ+PU'Q+PUQ',$
 
-${w_{nn}^{(0)}}''=P''UQ+PU''Q+PUQ''+2P'U'Q+2P'UQ'+2PU'Q'$,
+${w_{nn}^{(0)}}''=P''UQ+PU''Q+PUQ''+2P'U'Q+2P'UQ'+2PU'Q',$
 
-${w_{nn}^{(1)}} = w_{nn}^{(0)}\left(\frac{\mathcal{N}'}{\mathcal{N}}-\frac{U'}{U}\right)+{w_{nn}^{(0)}}'$,
+${w_{nn}^{(1)}} = w_{nn}^{(0)}\left(\frac{\mathcal{N}'}{\mathcal{N}}-\frac{U'}{U}\right)+{w_{nn}^{(0)}}',$
 
-${w_{nn}^{(1)}}' = {w_{nn}^{(0)}}'(\frac{\mathcal{N}'}{\mathcal{N}}-\frac{U'}{U})+{w_{nn}^{(0)}}\left[\frac{\mathcal{N}''}{\mathcal{N}}-\left(\frac{\mathcal{N}'}{\mathcal{N}}\right)^2-\frac{U''}{U}+\left(\frac{U'}{U}\right)^2\right]+{w_{nn}^{(0)}}''$.
+${w_{nn}^{(1)}}' = {w_{nn}^{(0)}}'(\frac{\mathcal{N}'}{\mathcal{N}}-\frac{U'}{U})+{w_{nn}^{(0)}}\left[\frac{\mathcal{N}''}{\mathcal{N}}-\left(\frac{\mathcal{N}'}{\mathcal{N}}\right)^2-\frac{U''}{U}+\left(\frac{U'}{U}\right)^2\right]+{w_{nn}^{(0)}}''.$
 
 Numerically, we give $f_{0,1,2}$ as functions of $r$
 
@@ -639,7 +639,7 @@ plot!(rs_values,
 
 Then we do Green's function convolution integral defined by
 
-$\frac{X_{\ell 0\omega}^\infty}{c_0}=\frac{1}{2i\omega B_{\rm SN}^{\rm inc}}\int_{r_*^{\rm in}}^{r_*^{\rm out}}\frac{\Delta X_{\ell 0 \omega}^{\rm in}(r_*)\mathcal{W}_{nn}(r_*)}{r^2(r^2+a^2)^{3/2}}e^{-i\omega r_*}d r_*$,
+$\frac{X_{\ell 0\omega}^\infty}{c_0}=\frac{1}{2i\omega B_{\rm SN}^{\rm inc}}\int_{r_*^{\rm in}}^{r_*^{\rm out}}\frac{\Delta X_{\ell 0 \omega}^{\rm in}(r_*)\mathcal{W}_{nn}(r_*)}{r^2(r^2+a^2)^{3/2}}e^{-i\omega r_*}d r_*,$
 
 where $r_*^{\rm in}\to -\infty$ and $r_*^{\rm out}\to +\infty$. According to our numerical experiment, $r_*^{\rm in}={\rm min}\left(-50,50\lg(1-a)\right)$ and $r_*^{\rm out}={\rm max}\left(5000, \frac{50\pi}{|\omega|}\right)$ are sufficient for us to achieve $10^{-8}$ relative error.
 

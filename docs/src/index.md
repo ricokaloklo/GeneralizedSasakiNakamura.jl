@@ -10,7 +10,7 @@ Both codes are capable of handling *complex* frequencies, and we use $M = 1$ con
 
 The paper describing both the GSN formalism and the implementation can be found in [2306.16469](https://arxiv.org/abs/2306.16469). A set of Mathematica notebooks deriving all the equations used in the code can be found in [10.5281/zenodo.8080241](https://zenodo.org/records/8080242).
 
-Starting from v0.7.0, the code is also capable of computing the gravitational waveform and fluxes at infinity due a test particle orbiting around a Kerr black hole in a _generic (eccentric, inclined) timelike bound orbit_ by solving the inhomogeneous SN equation using integration by parts.
+Starting from v0.8.0, the code is also capable of computing the gravitational waveform amplitude and fluxes at infinity and at the horizon due a test particle orbiting around a Kerr black holein a _generic (eccentric, inclined) timelike bound orbit_ by solving the inhomogeneous SN equation using integration by parts.
 
 ## Installation
 To install the package using the Julia package manager, simply type the following in the Julia REPL:
