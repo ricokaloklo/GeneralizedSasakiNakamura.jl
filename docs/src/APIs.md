@@ -127,10 +127,10 @@ This is a composite struct type that stores the output from [`GSN_pointparticle_
 | field |    |
 | :--- | :--- |
 | `mode` | a [Mode](@ref) object storing information about the mode (including the frequency) |
-| `amplitude_inf/hor` | the amplitude of the inhomogeneous GSN solution at infinity or at the horizon such that $X^{\infty}_{\ell m \omega} =$  amplitude_inf $e^{i \omega r_*}$ and $X^{\mathrm{H}}_{\ell m \omega} =$ amplitude_hor $e^{- i \kappa r_*}$|
-| `energy_flux_inf/hor` | the energy flux emitted towards infinity or towards the horizon|
-| `angular_momentum_flux_inf/hor` | the angular momentum flux towards infinity or towards the horizon|
-| `Carter_const_flux_inf/hor` | the Carter constant flux towards infinity or towards the horizon|
+| `amplitude` | the amplitude of the inhomogeneous GSN solution at infinity or at the horizon such that $X^{\infty}_{\ell m \omega} =$  amplitude_inf $e^{i \omega r_*}$ or $X^{\mathrm{H}}_{\ell m \omega} =$ amplitude_hor $e^{- i \kappa r_*}$|
+| `energy_flux` | the energy flux emitted towards infinity or towards the horizon|
+| `angular_momentum_flux` | the angular momentum flux towards infinity or towards the horizon|
+| `Carter_const_flux` | the Carter constant flux towards infinity or towards the horizon|
 | `trajectory` | the trajectory/geodesic that the particle follows |
 | `Y_solution` | the auxiliary function $Y$ used in the calculation |
 | `SWSH` | the spin-weighted spheroidal harmonic used in the calculation |
@@ -142,10 +142,10 @@ This is a composite struct type that stores the output from [`Teukolsky_pointpar
 | field |    |
 | :--- | :--- |
 | `mode` | a [Mode](@ref) object storing information about the mode (including the frequency) |
-| `amplitude_inf/hor` | the amplitude of the inhomogeneous Teukolsky solution at infinity or at the horizon such that $R^{\infty}_{\ell m \omega} =$ amplitude_inf $r^{-(2s+1)} e^{i \omega r_*}$ and $R^{\mathrm{H}}_{\ell m \omega} =$ amplitude_hor $\Delta^{-s} e^{- i \kappa r_*}$|
-| `energy_flux_inf/hor` | the energy flux emitted towards infinity or towards the horizon|
-| `angular_momentum_flux_inf/hor` | the angular momentum flux towards infinity or towards the horizon|
-| `Carter_const_flux_inf/hor` | the Carter constant flux towards infinity or towards the horizon|
+| `amplitude` | the amplitude of the inhomogeneous Teukolsky solution at infinity or at the horizon such that $R^{\infty}_{\ell m \omega} =$ amplitude_inf $r^{-(2s+1)} e^{i \omega r_*}$ or $R^{\mathrm{H}}_{\ell m \omega} =$ amplitude_hor $\Delta^{-s} e^{- i \kappa r_*}$|
+| `energy_flux` | the energy flux emitted towards infinity or towards the horizon|
+| `angular_momentum_flux` | the angular momentum flux towards infinity or towards the horizon|
+| `Carter_const_flux` | the Carter constant flux towards infinity or towards the horizon|
 | `trajectory` | the trajectory/geodesic that the particle follows |
 | `Y_solution` | the auxiliary function $Y$ used in the calculation |
 | `SWSH` | the spin-weighted spheroidal harmonic used in the calculation |
