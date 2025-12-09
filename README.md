@@ -132,7 +132,7 @@ TeukolskyPointParticleMode(
     Carter_const_flux_inf=5.890504440487091e-5,
 )
 ```
-To access for example the amplitude at infinity `amplitude`
+To access for example the amplitude at infinity,
 ```julia
 julia> mode_info.amplitude
 0.00023429507957491088 - 6.558414418883069e-5im
@@ -156,7 +156,7 @@ TeukolskyPointParticleMode(
     method=(method = "trapezoidal", N = 256, K = 64),
 )
 ```
-To access for example the amplitude at the horizon `amplitude`
+To access for example the amplitude at the horizon,
 ```julia
 julia> mode_info.amplitude
 0.006089946888787634 - 0.0014130019665122818im
