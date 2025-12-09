@@ -115,7 +115,7 @@ This should give
 ```
 
 #### Solving the inhomogeneous radial Teukolsky/SN equation with a point-particle source on a generic timelike bound orbit
-This can now be done easily with this code, starting from v0.8.0.
+This can now be done easily with this code.
 Suppose we want to compute the inhomogeneous solution to the radial Teukolsky equation at infinity for the $s = -2$, $\ell = m = 2$ mode driven by a test particle on a bound geodesic with $a/M = 0.9, p = 6M, e = 0.7, x = \cos(\pi/4)$, one can simply do
 ```julia
 mode_info = Teukolsky_pointparticle_mode(-2, 2, 2, 0, 0, 0.9, 6, 0.7, cos(π/4))
@@ -133,7 +133,7 @@ TeukolskyPointParticleMode(
     method=(method = "trapezoidal", N = 256, K = 64),
 )
 ```
-To access for example the amplitude at infinity `amplitude`
+To access for example the amplitude at infinity
 ```julia
 julia> mode_info.amplitude
 0.00023429507957491088 - 6.558414418883069e-5im
@@ -157,7 +157,7 @@ TeukolskyPointParticleMode(
     method=(method = "trapezoidal", N = 256, K = 64),
 )
 ```
-To access for example the amplitude at the horizon `amplitude`
+To access for example the amplitude at the horizon
 ```julia
 julia> mode_info.amplitude
 0.006089946888787634 - 0.0014130019665122818im
