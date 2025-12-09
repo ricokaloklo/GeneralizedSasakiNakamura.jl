@@ -132,9 +132,9 @@ TeukolskyPointParticleMode(
     Carter_const_flux_inf=5.890504440487091e-5,
 )
 ```
-To access for example the amplitude at infinity `amplitude_inf`
+To access for example the amplitude at infinity `amplitude`
 ```julia
-julia> mode_info.amplitude_inf
+julia> mode_info.amplitude
 0.00023429507957491088 - 6.558414418883069e-5im
 ```
 which is the value for $Z^{\infty}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near infinity for that particular frequency.
@@ -156,9 +156,9 @@ TeukolskyPointParticleMode(
     method=(method = "trapezoidal", N = 256, K = 64),
 )
 ```
-To access for example the amplitude at the horizon `amplitude_hor`
+To access for example the amplitude at the horizon `amplitude`
 ```julia
-julia> mode_info.amplitude_hor
+julia> mode_info.amplitude
 0.006089946888787634 - 0.0014130019665122818im
 ```
 which is the value for $Z^{\mathrm{H}}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near the horizon for that particular frequency.
