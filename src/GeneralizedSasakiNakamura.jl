@@ -822,9 +822,9 @@ function Base.show(io::IO, ::MIME"text/plain", teuk_mode::TeukolskyPointParticle
     s = teuk_mode.mode.s
     
     if s == -2
-        frame_suffix = "_inf" 
+        suffix = "_inf" 
     elseif s == 2
-        frame_suffix = "_hor" 
+        suffix = "_hor" 
     else
         error("Invalid spin weight s = $s. Teukolsky formalism requires s ∈ {-2, 2}.")
     end
@@ -832,10 +832,10 @@ function Base.show(io::IO, ::MIME"text/plain", teuk_mode::TeukolskyPointParticle
     # Print structured output with frame-specific suffixes
     println(io, "TeukolskyPointParticleMode(")
     print(io, "    mode="); show(io, "text/plain", teuk_mode.mode); println(io, ",")
-    println(io, "    amplitude$frame_suffix=$(teuk_mode.amplitude),")
-    println(io, "    energy_flux$frame_suffix=$(teuk_mode.energy_flux),")
-    println(io, "    angular_momentum_flux$frame_suffix=$(teuk_mode.angular_momentum_flux),")
-    println(io, "    Carter_const_flux$frame_suffix=$(teuk_mode.Carter_const_flux),")
+    println(io, "    amplitude$suffix=$(teuk_mode.amplitude),")
+    println(io, "    energy_flux$suffix=$(teuk_mode.energy_flux),")
+    println(io, "    angular_momentum_flux$suffix=$(teuk_mode.angular_momentum_flux),")
+    println(io, "    Carter_const_flux$suffix=$(teuk_mode.Carter_const_flux),")
     println(io, "    method=$(teuk_mode.method),")
     print(io, ")")
 end
@@ -844,19 +844,19 @@ function Base.show(io::IO, ::MIME"text/plain", gsn_mode::GSNPointParticleMode)
     s = gsn_mode.mode.s
     
     if s == -2
-        frame_suffix = "_inf" 
+        suffix = "_inf" 
     elseif s == 2
-        frame_suffix = "_hor" 
+        suffix = "_hor" 
     else
         error("Invalid spin weight s = $s. GSN formalism requires s ∈ {-2, 2}.")
     end
 
     println(io, "GSNPointParticleMode(")
     print(io, "    mode="); show(io, "text/plain", gsn_mode.mode); println(io, ",")
-    println(io, "    amplitude$frame_suffix=$(gsn_mode.amplitude),")
-    println(io, "    energy_flux$frame_suffix=$(gsn_mode.energy_flux),")
-    println(io, "    angular_momentum_flux$frame_suffix=$(gsn_mode.angular_momentum_flux),")
-    println(io, "    Carter_const_flux$frame_suffix=$(gsn_mode.Carter_const_flux),")
+    println(io, "    amplitude$suffix=$(gsn_mode.amplitude),")
+    println(io, "    energy_flux$suffix=$(gsn_mode.energy_flux),")
+    println(io, "    angular_momentum_flux$suffix=$(gsn_mode.angular_momentum_flux),")
+    println(io, "    Carter_const_flux$suffix=$(gsn_mode.Carter_const_flux),")
     println(io, "    method=$(gsn_mode.method),")
     print(io, ")")
 end
@@ -890,40 +890,24 @@ function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a,
     end
 
     if method == "trapezoidal"
-        output = ConvolutionIntegrals.convolution_integral_trapezoidal(a, p, e, x, l, m, n, k; N=N, K=K)
+        output = ConvolutionIntegrals.convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N=N, K=K)
     elseif method == "levin"
-        output = ConvolutionIntegrals.convolution_integral_levin(a, p, e, x, l, m, n, k; N=N, K=K)
+        output = ConvolutionIntegrals.convolution_integral_levin(a, p, e, x, s, l, m, n, k; N=N, K=K)
     else
         error("Currently only support method = \"trapezoidal\" or \"levin\"")
     end
 
-    if s == -2
-        return TeukolskyPointParticleMode(
-            Mode(s, l, m, a, output["omega"], output["YSolution"][1].mode.lambda),
-            output["Amplitude_inf"],
-            output["EnergyFlux_inf"],
-            output["AngularMomentumFlux_inf"],
-            output["CarterConstantFlux_inf"],
+    return TeukolskyPointParticleMode(
+            Mode(s, l, m, a, output["omega"], output["YSolution"].mode.lambda),
+            output["Amplitude"],
+            output["EnergyFlux"],
+            output["AngularMomentumFlux"],
+            output["CarterConstantFlux"],
             output["Trajectory"],
-            output["YSolution"][1],
-            output["SWSH"][1],
+            output["YSolution"],
+            output["SWSH"],
             (method=method, N=N, K=K)
         )
-    elseif s == 2
-        return TeukolskyPointParticleMode(
-            Mode(s, l, m, a, output["omega"], output["YSolution"][2].mode.lambda),
-            output["Amplitude_hor"],
-            output["EnergyFlux_hor"],
-            output["AngularMomentumFlux_hor"],
-            output["CarterConstantFlux_hor"],
-            output["Trajectory"],
-            output["YSolution"][2],
-            output["SWSH"][2],
-            (method=method, N=N, K=K)
-        )
-    else
-        error("Currently only spin-2/gravitational perturbations are supported")
-    end
 end
 
 @doc raw"""
