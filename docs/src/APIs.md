@@ -127,7 +127,7 @@ This is a composite struct type that stores the output from [`GSN_pointparticle_
 | field |    |
 | :--- | :--- |
 | `mode` | a [Mode](@ref) object storing information about the mode (including the frequency) |
-| `amplitude` | the amplitude of the inhomogeneous GSN solution at infinity or at the horizon such that $X^{\infty}_{\ell m \omega} =$  amplitude_inf $e^{i \omega r_*}$ or $X^{\mathrm{H}}_{\ell m \omega} =$ amplitude_hor $e^{- i \kappa r_*}$|
+| `amplitude` | the amplitude of the inhomogeneous GSN solution at infinity or at the horizon such that $X^{\infty}_{\ell m \omega} =$  amplitude $e^{i \omega r_*}$ or $X^{\mathrm{H}}_{\ell m \omega} =$ amplitude $e^{- i \left[ \omega - ma/(2r_{+}) \right] r_*}$|
 | `energy_flux` | the energy flux emitted towards infinity or towards the horizon|
 | `angular_momentum_flux` | the angular momentum flux towards infinity or towards the horizon|
 | `Carter_const_flux` | the Carter constant flux towards infinity or towards the horizon|
@@ -142,7 +142,7 @@ This is a composite struct type that stores the output from [`Teukolsky_pointpar
 | field |    |
 | :--- | :--- |
 | `mode` | a [Mode](@ref) object storing information about the mode (including the frequency) |
-| `amplitude` | the amplitude of the inhomogeneous Teukolsky solution at infinity or at the horizon such that $R^{\infty}_{\ell m \omega} =$ amplitude_inf $r^{-(2s+1)} e^{i \omega r_*}$ or $R^{\mathrm{H}}_{\ell m \omega} =$ amplitude_hor $\Delta^{-s} e^{- i \kappa r_*}$|
+| `amplitude` | the amplitude of the inhomogeneous Teukolsky solution at infinity or at the horizon such that $R^{\infty}_{\ell m \omega} =$ amplitude $r^{-(2s+1)} e^{i \omega r_*}$ or $R^{\mathrm{H}}_{\ell m \omega} =$ amplitude $\Delta^{-s} e^{- i \left[ \omega - ma/(2r_{+}) \right] r_*}$|
 | `energy_flux` | the energy flux emitted towards infinity or towards the horizon|
 | `angular_momentum_flux` | the angular momentum flux towards infinity or towards the horizon|
 | `Carter_const_flux` | the Carter constant flux towards infinity or towards the horizon|
