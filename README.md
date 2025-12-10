@@ -198,7 +198,7 @@ Additionally, if you have used this code's capability to solve for solutions wit
 }
 ```
 
-If you have used this code's capability to solve for the gravitational waveform amplitude and fluxes at infinity with a test particle orbiting a Kerr black hole in a generic timelike bound and stable orbit (e.g., for extreme mass ratio inspiral waveforms), please cite the following article:
+If you have used this code's capability to solve for the gravitational waveform amplitudes and fluxes at infinity and at horizon with a test particle orbiting a Kerr black hole in a generic timelike bound and stable orbit (e.g., for extreme mass ratio inspiral waveforms), please cite the following articles:
 ```
 @article{Yin:2025kls,
     author = "Yin, Yucheng and Lo, Rico K. L. and Chen, Xian",
@@ -207,6 +207,16 @@ If you have used this code's capability to solve for the gravitational waveform 
     archivePrefix = "arXiv",
     primaryClass = "gr-qc",
     month = "11",
+    year = "2025"
+}
+
+@article{Lo:2025lpo,
+    author = "Lo, Rico K. L. and Yin, Yucheng",
+    title = "{Near-horizon gravitational perturbations of rotating black holes}",
+    eprint = "2512.07937",
+    archivePrefix = "arXiv",
+    primaryClass = "gr-qc",
+    month = "12",
     year = "2025"
 }
 ```
