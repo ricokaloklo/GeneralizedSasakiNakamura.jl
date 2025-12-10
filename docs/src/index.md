@@ -141,7 +141,7 @@ julia> mode_info.amplitude
 which is the value for $Z^{\infty}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near infinity for that particular frequency.
 
 If we want to compute the inhomogeneous solution to the radial Teukolsky equation at the event horizon for the 
-same set of parameters, we can simply change the sign of to $s = 2$
+same set of parameters, we can simply change the sign of $s$ to $2$
 ```julia
 mode_info = Teukolsky_pointparticle_mode(2, 2, 2, 0, 0, 0.9, 6, 0.7, cos(π/4))
 ```
