@@ -181,16 +181,15 @@ function GSN_radial(
             # Solve for Xin
             if isa(omega, Real)
                 if method == "auto"
-                    # For real frequencies, we use the Riccati form for |ω| >= 1
-                    if abs(omega) >= 1
-                        method = "Riccati"
-                    else
-                        method = "linear"
-                    end
+                    # For real frequencies, we use the Riccati form
+                    method = "Riccati"
                 end
 
                 if method == "Riccati"
                     Phiinsoln = Solutions.solve_Phiin(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=horizon_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
+                    if !SciMLBase.successful_retcode(Phiinsoln)
+                        @warn "There might be an issue with solving the Riccati form of the GSN equation. Consider using method=\"linear\" instead."
+                    end
                     # Then convert to Xin
                     Xinsoln = Solutions.Xsoln_from_Phisoln(Phiinsoln)
                 elseif method == "linear"
@@ -303,17 +302,16 @@ function GSN_radial(
             # Solve for Xup
             if isa(omega, Real)
                 if method == "auto"
-                    # For real frequencies, we use the Riccati form for |ω| >= 1
-                    if abs(omega) >= 1
-                        method = "Riccati"
-                    else
-                        method = "linear"
-                    end
+                    # For real frequencies, we use the Riccati form
+                    method = "Riccati"
                 end
 
                 if method == "Riccati"
                     # Actually solve for Phiup first
                     Phiupsoln = Solutions.solve_Phiup(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=infinity_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
+                    if !SciMLBase.successful_retcode(Phiupsoln)
+                        @warn "There might be an issue with solving the Riccati form of the GSN equation. Consider using method=\"linear\" instead."
+                    end
                     # Then convert to Xup
                     Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
                 elseif method == "linear"
