@@ -181,8 +181,12 @@ function GSN_radial(
             # Solve for Xin
             if isa(omega, Real)
                 if method == "auto"
-                    # For real frequencies, we can use the Riccati form
-                    method = "Riccati"
+                    # For real frequencies, we use the Riccati form for |ω| >= 1
+                    if abs(omega) >= 1
+                        method = "Riccati"
+                    else
+                        method = "linear"
+                    end
                 end
 
                 if method == "Riccati"
@@ -299,8 +303,12 @@ function GSN_radial(
             # Solve for Xup
             if isa(omega, Real)
                 if method == "auto"
-                    # For real frequencies, we can use the Riccati form
-                    method = "Riccati"
+                    # For real frequencies, we use the Riccati form for |ω| >= 1
+                    if abs(omega) >= 1
+                        method = "Riccati"
+                    else
+                        method = "linear"
+                    end
                 end
 
                 if method == "Riccati"
