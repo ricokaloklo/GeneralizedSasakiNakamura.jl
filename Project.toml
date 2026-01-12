@@ -1,6 +1,6 @@
 name = "GeneralizedSasakiNakamura"
 uuid = "7d2aac85-6cc1-40c7-a4aa-e1a43f13f131"
-version = "0.8.0"
+version = "0.8.1"
 authors = ["Rico Ka Lok Lo", "Yucheng Yin"]
 
 [deps]
