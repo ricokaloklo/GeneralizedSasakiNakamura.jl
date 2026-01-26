@@ -800,8 +800,19 @@ function Base.show(io::IO, ::MIME"text/plain", ysol::SolutionsY.YSolutionResult)
     print(io, ")")
 end
 
+struct PointParticleMode
+    s::Int # spin weight
+    l::Int # harmonic index
+    m::Int # azimuthal index
+    n::Int # radial index
+    k::Int # polar index
+    a # Kerr spin parameter
+    omega::Union{Real, Complex} # frequency
+    lambda # SWSH eigenvalue
+end
+
 struct GSNPointParticleMode
-    mode::Mode # Information about the mode, where the frequency will be computed from orbital parameters
+    mode::PointParticleMode # Information about the mode, where the frequency will be computed from orbital parameters
     amplitude # In GSN formalism
     energy_flux # Identical in both formalisms
     angular_momentum_flux # Identical in both formalisms
@@ -813,7 +824,7 @@ struct GSNPointParticleMode
 end
 
 struct TeukolskyPointParticleMode
-    mode::Mode # Information about the mode, where the frequency will be computed from orbital parameters
+    mode::PointParticleMode # Information about the mode, where the frequency will be computed from orbital parameters
     amplitude # In Teukolsky formalism
     energy_flux # Identical in both formalisms
     angular_momentum_flux # Identical in both formalisms
@@ -904,7 +915,7 @@ function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a,
     end
 
     return TeukolskyPointParticleMode(
-            Mode(s, l, m, a, output["omega"], output["YSolution"].mode.lambda),
+            PointParticleMode(s, l, m, n, k, a, output["omega"], output["YSolution"].mode.lambda),
             output["Amplitude"],
             output["EnergyFlux"],
             output["AngularMomentumFlux"],
