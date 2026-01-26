@@ -811,6 +811,10 @@ struct PointParticleMode
     lambda # SWSH eigenvalue
 end
 
+function Base.show(io::IO, ::MIME"text/plain", mode::PointParticleMode)
+    print(io, "Mode(s=$(mode.s), l=$(mode.l), m=$(mode.m), n=$(mode.n), k=$(mode.k), a=$(mode.a), omega=$(mode.omega), lambda=$(mode.lambda))")
+end
+
 struct GSNPointParticleMode
     mode::PointParticleMode # Information about the mode, where the frequency will be computed from orbital parameters
     amplitude # In GSN formalism
