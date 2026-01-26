@@ -268,7 +268,7 @@ function convolution_integral_generic_trapezoidal(a, p, e, x, s, l, m, n, k, N_s
     ϒθ = Frequencies["ϒθ"]
     ϒφ = Frequencies["ϒϕ"]
     omega = (m * ϒφ + n * ϒr + k * ϒθ) / Γ
-    rsin = min(-50.0, 50.0 * log10(1 - a))
+    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(500.0, 10pi / abs(omega))
     KG_samp = kerr_geo_generic_sample(KG, N_sample, K_sample)
     carter_samp = carter_ingredients_sample(KG_samp, a, m, omega)
@@ -324,7 +324,7 @@ function convolution_integral_generic_levin(a, p, e, x, s, l, m, n, k, N_sample,
     ϒθ = Frequencies["ϒθ"]
     ϒφ = Frequencies["ϒϕ"]
     omega = (m * ϒφ + n * ϒr + k * ϒθ) / Γ
-    rsin = min(-50.0, 50.0 * log10(1 - a))
+    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(500.0, 10pi / abs(omega))
     KG_samp = kerr_geo_generic_sample_cheby(KG, N_sample, K_sample)
     KG_trap = kerr_geo_generic_sample(KG, N_sample, K_sample)
@@ -391,7 +391,7 @@ function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sampl
     omega = (m * ϒφ + n * ϒr) / Γ  # No θ contribution (k omitted)
     
     # Radial solution parameters
-    rsin = min(-50.0, 50.0 * log10(1 - a))
+    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(500.0, 10pi / abs(omega))
     KG_samp = kerr_geo_eccentric_sample(KG, N_sample)  # Equatorial sampling (θ fixed)
     
@@ -425,7 +425,7 @@ function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sampl
         inte_samp_m2 = integrand_eccentric_sample_m2(KG_samp, Yin_samp, (S0_m2, S1_m2, S2_m2), n)
         integral_m2 = trapezoidal_1d_integral(inte_samp_m2)
         return Dict(
-            "Amplitudef" => integral_m2,
+            "Amplitude" => integral_m2,
             "omega" => omega,
             "EnergyFlux" => abs2(integral_m2)/(4.0pi*omega^2),
             "AngularMomentumFlux" => m * abs2(integral_m2) / (4.0pi * omega^3),
@@ -448,7 +448,7 @@ function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample)
     ϒr = Frequencies["ϒr"]
     ϒφ = Frequencies["ϒϕ"]
     omega = (m * ϒφ + n * ϒr) / Γ
-    rsin = min(-50.0, 50.0 * log10(1 - a))
+    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(500.0, 10pi / abs(omega))
     KG_samp = kerr_geo_eccentric_sample_cheby(KG, N_sample)
 
@@ -511,7 +511,7 @@ function convolution_integral_inclined_trapezoidal(a, p, x, s, l, m, k, K_sample
     omega = (m * ϒφ + k * ϒθ) / Γ  # No radial contribution (n omitted)
     
     # Radial solution parameters (r fixed, but retain for consistency)
-    rsin = min(-30.0, 30.0 * log10(1 - a))
+    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(200.0, 10pi / abs(omega))
     KG_samp = kerr_geo_inclined_sample(KG, K_sample)
     carter_samp = carter_ingredients_sample(KG_samp, a, m, omega)
@@ -574,7 +574,7 @@ function convolution_integral_inclined_levin(a, p, x, s, l, m, k, K_sample)
     ϒθ = Frequencies["ϒθ"]
     ϒφ = Frequencies["ϒϕ"]
     omega = (m * ϒφ + k * ϒθ) / Γ
-    rsin = min(-30.0, 30.0 * log10(1 - a))
+    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(200.0, 10pi / abs(omega))
     KG_samp = kerr_geo_inclined_sample_cheby(KG, K_sample)
     KG_trap = kerr_geo_inclined_sample(KG, K_sample)
@@ -649,7 +649,7 @@ function convolution_integral_circular_equatorial_m2(a, p, l, m)
     rp = 1.0 + sqrt(1.0 - a^2)
     rm = 1.0 - sqrt(1.0 - a^2)
 
-    rsin = min(-50.0, 50.0 * log10(1 - a))
+    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(500.0, 10π / abs(ω))
     Y_soln = Y_solution(-2, l, m, a, ω, IN; rsin=rsin, rsout=rsout)
     Y = Y_soln.solution.Y_hor(rstar_from_r(a, r))
@@ -728,7 +728,7 @@ function convolution_integral_circular_equatorial_p2(a, p, l, m)
     Δ = r2 - 2*r + a^2 
     rp = 1.0 + sqrt(1.0 - a^2)
     rm = 1.0 - sqrt(1.0 - a^2)
-    rsin = min(-50.0, 50.0 * log10(1 - a))
+    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(500.0, 10π / abs(ω))
 
     Y_soln = Y_solution(2, l, m, a, ω, UP; rsin=rsin, rsout=rsout)
