@@ -242,23 +242,47 @@ function Ypp_outgoing_hor_m2(m::Int, a, omega, lambda, order::Int; data_type=_DE
         return YHp0
     elseif order == 1
         CHp1 = a_plus_hor(-2, m, a, omega, lambda, 1; data_type=data_type)
-        return (-(1/2) + (2*(-1 + ap))/a^2 - (im*a*m)/(2*ap) + CHp1) * YHp0
+        if a < 1e-2
+            return -((3/2) + CHp1 + ((im * m) / 2) * a + a^2 / 4 + im * m * a^3 / 4 + a^4 / 8 + 3im * m * a^5 / 16 + 5 * a^6 / 64) * YHp0
+        else
+            return (-(1/2) + (2*(-1 + ap))/a^2 - (im*a*m)/(2*ap) + CHp1) * YHp0
+        end
     elseif order == 2
         CHp1 = a_plus_hor(-2, m, a, omega, lambda, 1; data_type=data_type)
         CHp2 = a_plus_hor(-2, m, a, omega, lambda, 2; data_type=data_type)
-        return ((1 / (8 * a^4 * (-1 + a^2))) * (48*(-1 + ap) + a^2*(66 - 42*ap - 3*a^2*(7 + 2*ap) 
-                - 7*im*a*(-1 + ap)*m - 2*im*a^3*(4 + ap)*m + a^4*(3 + m^2)) - 4*a^2*(4*(-1 + ap) 
-                + a^2*(3 + a^2 - 4*ap - im*a*ap*m)) * CHp1 + 8*a^4*(-1 + a^2)*CHp2)) * YHp0
+        if a < 1e-2
+            return (3/2 - (3*CHp1)/2 + CHp2
+                    + (-(1/16) * im * m * (-13 + 8*CHp1)) * a 
+                    + ((1/32) * (15 - 4*m^2 - 8*CHp1)) * a^2
+                    + ((1/64) * im * m * (37 - 16*CHp1)) * a^3
+                    + ((1/32) * (9 - 4*m^2 - 4*CHp1)) * a^4
+                    + (-(3/128) * im * m * (-21 + 8*CHp1)) * a^5
+                    + ((1/512) * (99 - 64*m^2 - 40*CHp1)) * a^6) * YHp0
+        else
+            return ((1 / (8 * a^4 * (-1 + a^2))) * (48*(-1 + ap) + a^2*(66 - 42*ap - 3*a^2*(7 + 2*ap) 
+                    - 7*im*a*(-1 + ap)*m - 2*im*a^3*(4 + ap)*m + a^4*(3 + m^2)) - 4*a^2*(4*(-1 + ap) 
+                    + a^2*(3 + a^2 - 4*ap - im*a*ap*m)) * CHp1 + 8*a^4*(-1 + a^2)*CHp2)) * YHp0
+        end
     elseif order == 3
         CHp1 = a_plus_hor(-2, m, a, omega, lambda, 1; data_type=data_type)
         CHp2 = a_plus_hor(-2, m, a, omega, lambda, 2; data_type=data_type)
         CHp3 = a_plus_hor(-2, m, a, omega, lambda, 3; data_type=data_type)
-        return ((1 / (48 * a^6 * (-1 + a^2)^2)) * (768*(-1 + ap) + a^2*(96*(21 - 17*ap) + 6*a^2*(-283 + 163*ap) 
-                + im*a^5*(97 - 66*ap)*m - 120*im*a*(-1 + ap)*m + 5*im*a^3*(-47 + 35*ap)*m - 3*a^8*(5 + m^2) 
-                + im*a^7*m*(9*(2 + ap) + ap*m^2) + a^4*(405 - 132*ap - 9*(-1 + ap)*m^2) + 6*a^6*(10 + 3*ap 
-                + (-1 + 2*ap)*m^2)) + 6*a^2*(-1 + a^2)*(48*(-1 + ap) + a^2*(66 - 42*ap - 3*a^2*(7 + 2*ap) 
-                - 7*im*a*(-1 + ap)*m - 2*im*a^3*(4 + ap)*m + a^4*(3 + m^2)) * CHp1 - 4*a^2*(4*(-1 + ap) 
-                + a^2*(3 + a^2 - 4*ap - im*a*ap*m)) * CHp2 + 8*a^4*(-1 + a^2)*CHp3))) * YHp0
+        if a < 1e-2
+            return ((1/4) * (-5 + 6*CHp1 - 6*CHp2) + CHp3
+                    + ((1/96) * im * m * (-83 + 78*CHp1 - 48*CHp2)) * a 
+                    + ((1/64) * (-35 + 14*m^2 + (30 - 8*m^2)*CHp1 - 16*CHp2)) * a^2
+                    + ((1/384) * im * m * (-299 + 8*m^2 + 222*CHp1 - 96*CHp2)) * a^3
+                    + ((1/128) * (-49 + 35*m^2 + 4*(9 - 4*m^2)*CHp1 - 16*CHp2)) * a^4
+                    + ((1/384) * im * m * (-286 + 12*m^2 + 189*CHp1 - 72*CHp2)) * a^5
+                    + ((-295 + 316*m^2 + 2*(99 - 64*m^2)*CHp1 - 80*CHp2) / 1024) * a^6) * YHp0
+        else
+            return ((1 / (48 * a^6 * (-1 + a^2)^2)) * (768*(-1 + ap) + a^2*(96*(21 - 17*ap) + 6*a^2*(-283 + 163*ap) 
+                    + im*a^5*(97 - 66*ap)*m - 120*im*a*(-1 + ap)*m + 5*im*a^3*(-47 + 35*ap)*m - 3*a^8*(5 + m^2) 
+                    + im*a^7*m*(9*(2 + ap) + ap*m^2) + a^4*(405 - 132*ap - 9*(-1 + ap)*m^2) + 6*a^6*(10 + 3*ap 
+                    + (-1 + 2*ap)*m^2)) + 6*a^2*(-1 + a^2)*(48*(-1 + ap) + a^2*(66 - 42*ap - 3*a^2*(7 + 2*ap) 
+                    - 7*im*a*(-1 + ap)*m - 2*im*a^3*(4 + ap)*m + a^4*(3 + m^2)) * CHp1 - 4*a^2*(4*(-1 + ap) 
+                    + a^2*(3 + a^2 - 4*ap - im*a*ap*m)) * CHp2 + 8*a^4*(-1 + a^2)*CHp3))) * YHp0
+        end
     else
         throw(DomainError(order, "Currently horizontal expansion orders only up to 3 are supported"))
     end
@@ -285,32 +309,52 @@ function Ypp_outgoing_hor_p2(m::Int, a, omega, lambda, order::Int; data_type=_DE
     elseif order == 2
         CHp1 = a_plus_hor(2, m, a, omega, lambda, 1; data_type=data_type)
         CHp2 = a_plus_hor(2, m, a, omega, lambda, 2; data_type=data_type)
-        return ((1 / (8 * a^4 * (-1 + a^2)^2)) * ( -48*(-1 + ap) + a^2*(-114 + 90*ap + a*(15*im*(-1 + ap)*m 
-                - 7*im*a^2*(-3 + 2*ap)*m - 2*a^4*m*(im*(3 + ap) + (-2 + 4*ap)*omega) - a*(-87 + 36*ap 
-                + 2*im*(-5 + 17*ap)*omega + 8*(1 + ap)*omega^2) + a^5*(3 + m^2 - 8*omega*(im + 2*omega)) 
-                + 2*a^3*(-3*(4 + ap) + (-1 + ap)*m^2 + omega*(-im + 18*im*ap + 10*omega + 8*ap*omega)) )) 
-                + 4*a^2*(-1 + a^2)*(4 - 4*ap + a^2*(-3 + 4*ap + im*a*(-1 + ap)*m + a^2*(-1 + 4*im*omega) 
-                - 2*im*(1 + ap)*omega)) * CHp1 + 8*a^4*(-1 + a^2)^2*CHp2 )) * YHp0
+        if a < 1e-2
+            return (3/2 - omega * (3im + 2*omega) + (-(3/2) + 2im*omega) * CHp1 + CHp2
+                    + (-(im * m) / 16) * a 
+                    + (15/32 + (3im*omega)/8 + omega^2 + (1/4) * (-1 - 2im*omega) * CHp1) * a^2
+                    + (-(1/64) * m * (31im + 32*omega - 16im*CHp1)) * a^3
+                    + ((1/32) * (9 + 33im*omega + 36*omega^2 + (-4 - 20im*omega) * CHp1)) * a^4
+                    + (-(1/128) * m * (87im + 64*omega - 40im*CHp1)) * a^5
+                    + ((1/512) * (99 - 16*m^2 + 8*omega*(89im + 68*omega) + 8*(-5 - 44im*omega) * CHp1)) * a^6) * YHp0
+        else
+            return ((1 / (8 * a^4 * (-1 + a^2)^2)) * ( -48*(-1 + ap) + a^2*(-114 + 90*ap + a*(15*im*(-1 + ap)*m 
+                    - 7*im*a^2*(-3 + 2*ap)*m - 2*a^4*m*(im*(3 + ap) + (-2 + 4*ap)*omega) - a*(-87 + 36*ap 
+                    + 2*im*(-5 + 17*ap)*omega + 8*(1 + ap)*omega^2) + a^5*(3 + m^2 - 8*omega*(im + 2*omega)) 
+                    + 2*a^3*(-3*(4 + ap) + (-1 + ap)*m^2 + omega*(-im + 18*im*ap + 10*omega + 8*ap*omega)) )) 
+                    + 4*a^2*(-1 + a^2)*(4 - 4*ap + a^2*(-3 + 4*ap + im*a*(-1 + ap)*m + a^2*(-1 + 4*im*omega) 
+                    - 2*im*(1 + ap)*omega)) * CHp1 + 8*a^4*(-1 + a^2)^2*CHp2 )) * YHp0
+        end
     elseif order == 3
         CHp1 = a_plus_hor(2, m, a, omega, lambda, 1; data_type=data_type)
         CHp2 = a_plus_hor(2, m, a, omega, lambda, 2; data_type=data_type)
         CHp3 = a_plus_hor(2, m, a, omega, lambda, 3; data_type=data_type)
-        return ((1 / (48 * a^6 * (-1 + a^2)^3)) * ( -768*(-1 + ap) + a^2*(96*(-29 + 25*ap) 
-                + a*(im*a^2*(709 - 577*ap)*m + 264*im*(-1 + ap)*m + a^4*m*(im*(-619 + 358*ap) 
-                + 6*(20 - 21*ap)*omega) + 6*a*(619 - 435*ap - 64*im*(-1 + ap)*omega) + a^8*m*(9*im*(1 + ap) 
-                + im*(-3 + ap)*m^2 + 84*omega + 24*ap*(1 - 2*im*omega)*omega) + a^6*m*(165*im - 54*im*ap 
-                - 4*im*(-1 + ap)*m^2 + 6*omega*(-34 + 19*ap + 2*im*(1 + ap)*omega)) + a^9*(-15 + m^2*(-3 
-                + 12*im*omega) + 4*omega*(9*im + 4*(3 - 4*im*omega)*omega)) + a^3*(3*(-701 + 370*ap) 
-                + 42*(-1 + ap)*m^2 + 8*im*omega*(-130 + 88*ap + (1 + ap)*omega*(9*im + 4*omega))) + 3*a^7*(25 
-                + 6*ap + m^2*(-9 + 2*ap + 6*im*(-1 + ap)*omega) + 2*im*omega*(-58 - 15*ap + 2*omega*(11*im 
-                + 20*im*ap + 12*omega + 8*ap*omega))) + a^5*(345 - 150*ap + (72 - 51*ap)*m^2 + 2*omega*(484*im 
-                - 115*im*ap + 2*omega*(39 + 75*ap - 2*im*(15 + 13*ap)*omega))))) - 6*a^2*(-1 + a^2)*(48*(-1 + ap) 
-                + a^2*(114 - 90*ap - 15*im*a*(-1 + ap)*m + 7*im*a^3*(-3 + 2*ap)*m + 2*a^5*m*(im*(3 + ap) 
-                + (-2 + 4*ap)*omega) + a^2*(-87 + 36*ap + 2*im*(-5 + 17*ap)*omega + 8*(1 + ap)*omega^2) 
-                - a^6*(3 + m^2 - 8*omega*(im + 2*omega)) + 2*a^4*(3*(4 + ap) - (-1 + ap)*m^2 + im*omega 
-                - 2*omega*(9*im*ap + (5 + 4*ap)*omega)))) * CHp1 + 24*a^4*(-1 + a^2)^2*(4 - 4*ap + a^2*(-3 
-                + 4*ap + im*a*(-1 + ap)*m + a^2*(-1 + 4*im*omega) - 2*im*(1 + ap)*omega)) * CHp2 
-                + 48*a^6*(-1 + a^2)^3*CHp3 )) * YHp0
+        if a < 1e-2
+            return (-(5/4) + (1/3) * omega * (9im + (9 - 4im*omega) * omega) + (3/2 - omega*(3im + 2*omega)) * CHp1 + (-(3/2) + 2im*omega) * CHp2 + CHp3
+                    + ((1/96) * m * (11im + 12*omega - 6im*CHp1)) * a 
+                    + ((1/192) * (-105 + 8im*omega*(-1 + 6*omega*(5im + 4*omega)) + 6*(15 + 4*omega*(3im + 8*omega))*CHp1 + (-48 - 96im*omega)*CHp2)) * a^2
+                    + ((1/128) * m * (77im + 8*(15 - 8im*omega)*omega - 2*(31im + 32*omega)*CHp1 + 32im*CHp2)) * a^3
+                    + ((1/128) * (-49 + 2*m^2 + 8im*omega*(im + omega)*(17im + 16*omega) + 12*(3 + omega*(11im + 12*omega))*CHp1 + (-16 - 80im*omega)*CHp2)) * a^4
+                    + ((1/384) * m * (353im + 6*(67 - 24im*omega)*omega - 3*(87im + 64*omega)*CHp1 + 120im*CHp2)) * a^5
+                    + ((1/3072) * (-885 + 96*m^2*(3 - 2im*omega) + 16im*omega*(-335 + 4*omega*(108im + 37*omega)) + 6*(99 - 16*m^2 + 8*omega*(89im + 68*omega))*CHp1 + 48*(-5 - 44im*omega)*CHp2)) * a^6) * YHp0
+        else
+            return ((1 / (48 * a^6 * (-1 + a^2)^3)) * ( -768*(-1 + ap) + a^2*(96*(-29 + 25*ap) 
+                    + a*(im*a^2*(709 - 577*ap)*m + 264*im*(-1 + ap)*m + a^4*m*(im*(-619 + 358*ap) 
+                    + 6*(20 - 21*ap)*omega) + 6*a*(619 - 435*ap - 64*im*(-1 + ap)*omega) + a^8*m*(9*im*(1 + ap) 
+                    + im*(-3 + ap)*m^2 + 84*omega + 24*ap*(1 - 2*im*omega)*omega) + a^6*m*(165*im - 54*im*ap 
+                    - 4*im*(-1 + ap)*m^2 + 6*omega*(-34 + 19*ap + 2*im*(1 + ap)*omega)) + a^9*(-15 + m^2*(-3 
+                    + 12*im*omega) + 4*omega*(9*im + 4*(3 - 4*im*omega)*omega)) + a^3*(3*(-701 + 370*ap) 
+                    + 42*(-1 + ap)*m^2 + 8*im*omega*(-130 + 88*ap + (1 + ap)*omega*(9*im + 4*omega))) + 3*a^7*(25 
+                    + 6*ap + m^2*(-9 + 2*ap + 6*im*(-1 + ap)*omega) + 2*im*omega*(-58 - 15*ap + 2*omega*(11*im 
+                    + 20*im*ap + 12*omega + 8*ap*omega))) + a^5*(345 - 150*ap + (72 - 51*ap)*m^2 + 2*omega*(484*im 
+                    - 115*im*ap + 2*omega*(39 + 75*ap - 2*im*(15 + 13*ap)*omega))))) - 6*a^2*(-1 + a^2)*(48*(-1 + ap) 
+                    + a^2*(114 - 90*ap - 15*im*a*(-1 + ap)*m + 7*im*a^3*(-3 + 2*ap)*m + 2*a^5*m*(im*(3 + ap) 
+                    + (-2 + 4*ap)*omega) + a^2*(-87 + 36*ap + 2*im*(-5 + 17*ap)*omega + 8*(1 + ap)*omega^2) 
+                    - a^6*(3 + m^2 - 8*omega*(im + 2*omega)) + 2*a^4*(3*(4 + ap) - (-1 + ap)*m^2 + im*omega 
+                    - 2*omega*(9*im*ap + (5 + 4*ap)*omega)))) * CHp1 + 24*a^4*(-1 + a^2)^2*(4 - 4*ap + a^2*(-3 
+                    + 4*ap + im*a*(-1 + ap)*m + a^2*(-1 + 4*im*omega) - 2*im*(1 + ap)*omega)) * CHp2 
+                    + 48*a^6*(-1 + a^2)^3*CHp3 )) * YHp0
+        end
     else
         throw(DomainError(order, "Currently horizontal expansion orders only up to 3 are supported"))
     end
@@ -337,31 +381,50 @@ function Ypp_ingoing_hor_m2(m::Int, a, omega, lambda, order::Int; data_type=_DEF
     elseif order == 2
         CHm1 = a_minus_hor(-2, m, a, omega, lambda, 1; data_type=data_type)
         CHm2 = a_minus_hor(-2, m, a, omega, lambda, 2; data_type=data_type)
-        return ((1 / (8 * a^4 * (-1 + a^2)^2)) * ( -48*(-1 + ap) + a^2*(-114 + 90*ap + a*(-15*im*(-1 + ap)*m 
-                + 7*im*a^2*(-3 + 2*ap)*m + 2*a^4*m*(im*(3 + ap) + (2 - 4*ap)*omega) + a^5*(3 + m^2 
-                + 8*(im - 2*omega)*omega) - a*(-87 + 36*ap + 2*im*(5 - 17*ap)*omega + 8*(1 + ap)*omega^2) 
-                + 2*a^3*(-3*(4 + ap) + (-1 + ap)*m^2 + omega*(im - 18*im*ap + 10*omega + 8*ap*omega)) )) 
-                + 4*a^2*(-1 + a^2)*(4 - 4*ap + a^2*(-3 + 4*ap - im*a*(-1 + ap)*m + a^2*(-1 - 4*im*omega) 
-                + 2*im*(1 + ap)*omega)) * CHm1 + 8*a^4*(-1 + a^2)^2*CHm2 )) * YHm0
+        if a < 1e-2
+            return ((3/2 + (3im - 2*omega) * omega + (-(3/2) - 2im*omega) * CHm1 + CHm2)
+                    + ((im * m) / 16) * a + (15/32 - (3im*omega)/8 + omega^2 + (1/4) * (-1 + 2im*omega) * CHm1) * a^2
+                    + (-(1/64) * m * (-31im + 32*omega + 16im*CHm1)) * a^3
+                    + ((1/32) * (9 - 33im*omega + 36*omega^2 + (-4 + 20im*omega) * CHm1)) * a^4
+                    + (-(1/128) * m * (-87im + 64*omega + 40im*CHm1)) * a^5
+                    + ((1/512) * (99 - 16*m^2 + 8*omega*(-89im + 68*omega) + 8*(-5 + 44im*omega) * CHm1)) * a^6) * YHm0
+        else
+            return ((1 / (8 * a^4 * (-1 + a^2)^2)) * ( -48*(-1 + ap) + a^2*(-114 + 90*ap + a*(-15*im*(-1 + ap)*m 
+                    + 7*im*a^2*(-3 + 2*ap)*m + 2*a^4*m*(im*(3 + ap) + (2 - 4*ap)*omega) + a^5*(3 + m^2 
+                    + 8*(im - 2*omega)*omega) - a*(-87 + 36*ap + 2*im*(5 - 17*ap)*omega + 8*(1 + ap)*omega^2) 
+                    + 2*a^3*(-3*(4 + ap) + (-1 + ap)*m^2 + omega*(im - 18*im*ap + 10*omega + 8*ap*omega)) )) 
+                    + 4*a^2*(-1 + a^2)*(4 - 4*ap + a^2*(-3 + 4*ap - im*a*(-1 + ap)*m + a^2*(-1 - 4*im*omega) 
+                    + 2*im*(1 + ap)*omega)) * CHm1 + 8*a^4*(-1 + a^2)^2*CHm2 )) * YHm0
+        end
     elseif order == 3
         CHm1 = a_minus_hor(-2, m, a, omega, lambda, 1; data_type=data_type)
         CHm2 = a_minus_hor(-2, m, a, omega, lambda, 2; data_type=data_type)
         CHm3 = a_minus_hor(-2, m, a, omega, lambda, 3; data_type=data_type)
-        return ((1 / (48 * a^6 * (-1 + a^2)^3)) * ( -768*(-1 + ap) + a^2*(96*(-29 + 25*ap) + a*(-264*im*(-1 + ap)*m 
-                + im*a^2*(-709 + 577*ap)*m + a^4*m*(619*im - 358*im*ap + 6*(20 - 21*ap)*omega) + 6*a*(619 - 435*ap 
-                + 64*im*(-1 + ap)*omega) + a^8*m*(-9*im*(1 + ap) - im*(-3 + ap)*m^2 + 84*omega + 24*ap*(1 
-                + 2*im*omega)*omega) + a^9*(-3*(5 + m^2) - 12*im*(3 + m^2)*omega + 48*omega^2 + 64*im*omega^3) 
-                + a^6*m*(3*im*(-55 + 18*ap) + 4*im*(-1 + ap)*m^2 + 6*omega*(-34 + 19*ap - 2*im*(1 + ap)*omega)) 
-                + a^5*(345 - 150*ap + (72 - 51*ap)*m^2 + 2*im*(-484 + 115*ap)*omega + 4*omega^2*(39 + 75*ap 
-                + 2*im*(15 + 13*ap)*omega)) + 3*a^7*(25 + 6*ap + m^2*(-9 + 2*ap - 6*im*(-1 + ap)*omega) 
-                - 2*im*omega*(-58 - 15*ap - 2*im*(11 + 20*ap)*omega + 8*(3 + 2*ap)*omega^2)) + a^3*(3*(-701 + 370*ap) 
-                + 42*(-1 + ap)*m^2 - 8*im*omega*(-130 + 88*ap + (1 + ap)*omega*(-9*im + 4*omega))))) + 6*a^2*(-1 
-                + a^2)*(-48*(-1 + ap) + a^2*(-114 + 90*ap - 15*im*a*(-1 + ap)*m + 7*im*a^3*(-3 + 2*ap)*m 
-                + 2*a^5*m*(im*(3 + ap) + (2 - 4*ap)*omega) + a^6*(3 + m^2 + 8*(im - 2*omega)*omega) - a^2*(-87 
-                + 36*ap + 2*im*(5 - 17*ap)*omega + 8*(1 + ap)*omega^2) + 2*a^4*(-3*(4 + ap) + (-1 + ap)*m^2 
-                + omega*(im - 18*im*ap + 10*omega + 8*ap*omega)))) * CHm1 + 4*a^2*(-1 + a^2)*(4 - 4*ap + a^2*(-3 
-                + 4*ap - im*a*(-1 + ap)*m + a^2*(-1 - 4*im*omega) + 2*im*(1 + ap)*omega)) * CHm2 + 2*a^2*(-1 
-                + a^2)*CHm3 )) * YHm0
+        if a < 1e-2
+            return ((-(5/4) + (1/3) * omega * (-9im + (9 + 4im*omega) * omega) + (3/2 + (3im - 2*omega) * omega) * CHm1 + (-(3/2) - 2im*omega) * CHm2 + CHm3)
+                    + ((1/96) * m * (-11im + 12*omega + 6im*CHm1)) * a
+                    + ((1/192) * (-105 + 8*omega*(im + 6*(-5 - 4im*omega)*omega) + 6*(15 + 4*omega*(-3im + 8*omega))*CHm1 + (-48 + 96im*omega)*CHm2)) * a^2
+                    + ((1/128) * im * m * (-77 + 8*omega*(-15im + 8*omega) + (62 + 64im*omega)*CHm1 - 32*CHm2)) * a^3
+                    + ((1/128) * (-49 + 2*m^2 + 8*omega*(17im + (-33 - 16im*omega)*omega) + 12*(3 + omega*(-11im + 12*omega))*CHm1 + (-16 + 80im*omega)*CHm2)) * a^4
+                    + ((1/384) * im * m * (-353 + 6*omega*(-67im + 24*omega) + 3*(87 + 64im*omega)*CHm1 - 120*CHm2)) * a^5
+                    + ((1/3072) * (-885 + 96*m^2*(3 + 2im*omega) + 16*omega*(335im + 4*(-108 - 37im*omega)*omega) + 6*(99 - 16*m^2 + 8*omega*(-89im + 68*omega))*CHm1 + 48*(-5 + 44im*omega)*CHm2)) * a^6) * YHm0
+        else
+            return ((1 / (48 * a^6 * (-1 + a^2)^3)) * ( -768*(-1 + ap) + a^2*(96*(-29 + 25*ap) + a*(-264*im*(-1 + ap)*m 
+                    + im*a^2*(-709 + 577*ap)*m + a^4*m*(619*im - 358*im*ap + 6*(20 - 21*ap)*omega) + 6*a*(619 - 435*ap 
+                    + 64*im*(-1 + ap)*omega) + a^8*m*(-9*im*(1 + ap) - im*(-3 + ap)*m^2 + 84*omega + 24*ap*(1 
+                    + 2*im*omega)*omega) + a^9*(-3*(5 + m^2) - 12*im*(3 + m^2)*omega + 48*omega^2 + 64*im*omega^3) 
+                    + a^6*m*(3*im*(-55 + 18*ap) + 4*im*(-1 + ap)*m^2 + 6*omega*(-34 + 19*ap - 2*im*(1 + ap)*omega)) 
+                    + a^5*(345 - 150*ap + (72 - 51*ap)*m^2 + 2*im*(-484 + 115*ap)*omega + 4*omega^2*(39 + 75*ap 
+                    + 2*im*(15 + 13*ap)*omega)) + 3*a^7*(25 + 6*ap + m^2*(-9 + 2*ap - 6*im*(-1 + ap)*omega) 
+                    - 2*im*omega*(-58 - 15*ap - 2*im*(11 + 20*ap)*omega + 8*(3 + 2*ap)*omega^2)) + a^3*(3*(-701 + 370*ap) 
+                    + 42*(-1 + ap)*m^2 - 8*im*omega*(-130 + 88*ap + (1 + ap)*omega*(-9*im + 4*omega))))) + 6*a^2*(-1 
+                    + a^2)*(-48*(-1 + ap) + a^2*(-114 + 90*ap - 15*im*a*(-1 + ap)*m + 7*im*a^3*(-3 + 2*ap)*m 
+                    + 2*a^5*m*(im*(3 + ap) + (2 - 4*ap)*omega) + a^6*(3 + m^2 + 8*(im - 2*omega)*omega) - a^2*(-87 
+                    + 36*ap + 2*im*(5 - 17*ap)*omega + 8*(1 + ap)*omega^2) + 2*a^4*(-3*(4 + ap) + (-1 + ap)*m^2 
+                    + omega*(im - 18*im*ap + 10*omega + 8*ap*omega)))) * CHm1 + 4*a^2*(-1 + a^2)*(4 - 4*ap + a^2*(-3 
+                    + 4*ap - im*a*(-1 + ap)*m + a^2*(-1 - 4*im*omega) + 2*im*(1 + ap)*omega)) * CHm2 + 2*a^2*(-1 
+                    + a^2)*CHm3 )) * YHm0
+        end
     else
         throw(DomainError(order, "Currently horizontal expansion orders only up to 3 are supported"))
     end
@@ -381,23 +444,49 @@ function Ypp_ingoing_hor_p2(m::Int, a, omega, lambda, order::Int; data_type=_DEF
         return YHm0
     elseif order == 1
         CHm1 = a_minus_hor(2, m, a, omega, lambda, 1; data_type=data_type)
-        return (-(1/2) + (2*(-1 + ap))/a^2 + (im*a*m)/(2*ap) + CHm1) * YHm0
+        if a < 1e-2
+            return (-(3/2) + CHm1 + ((im * m) / 2) * a + (-(1/4)) * a^2
+                    + ((im * m) / 4) * a^3 + (-(1/8)) * a^4
+                    + ((3 * im * m) / 16) * a^5 + (-(5/64)) * a^6) * YHm0
+        else
+            return (-(1/2) + (2*(-1 + ap))/a^2 + (im*a*m)/(2*ap) + CHm1) * YHm0
+        end
     elseif order == 2
         CHm1 = a_minus_hor(2, m, a, omega, lambda, 1; data_type=data_type)
         CHm2 = a_minus_hor(2, m, a, omega, lambda, 2; data_type=data_type)
-        return ((1 / (8 * a^4 * (-1 + a^2))) * (48*(-1 + ap) + a^2*(66 - 42*ap - 3*a^2*(7 + 2*ap) 
-                + 7*im*a*(-1 + ap)*m + 2*im*a^3*(4 + ap)*m + a^4*(3 + m^2)) - 4*a^2*(4*(-1 + ap) 
-                + a^2*(3 + a^2 - 4*ap + im*a*ap*m)) * CHm1 + 8*a^4*(-1 + a^2)*CHm2)) * YHm0
+        if a < 1e-2
+            return (3/2 - (3*CHp1)/2 + CHp2
+                    + (-(1/16) * im * m * (-13 + 8*CHp1)) * a 
+                    + ((1/32) * (15 - 4*m^2 - 8*CHp1)) * a^2
+                    + ((1/64) * im * m * (37 - 16*CHp1)) * a^3
+                    + ((1/32) * (9 - 4*m^2 - 4*CHp1)) * a^4
+                    + (-(3/128) * im * m * (-21 + 8*CHp1)) * a^5
+                    + ((1/512) * (99 - 64*m^2 - 40*CHp1)) * a^6) * YHm0
+        else
+            return ((1 / (8 * a^4 * (-1 + a^2))) * (48*(-1 + ap) + a^2*(66 - 42*ap - 3*a^2*(7 + 2*ap) 
+                    + 7*im*a*(-1 + ap)*m + 2*im*a^3*(4 + ap)*m + a^4*(3 + m^2)) - 4*a^2*(4*(-1 + ap) 
+                    + a^2*(3 + a^2 - 4*ap + im*a*ap*m)) * CHm1 + 8*a^4*(-1 + a^2)*CHm2)) * YHm0
+        end
     elseif order == 3
         CHm1 = a_minus_hor(2, m, a, omega, lambda, 1; data_type=data_type)
         CHm2 = a_minus_hor(2, m, a, omega, lambda, 2; data_type=data_type)
         CHm3 = a_minus_hor(2, m, a, omega, lambda, 3; data_type=data_type)
-        return ((1 / (48 * a^6 * (-1 + a^2)^2)) * (768*(-1 + ap) + a^2*(96*(21 - 17*ap) + 6*a^2*(-283 + 163*ap) 
-                + 120*im*a*(-1 + ap)*m - 5*im*a^3*(-47 + 35*ap)*m + im*a^5*(-97 + 66*ap)*m - 3*a^8*(5 + m^2) 
-                - im*a^7*m*(9*(2 + ap) + ap*m^2) + a^4*(405 - 132*ap - 9*(-1 + ap)*m^2) + 6*a^6*(10 + 3*ap 
-                + (-1 + 2*ap)*m^2)) + 6*a^2*(-1 + a^2)*(48*(-1 + ap) + a^2*(66 - 42*ap - 3*a^2*(7 + 2*ap) 
-                + 7*im*a*(-1 + ap)*m + 2*im*a^3*(4 + ap)*m + a^4*(3 + m^2)) * CHm1 - 4*a^2*(4*(-1 + ap) 
-                + a^2*(3 + a^2 - 4*ap + im*a*ap*m)) * CHm2 + 8*a^4*(-1 + a^2)*CHm3))) * YHm0
+        if a < 1e-2
+            return ((1/4) * (-5 + 6*CHp1 - 6*CHp2) + CHp3
+                    + ((1/96) * im * m * (-83 + 78*CHp1 - 48*CHp2)) * a 
+                    + ((1/64) * (-35 + 14*m^2 + (30 - 8*m^2)*CHp1 - 16*CHp2)) * a^2
+                    + ((1/384) * im * m * (-299 + 8*m^2 + 222*CHp1 - 96*CHp2)) * a^3
+                    + ((1/128) * (-49 + 35*m^2 + 4*(9 - 4*m^2)*CHp1 - 16*CHp2)) * a^4
+                    + ((1/384) * im * m * (-286 + 12*m^2 + 189*CHp1 - 72*CHp2)) * a^5
+                    + ((-295 + 316*m^2 + 2*(99 - 64*m^2)*CHp1 - 80*CHp2) / 1024) * a^6) * YHm0
+        else
+            return ((1 / (48 * a^6 * (-1 + a^2)^2)) * (768*(-1 + ap) + a^2*(96*(21 - 17*ap) + 6*a^2*(-283 + 163*ap) 
+                    + 120*im*a*(-1 + ap)*m - 5*im*a^3*(-47 + 35*ap)*m + im*a^5*(-97 + 66*ap)*m - 3*a^8*(5 + m^2) 
+                    - im*a^7*m*(9*(2 + ap) + ap*m^2) + a^4*(405 - 132*ap - 9*(-1 + ap)*m^2) + 6*a^6*(10 + 3*ap 
+                    + (-1 + 2*ap)*m^2)) + 6*a^2*(-1 + a^2)*(48*(-1 + ap) + a^2*(66 - 42*ap - 3*a^2*(7 + 2*ap) 
+                    + 7*im*a*(-1 + ap)*m + 2*im*a^3*(4 + ap)*m + a^4*(3 + m^2)) * CHm1 - 4*a^2*(4*(-1 + ap) 
+                    + a^2*(3 + a^2 - 4*ap + im*a*ap*m)) * CHm2 + 8*a^4*(-1 + a^2)*CHm3))) * YHm0
+        end
     else
         throw(DomainError(order, "Currently horizontal expansion orders only up to 3 are supported"))
     end
