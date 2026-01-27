@@ -62,12 +62,8 @@ function Y_solution_in_m2(l::Int, m::Int, a, omega, rsin, rsout, order_inf, orde
     # Precompute GSN radial solution and initial data
     rin = r_from_rstar(a, rsin)
     rout = r_from_rstar(a, rsout)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(-2, l, m, a, omega, IN, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method=method)
+
+    X = GSN_radial(-2, l, m, a, omega, IN, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method="linear")
     λ = X.mode.lambda
     Binc = X.incidence_amplitude
     Bref = X.reflection_amplitude
@@ -122,12 +118,8 @@ function Y_solution_in_p2(l::Int, m::Int, a, omega, rsin, rsout, order_inf, orde
     # Precompute GSN radial solution and initial data
     rin = r_from_rstar(a, rsin)
     rout = r_from_rstar(a, rsout)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(2, l, m, a, omega, IN, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method=method)
+
+    X = GSN_radial(2, l, m, a, omega, IN, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method="linear")
     λ = X.mode.lambda
     Binc = X.incidence_amplitude
     Bref = X.reflection_amplitude
@@ -182,12 +174,8 @@ function Y_solution_up_m2(l::Int, m::Int, a, omega, rsin, rsout, order_inf, orde
     # Precompute GSN radial solution and initial data
     rin = r_from_rstar(a, rsin)
     rout = r_from_rstar(a, rsout)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(-2, l, m, a, omega, UP, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method=method)
+
+    X = GSN_radial(-2, l, m, a, omega, UP, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method="linear")
     λ = X.mode.lambda
     Cinc = X.incidence_amplitude
     Cref = X.reflection_amplitude
@@ -243,12 +231,8 @@ function Y_solution_up_p2(l::Int, m::Int, a, omega, rsin, rsout, order_inf, orde
     # Precompute GSN radial solution and initial data
     rin = r_from_rstar(a, rsin)
     rout = r_from_rstar(a, rsout)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(2, l, m, a, omega, UP, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method=method)
+
+    X = GSN_radial(2, l, m, a, omega, UP, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method="linear")
     λ = X.mode.lambda
     Cinc = X.incidence_amplitude
     Cref = X.reflection_amplitude
