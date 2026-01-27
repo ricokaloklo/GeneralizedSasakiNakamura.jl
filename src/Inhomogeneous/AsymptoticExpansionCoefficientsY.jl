@@ -455,13 +455,13 @@ function Ypp_ingoing_hor_p2(m::Int, a, omega, lambda, order::Int; data_type=_DEF
         CHm1 = a_minus_hor(2, m, a, omega, lambda, 1; data_type=data_type)
         CHm2 = a_minus_hor(2, m, a, omega, lambda, 2; data_type=data_type)
         if a < 1e-2
-            return (3/2 - (3*CHp1)/2 + CHp2
-                    + (-(1/16) * im * m * (-13 + 8*CHp1)) * a 
-                    + ((1/32) * (15 - 4*m^2 - 8*CHp1)) * a^2
-                    + ((1/64) * im * m * (37 - 16*CHp1)) * a^3
-                    + ((1/32) * (9 - 4*m^2 - 4*CHp1)) * a^4
-                    + (-(3/128) * im * m * (-21 + 8*CHp1)) * a^5
-                    + ((1/512) * (99 - 64*m^2 - 40*CHp1)) * a^6) * YHm0
+            return (3/2 - (3*CHm1)/2 + CHm2
+                    + ((1/16) * im * m * (-13 + 8*CHm1)) * a 
+                    + ((1/32) * (15 - 4*m^2 - 8*CHm1)) * a^2
+                    + ((1/64) * im * m * (-37 + 16*CHm1)) * a^3
+                    + ((1/32) * (9 - 4*m^2 - 4*CHm1)) * a^4
+                    + ((3/128) * im * m * (-21 + 8*CHm1)) * a^5
+                    + ((1/512) * (99 - 64*m^2 - 40*CHm1)) * a^6) * YHm0
         else
             return ((1 / (8 * a^4 * (-1 + a^2))) * (48*(-1 + ap) + a^2*(66 - 42*ap - 3*a^2*(7 + 2*ap) 
                     + 7*im*a*(-1 + ap)*m + 2*im*a^3*(4 + ap)*m + a^4*(3 + m^2)) - 4*a^2*(4*(-1 + ap) 
@@ -472,13 +472,13 @@ function Ypp_ingoing_hor_p2(m::Int, a, omega, lambda, order::Int; data_type=_DEF
         CHm2 = a_minus_hor(2, m, a, omega, lambda, 2; data_type=data_type)
         CHm3 = a_minus_hor(2, m, a, omega, lambda, 3; data_type=data_type)
         if a < 1e-2
-            return ((1/4) * (-5 + 6*CHp1 - 6*CHp2) + CHp3
-                    + ((1/96) * im * m * (-83 + 78*CHp1 - 48*CHp2)) * a 
-                    + ((1/64) * (-35 + 14*m^2 + (30 - 8*m^2)*CHp1 - 16*CHp2)) * a^2
-                    + ((1/384) * im * m * (-299 + 8*m^2 + 222*CHp1 - 96*CHp2)) * a^3
-                    + ((1/128) * (-49 + 35*m^2 + 4*(9 - 4*m^2)*CHp1 - 16*CHp2)) * a^4
-                    + ((1/384) * im * m * (-286 + 12*m^2 + 189*CHp1 - 72*CHp2)) * a^5
-                    + ((-295 + 316*m^2 + 2*(99 - 64*m^2)*CHp1 - 80*CHp2) / 1024) * a^6) * YHm0
+            return ((1/4) * (-5 + 6*CHm1 - 6*CHm2) + CHm3
+                    + (-(1/96) * im * m * (-83 + 78*CHm1 - 48*CHm2)) * a 
+                    + ((1/64) * (-35 + 14*m^2 + (30 - 8*m^2)*CHm1 - 16*CHm2)) * a^2
+                    + (-(1/384) * im * m * (-299 + 8*m^2 + 222*CHm1 - 96*CHm2)) * a^3
+                    + ((1/128) * (-49 + 35*m^2 + 4*(9 - 4*m^2)*CHm1 - 16*CHm2)) * a^4
+                    + (-(1/384) * im * m * (-286 + 12*m^2 + 189*CHm1 - 72*CHm2)) * a^5
+                    + ((-295 + 316*m^2 + 2*(99 - 64*m^2)*CHm1 - 80*CHm2) / 1024) * a^6) * YHm0
         else
             return ((1 / (48 * a^6 * (-1 + a^2)^2)) * (768*(-1 + ap) + a^2*(96*(21 - 17*ap) + 6*a^2*(-283 + 163*ap) 
                     + 120*im*a*(-1 + ap)*m - 5*im*a^3*(-47 + 35*ap)*m + im*a^5*(-97 + 66*ap)*m - 3*a^8*(5 + m^2) 
