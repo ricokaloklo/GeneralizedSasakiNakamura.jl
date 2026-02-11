@@ -16,6 +16,7 @@ using .Solutions
 
 using SpinWeightedSpheroidalHarmonics
 using DifferentialEquations # Should have been compiled by now
+using Logging, LoggingExtras
 
 export GSN_radial, Teukolsky_radial # Homogeneous solutions
 export GSN_pointparticle_mode, Teukolsky_pointparticle_mode # Inhomogeneous solutions
@@ -78,6 +79,7 @@ struct GSNRadialFunction
     numerical_Riccati_solution # Store the numerical solution to the GSN equation in the Riccati form if applicable
     GSN_solution # Store the *full* GSN solution where asymptotic solutions are smoothly attached
     normalization_convention::NormalizationConvention # The normalization convention used for the *stored* GSN solution
+    method # The method used to solve the GSN equation
 end
 
 # Implement pretty-printing for GSNRadialFunction
@@ -95,6 +97,7 @@ function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
     println(io, "    incidence_amplitude=$(gsn_func.incidence_amplitude),")
     println(io, "    reflection_amplitude=$(gsn_func.reflection_amplitude),")
     println(io, "    normalization_convention=$(gsn_func.normalization_convention)")
+    println(io, "    method=$(gsn_func.method)")
     print(io, ")")
 end
 
@@ -173,6 +176,10 @@ function GSN_radial(
     if omega == 0
         return GSN_radial(s, l, m, a, omega, boundary_condition)
     else
+        sawwarn = Ref(false)
+        logger = EarlyFilteredLogger(
+            (log)->(log.level == Logging.Warn && (sawwarn[] = true); log.level ≥ Logging.Error),
+            current_logger())
         # Compute the SWSH eigenvalue
         lambda = spin_weighted_spheroidal_eigenvalue(s, l, m, a*omega)
         # Fill in the mode information
@@ -181,8 +188,16 @@ function GSN_radial(
             # Solve for Xin
             if isa(omega, Real)
                 if method == "auto"
-                    # For real frequencies, we use the Riccati form
-                    method = "Riccati"
+                    # For real frequencies, we first try the Riccati form
+                    sol = with_logger(logger) do
+                        GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+                    end
+
+                    if sawwarn[]
+                        return GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+                    else 
+                        return sol
+                    end
                 end
 
                 if method == "Riccati"
@@ -219,12 +234,20 @@ function GSN_radial(
                     Xinsoln,
                     Phiinsoln,
                     semianalytical_Xinsoln,
-                    UNIT_GSN_TRANS
+                    UNIT_GSN_TRANS,
+                    method
                 )
             else
                 if method == "auto"
-                    # For complex frequencies, we solve the linear form
-                    method = "linear"
+                    # For complex frequencies, we first try the linear form
+                    sol = with_logger(logger) do
+                        GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+                    end
+                    if sawwarn[]
+                        return GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+                    else 
+                        return sol
+                    end
                 end
 
                 p = omega - m*Kerr.omega_horizon(a)
@@ -295,15 +318,23 @@ function GSN_radial(
                     Xinsoln,
                     Phiinsoln,
                     semianalytical_Xinsoln_rho,
-                    UNIT_GSN_TRANS
+                    UNIT_GSN_TRANS,
+                    method
                 )
             end
         elseif boundary_condition == UP
             # Solve for Xup
             if isa(omega, Real)
                 if method == "auto"
-                    # For real frequencies, we use the Riccati form
-                    method = "Riccati"
+                    # For real frequencies, we first try the Riccati form
+                    sol = with_logger(logger) do
+                        GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+                    end
+                    if sawwarn[]
+                        return GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+                    else 
+                        return sol
+                    end
                 end
 
                 if method == "Riccati"
@@ -341,12 +372,20 @@ function GSN_radial(
                     Xupsoln,
                     Phiupsoln,
                     semianalytical_Xupsoln,
-                    UNIT_GSN_TRANS
+                    UNIT_GSN_TRANS,
+                    method
                 )
             else
                 if method == "auto"
-                    # For complex frequencies, we solve the linear form
-                    method = "linear"
+                    # For complex frequencies, we first try the linear form
+                    sol = with_logger(logger) do
+                        GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+                    end
+                    if sawwarn[]
+                        return GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+                    else 
+                        return sol
+                    end
                 end
 
                 p = omega - m*Kerr.omega_horizon(a)
@@ -417,7 +456,8 @@ function GSN_radial(
                     Xupsoln,
                     Phiupsoln,
                     semianalytical_Xupsoln_rho,
-                    UNIT_GSN_TRANS
+                    UNIT_GSN_TRANS,
+                    method
                 )
             end
         elseif boundary_condition == DOWN
@@ -453,7 +493,8 @@ function GSN_radial(
                 missing,
                 missing,
                 _full_Xdown_solution,
-                UNIT_GSN_TRANS
+                UNIT_GSN_TRANS,
+                method
             )
         elseif boundary_condition == OUT
             # Construct Xout from Xin and Xup, instead of solving the ODE numerically with the boundary condition
@@ -488,7 +529,8 @@ function GSN_radial(
                 missing,
                 missing,
                 _full_Xout_solution,
-                UNIT_GSN_TRANS
+                UNIT_GSN_TRANS,
+                method
             )
         else
             error("Boundary condition must be IN or UP")
@@ -519,7 +561,8 @@ function GSN_radial(
                 missing,
                 missing,
                 GSN_solution,
-                UNIT_TEUKOLSKY_TRANS
+                UNIT_TEUKOLSKY_TRANS,
+                method
             )
     end
 end
