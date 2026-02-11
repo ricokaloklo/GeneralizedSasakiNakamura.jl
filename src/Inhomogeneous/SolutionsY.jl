@@ -63,7 +63,7 @@ function Y_solution_in_m2(l::Int, m::Int, a, omega, rsin, rsout, order_inf, orde
     rin = r_from_rstar(a, rsin)
     rout = r_from_rstar(a, rsout)
 
-    X = GSN_radial(-2, l, m, a, omega, IN, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method="linear")
+    X = GSN_radial(-2, l, m, a, omega, IN, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3)
     λ = X.mode.lambda
     Binc = X.incidence_amplitude
     Bref = X.reflection_amplitude
@@ -119,7 +119,7 @@ function Y_solution_in_p2(l::Int, m::Int, a, omega, rsin, rsout, order_inf, orde
     rin = r_from_rstar(a, rsin)
     rout = r_from_rstar(a, rsout)
 
-    X = GSN_radial(2, l, m, a, omega, IN, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method="linear")
+    X = GSN_radial(2, l, m, a, omega, IN, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3)
     λ = X.mode.lambda
     Binc = X.incidence_amplitude
     Bref = X.reflection_amplitude
@@ -175,7 +175,7 @@ function Y_solution_up_m2(l::Int, m::Int, a, omega, rsin, rsout, order_inf, orde
     rin = r_from_rstar(a, rsin)
     rout = r_from_rstar(a, rsout)
 
-    X = GSN_radial(-2, l, m, a, omega, UP, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method="linear")
+    X = GSN_radial(-2, l, m, a, omega, UP, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3)
     λ = X.mode.lambda
     Cinc = X.incidence_amplitude
     Cref = X.reflection_amplitude
@@ -232,7 +232,7 @@ function Y_solution_up_p2(l::Int, m::Int, a, omega, rsin, rsout, order_inf, orde
     rin = r_from_rstar(a, rsin)
     rout = r_from_rstar(a, rsout)
 
-    X = GSN_radial(2, l, m, a, omega, UP, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3, method="linear")
+    X = GSN_radial(2, l, m, a, omega, UP, rsin, rsout; horizon_expansion_order=order_hor+2, infinity_expansion_order=order_inf+3)
     λ = X.mode.lambda
     Cinc = X.incidence_amplitude
     Cref = X.reflection_amplitude
@@ -308,12 +308,7 @@ function Y_solution(s::Int, l::Int, m::Int, a, omega, bc::BoundaryCondition; rsi
 end
 
 function Ypp_in_inf_m2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, order=6)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(-2, l, m, a, omega, IN, rsin, rsout; method=method)
+    X = GSN_radial(-2, l, m, a, omega, IN, rsin, rsout)
     Binc = X.incidence_amplitude
     Bref = X.reflection_amplitude
 
@@ -348,12 +343,7 @@ function Ypp_in_inf_m2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFA
 end
 
 function Ypp_in_hor_m2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, order=3)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(-2, l, m, a, omega, IN, rsin, rsout; method=method, horizon_expansion_order=5)
+    X = GSN_radial(-2, l, m, a, omega, IN, rsin, rsout; horizon_expansion_order=5)
     lambda = X.mode.lambda
 
     function Ypp_num(rs)
@@ -388,12 +378,7 @@ function Ypp_in_hor_m2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFA
 end
 
 function Ypp_up_inf_m2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, order=6)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(-2, l, m, a, omega, UP, rsin, rsout; method=method)
+    X = GSN_radial(-2, l, m, a, omega, UP, rsin, rsout)
 
     function Ypp_num(rs)
         r = r_from_rstar(a, rs)
@@ -424,12 +409,7 @@ function Ypp_up_inf_m2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFA
 end
 
 function Ypp_up_hor_m2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, order=3)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(-2, l, m, a, omega, UP, rsin, rsout; method=method)
+    X = GSN_radial(-2, l, m, a, omega, UP, rsin, rsout)
     Cinc = X.incidence_amplitude
     Cref = X.reflection_amplitude
 
@@ -466,12 +446,7 @@ function Ypp_up_hor_m2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFA
 end
 
 function Ypp_in_inf_p2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, order=6)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(2, l, m, a, omega, IN, rsin, rsout; method=method)
+    X = GSN_radial(2, l, m, a, omega, IN, rsin, rsout)
     Binc = X.incidence_amplitude
     Bref = X.reflection_amplitude
 
@@ -506,12 +481,7 @@ function Ypp_in_inf_p2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFA
 end
 
 function Ypp_in_hor_p2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, order=3)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(2, l, m, a, omega, IN, rsin, rsout; method=method)
+    X = GSN_radial(2, l, m, a, omega, IN, rsin, rsout)
 
     function Ypp_num(rs)
         r = r_from_rstar(a, rs)
@@ -543,12 +513,7 @@ function Ypp_in_hor_p2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFA
 end
 
 function Ypp_up_inf_p2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, order=6)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(2, l, m, a, omega, UP, rsin, rsout; method=method)
+    X = GSN_radial(2, l, m, a, omega, UP, rsin, rsout)
 
     function Ypp_num(rs)
         r = r_from_rstar(a, rs)
@@ -579,12 +544,7 @@ function Ypp_up_inf_p2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFA
 end
 
 function Ypp_up_hor_p2(l::Int, m::Int, a, omega; rsin=_DEFAULT_rsin, rsout=_DEFAULT_rsout, order=3)
-    if abs(omega) > 1.0
-        method = "Riccati"
-    else
-        method = "linear"
-    end
-    X = GSN_radial(2, l, m, a, omega, UP, rsin, rsout; method=method)
+    X = GSN_radial(2, l, m, a, omega, UP, rsin, rsout)
     Cinc = X.incidence_amplitude
     Cref = X.reflection_amplitude
 
