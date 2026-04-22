@@ -218,8 +218,12 @@ If you have used this code's capability to solve for the gravitational waveform 
     eprint = "2512.07937",
     archivePrefix = "arXiv",
     primaryClass = "gr-qc",
-    month = "12",
-    year = "2025"
+    doi = "10.1103/bljh-l413",
+    journal = "Phys. Rev. D",
+    volume = "113",
+    number = "6",
+    pages = "L061505",
+    year = "2026"
 }
 ```
 
