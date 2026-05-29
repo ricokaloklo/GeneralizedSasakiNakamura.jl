@@ -17,9 +17,11 @@ using .Solutions
 using SpinWeightedSpheroidalHarmonics
 using DifferentialEquations # Should have been compiled by now
 using Logging, LoggingExtras
+using KerrGeodesics: Kerr_Geodesics
 
 export GSN_radial, Teukolsky_radial # Homogeneous solutions
-export GSN_pointparticle_mode, Teukolsky_pointparticle_mode # Inhomogeneous solutions
+export GSN_pointparticle_mode, Teukolsky_pointparticle_mode, Teukolsky_pointparticle_flux # Inhomogeneous solutions
+export ISEM
 
 # Default values
 _DEFAULT_rsin = -50
@@ -61,7 +63,7 @@ end
 # Implement pretty-printing for Mode type
 # REPL
 function Base.show(io::IO, ::MIME"text/plain", mode::Mode)
-    print(io, "Mode(s=$(mode.s), l=$(mode.l), m=$(mode.m), a=$(mode.a), omega=$(mode.omega), lambda=$(mode.lambda))")
+    print(io, "Mode(s = $(mode.s), l = $(mode.l), m = $(mode.m), a = $(mode.a), omega = $(mode.omega), lambda = $(mode.lambda))")
 end
 
 struct GSNRadialFunction
@@ -86,23 +88,39 @@ end
 # Mostly to suppress the printing of the numerical solution
 function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
     println(io, "GSNRadialFunction(")
-    print(io, "    mode="); show(io, "text/plain", gsn_func.mode); println(io, ",")
-    println(io, "    boundary_condition=$(gsn_func.boundary_condition),")
-    println(io, "    rsin=$(gsn_func.rsin),")
-    println(io, "    rsout=$(gsn_func.rsout),")
-    println(io, "    rsmp=$(gsn_func.rsmp),")
-    println(io, "    horizon_expansion_order=$(gsn_func.horizon_expansion_order),")
-    println(io, "    infinity_expansion_order=$(gsn_func.infinity_expansion_order),")
-    println(io, "    transmission_amplitude=$(gsn_func.transmission_amplitude),")
-    println(io, "    incidence_amplitude=$(gsn_func.incidence_amplitude),")
-    println(io, "    reflection_amplitude=$(gsn_func.reflection_amplitude),")
-    println(io, "    normalization_convention=$(gsn_func.normalization_convention)")
-    println(io, "    method=$(gsn_func.method)")
+    print(io, "    mode = "); show(io, "text/plain", gsn_func.mode); println(io, ",")
+    println(io, "    boundary_condition = $(gsn_func.boundary_condition),")
+    if gsn_func.method == "ISEM" && gsn_func.numerical_GSN_solution isa NamedTuple
+        params = gsn_func.numerical_GSN_solution
+        println(io, "    matching_point(xm = $(params.xm), rhom = $(params.rhom)),")
+        println(io, "    N = $(params.N),")
+        println(io, "    tolerance = $(params.tol),")
+        println(io, "    small/large_frequency_expansion(sfe = $(params.sfe), lfe = $(params.lfe)),")
+        println(io, "    Teukolsky-Starobinsky_identity(InInf = $(params.TSinInf), OutInf = $(params.TSoutInf), InHor = $(params.TSinHor), OutHor = $(params.TSoutHor)),")
+    else
+        println(io, "    rsin = $(gsn_func.rsin),")
+        println(io, "    rsout = $(gsn_func.rsout),")
+        println(io, "    rsmp = $(gsn_func.rsmp),")
+        println(io, "    horizon_expansion_order = $(gsn_func.horizon_expansion_order),")
+        println(io, "    infinity_expansion_order = $(gsn_func.infinity_expansion_order),")
+    end
+    println(io, "    transmission_amplitude = $(gsn_func.transmission_amplitude),")
+    println(io, "    incidence_amplitude = $(gsn_func.incidence_amplitude),")
+    println(io, "    reflection_amplitude = $(gsn_func.reflection_amplitude),")
+    println(io, "    normalization_convention = $(gsn_func.normalization_convention)")
+    println(io, "    method = $(gsn_func.method)")
     print(io, ")")
 end
 
 function Base.show(io::IO, gsn_func::GSNRadialFunction)
-    print(io, "GSNRadialFunction(mode=Mode(s=$(gsn_func.mode.s), l=$(gsn_func.mode.l), m=$(gsn_func.mode.m), a=$(gsn_func.mode.a), omega=$(gsn_func.mode.omega), lambda=$(gsn_func.mode.lambda)), boundary_condition=$(gsn_func.boundary_condition))")
+    print(io, "GSNRadialFunction(mode = Mode(s = $(gsn_func.mode.s), l = $(gsn_func.mode.l), m = $(gsn_func.mode.m), a = $(gsn_func.mode.a), omega = $(gsn_func.mode.omega), lambda = $(gsn_func.mode.lambda)), boundary_condition = $(gsn_func.boundary_condition))")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", gsn_funcs::Tuple{GSNRadialFunction, GSNRadialFunction})
+    println(io, "(")
+    show(io, "text/plain", gsn_funcs[1]); println(io, ",")
+    show(io, "text/plain", gsn_funcs[2])
+    print(io, ")")
 end
 
 struct TeukolskyRadialFunction
@@ -111,7 +129,8 @@ struct TeukolskyRadialFunction
     transmission_amplitude # In Teukolsky formalism
     incidence_amplitude # In Teukolsky formalism
     reflection_amplitude # In Teukolsky formalism
-    GSN_solution::Union{GSNRadialFunction, Missing} # Store the full GSN solution
+    P_solution::Union{Function, Missing} # Store the full P solution if available
+    GSN_solution::Union{GSNRadialFunction, Missing} # Store the full GSN solution if available
     Teukolsky_solution # Store the full Teukolsky solution
     normalization_convention::NormalizationConvention # The normalization convention used for the *stored* Teukolsky solution
 end
@@ -120,17 +139,106 @@ end
 # Mostly to suppress the printing of the numerical solution
 function Base.show(io::IO, ::MIME"text/plain", teuk_func::TeukolskyRadialFunction)
     println(io, "TeukolskyRadialFunction(")
-    print(io, "    mode="); show(io, "text/plain", teuk_func.mode); println(io, ",")
-    println(io, "    boundary_condition=$(teuk_func.boundary_condition),")
-    println(io, "    transmission_amplitude=$(teuk_func.transmission_amplitude),")
-    println(io, "    incidence_amplitude=$(teuk_func.incidence_amplitude),")
-    println(io, "    reflection_amplitude=$(teuk_func.reflection_amplitude),")
-    println(io, "    normalization_convention=$(teuk_func.normalization_convention)")
+    print(io, "    mode = "); show(io, "text/plain", teuk_func.mode); println(io, ",")
+    println(io, "    boundary_condition = $(teuk_func.boundary_condition),")
+    println(io, "    transmission_amplitude = $(teuk_func.transmission_amplitude),")
+    println(io, "    incidence_amplitude = $(teuk_func.incidence_amplitude),")
+    println(io, "    reflection_amplitude = $(teuk_func.reflection_amplitude),")
+    println(io, "    normalization_convention = $(teuk_func.normalization_convention)")
     print(io, ")")
 end
 
 function Base.show(io::IO, teuk_func::TeukolskyRadialFunction)
-    print(io, "TeukolskyRadialFunction(mode=Mode(s=$(teuk_func.mode.s), l=$(teuk_func.mode.l), m=$(teuk_func.mode.m), a=$(teuk_func.mode.a), omega=$(teuk_func.mode.omega), lambda=$(teuk_func.mode.lambda)), boundary_condition=$(teuk_func.boundary_condition))")
+    print(io, "TeukolskyRadialFunction(mode = Mode(s = $(teuk_func.mode.s), l = $(teuk_func.mode.l), m = $(teuk_func.mode.m), a = $(teuk_func.mode.a), omega = $(teuk_func.mode.omega), lambda = $(teuk_func.mode.lambda)), boundary_condition = $(teuk_func.boundary_condition))")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", teuk_funcs::Tuple{TeukolskyRadialFunction, TeukolskyRadialFunction})
+    println(io, "(")
+    show(io, "text/plain", teuk_funcs[1]); println(io, ",")
+    show(io, "text/plain", teuk_funcs[2])
+    print(io, ")")
+end
+
+include("ISEM/ISEM.jl")
+
+@inline _use_isem_method(method) = method == "auto" || method == "ISEM"
+
+@inline function _combine_isem_down(Rin, Rup)
+    Binc = Rin.incidence_amplitude
+    Bref = Rin.reflection_amplitude
+    Cinc = Rup.incidence_amplitude
+    Cref = Rup.reflection_amplitude
+
+    function teuk_func(coord)
+        Rin_vals = Rin.Teukolsky_solution(coord)
+        Rup_vals = Rup.Teukolsky_solution(coord)
+        R = Binc^-1 * (Rin_vals[1] - Bref * Rup_vals[1])
+        dR = Binc^-1 * (Rin_vals[2] - Bref * Rup_vals[2])
+        d2R = Binc^-1 * (Rin_vals[3] - Bref * Rup_vals[3])
+        err = max(Rin_vals[4], Rup_vals[4])
+        return (R, dR, d2R, err)
+    end
+
+    return TeukolskyRadialFunction(
+        Rin.mode,
+        DOWN,
+        one(Binc),
+        Binc^-1 - Bref * Cref / Binc,
+        -Bref * Cinc / Binc,
+        missing,
+        missing,
+        teuk_func,
+        UNIT_TEUKOLSKY_TRANS,
+    )
+end
+
+@inline function _combine_isem_out(Rin, Rup)
+    Binc = Rin.incidence_amplitude
+    Bref = Rin.reflection_amplitude
+    Cinc = Rup.incidence_amplitude
+    Cref = Rup.reflection_amplitude
+
+    function teuk_func(coord)
+        Rin_vals = Rin.Teukolsky_solution(coord)
+        Rup_vals = Rup.Teukolsky_solution(coord)
+        R = Cinc^-1 * (Rup_vals[1] - Cref * Rin_vals[1])
+        dR = Cinc^-1 * (Rup_vals[2] - Cref * Rin_vals[2])
+        d2R = Cinc^-1 * (Rup_vals[3] - Cref * Rin_vals[3])
+        err = max(Rin_vals[4], Rup_vals[4])
+        return (R, dR, d2R, err)
+    end
+
+    return TeukolskyRadialFunction(
+        Rin.mode,
+        OUT,
+        one(Cinc),
+        Cinc^-1 - Bref * Cref / Cinc,
+        -Binc * Cref / Cinc,
+        missing,
+        missing,
+        teuk_func,
+        UNIT_TEUKOLSKY_TRANS,
+    )
+end
+
+@inline function _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
+    tol = tol === nothing ? nothing : min(tol, ISEM._DEFAULT_TOL)
+    if boundary_condition == IN || boundary_condition == UP
+        return ISEM.Teukolsky_radial(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    elseif boundary_condition == DOWN
+        Rin, Rup = ISEM.Teukolsky_radial(s, l, m, a, omega; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        return _combine_isem_down(Rin, Rup)
+    elseif boundary_condition == OUT
+        Rin, Rup = ISEM.Teukolsky_radial(s, l, m, a, omega; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        return _combine_isem_out(Rin, Rup)
+    else
+        error("Does not understand the boundary condition applied to the solution")
+    end
+end
+
+@inline function _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN)
+    tol = tol === nothing ? nothing : min(tol, ISEM._DEFAULT_TOL)
+    return ISEM.GSN_radial(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
 end
 
 @doc raw"""
@@ -147,8 +255,8 @@ and boundary condition specified by `boundary_condition`, which can be either
 Note that the `OUT` and `DOWN` solutions are constructed by linearly combining the `IN` and `UP` solutions, respectively.
 
 The GSN function is numerically solved, for real values of `omega`, in the interval of *tortoise coordinates* $r_{*} \in$ `[rsin, rsout]` using the ODE solver (from `DifferentialEquations.jl`) specified by `ODE_algorithm` (default: `Vern9()`) 
-with tolerance specified by `tolerance` (default: `1e-12`). The ODE to be solved is determined by the keyword `method` (default: `auto`),
-which can be either `linear` (solving the GSN equation in a linear form) or `Riccati` (solving the GSN equation in a nonlinear form).
+with tolerance specified by `tolerance` (default: `1e-12`). The solution method is determined by the keyword `method` (default: `auto`).
+The default `auto` uses `ISEM`; the legacy ODE paths remain available as `linear` and `Riccati`.
 By default the data type used is `ComplexF64` (i.e. double-precision floating-point number) but it can be changed by
 specifying `data_type` (e.g. `Complex{BigFloat}` for complex arbitrary precision number).
 
@@ -171,10 +279,13 @@ Return a `GSNRadialFunction` object which contains all the information about the
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing
+    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing,
+    xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN
 )
     if omega == 0
         return GSN_radial(s, l, m, a, omega, boundary_condition)
+    elseif _use_isem_method(method)
+        return _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     else
         sawwarn = Ref(false)
         logger = EarlyFilteredLogger(
@@ -211,7 +322,7 @@ function GSN_radial(
                     Phiinsoln = nothing
                     Xinsoln = Solutions.solve_Xin(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=horizon_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
                 else
-                    error("Method must be either 'Riccati' or 'linear'")
+                    error("Method must be 'Riccati', 'linear', or 'ISEM'")
                 end
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
@@ -293,7 +404,7 @@ function GSN_radial(
                         odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
                     )
                 else
-                    error("Method must be either 'Riccati' or 'linear'")
+                    error("Method must be 'Riccati', 'linear', or 'ISEM'")
                 end
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
@@ -341,7 +452,7 @@ function GSN_radial(
                     # Actually solve for Phiup first
                     Phiupsoln = Solutions.solve_Phiup(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=infinity_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
                     if !SciMLBase.successful_retcode(Phiupsoln)
-                        @warn "There might be an issue with solving the Riccati form of the GSN equation. Consider using method=\"linear\" instead."
+                        @warn "There might be an issue with solving the Riccati form of the GSN equation. Consider using method=\"linear\" or method=\"ISEM\" instead."
                     end
                     # Then convert to Xup
                     Xupsoln = Solutions.Xsoln_from_Phisoln(Phiupsoln)
@@ -349,7 +460,7 @@ function GSN_radial(
                     Phiupsoln = nothing
                     Xupsoln = Solutions.solve_Xup(s, m, a, omega, lambda, rsin, rsout; initialconditions_order=infinity_expansion_order, dtype=data_type, odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance)
                 else
-                    error("Method must be either 'Riccati' or 'linear'")
+                    error("Method must be 'Riccati', 'linear', or 'ISEM'")
                 end
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
@@ -431,7 +542,7 @@ function GSN_radial(
                         odealgo=ODE_algorithm, abstol=tolerance, reltol=tolerance
                     )
                 else
-                    error("Method must be either 'Riccati' or 'linear'")
+                    error("Method must be 'Riccati', 'linear', or 'ISEM'")
                 end
 
                 # Extract the incidence and reflection amplitudes (NOTE: transmisson amplitude is *always* 1)
@@ -539,10 +650,14 @@ function GSN_radial(
 end
 
 function GSN_radial(
-    s::Int, l::Int, m::Int, a, omega, boundary_condition
+    s::Int, l::Int, m::Int, a, omega, boundary_condition;
+    method="auto", tolerance=Solutions._DEFAULTTOLERANCE,
+    xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN
 )
     if omega != 0
-        return GSN_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout)
+        return GSN_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout;
+            method=method, tolerance=tolerance, xm=xm, rhom=rhom, sfe=sfe, lfe=lfe,
+            TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, N=N, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     else
         teuk_func = Teukolsky_radial(s, l, m, a, omega, boundary_condition)
         GSN_solution = Solutions.Sasaki_Nakamura_function_from_Teukolsky_radial_function(s, m, a, omega, teuk_func.mode.lambda, teuk_func.Teukolsky_solution)
@@ -562,7 +677,7 @@ function GSN_radial(
                 missing,
                 GSN_solution,
                 UNIT_TEUKOLSKY_TRANS,
-                method
+                "static"
             )
     end
 end
@@ -578,10 +693,13 @@ while the order of the asymptotic expansion at the horizon and infinity are dete
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
 while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
 """
-function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, method="auto")
+function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN)
     if omega == 0
         Xin = GSN_radial(s, l, m, a, omega, IN)
         Xup = GSN_radial(s, l, m, a, omega, UP)
+    elseif _use_isem_method(method)
+        Xin = _gsn_from_isem(s, l, m, a, omega, IN; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+        Xup = _gsn_from_isem(s, l, m, a, omega, UP; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     elseif isa(omega, Real)
         # Solve for Xin and Xup using the default settings
         Xin = GSN_radial(s, l, m, a, omega, IN, _DEFAULT_rsin, _DEFAULT_rsout,
@@ -692,6 +810,7 @@ Note that the `OUT` and `DOWN` solutions are constructed by linearly combining t
 The full GSN solution is converted to the corresponding Teukolsky solution $(R(r), dR/dr)$ and 
 the incidence, reflection and transmission amplitude are converted from the GSN formalism to the Teukolsky formalism 
 with the normalization convention that the transmission amplitude is normalized to 1 (i.e. `normalization_convention=UNIT_TEUKOLSKY_TRANS`).
+When `method` is `"auto"` or `"ISEM"`, the homogeneous Teukolsky solution is obtained directly from `ISEM`.
 
 Note, however, when `omega = 0`, the exact Teukolsky function expressed using Gauss hypergeometric functions will be returned (i.e., instead of using the GSN formalism). 
 In this case, only `s`, `l`, `m`, `a`, `omega`, `boundary_condition` will be parsed.
@@ -702,70 +821,75 @@ where the value at the corresponding location $\rho = r_{*}(r) \in \mathbb{R}$ a
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing
+    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing,
+    xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing
 )
-    if omega == 0
-        return Teukolsky_radial(s, l, m, a, 0, boundary_condition)
-    else
-
-        # Solve for the GSN solution
-        gsn_func = GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method=method, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
-
-        # Convert asymptotic amplitudes from GSN to Teukolsky formalism
-        if gsn_func.boundary_condition == IN
-            transmission_amplitude_conv_factor = ConversionFactors.Btrans(s, m, a, omega, gsn_func.mode.lambda)
-            incidence_amplitude = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
-            reflection_amplitude = ConversionFactors.Bref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
-        elseif gsn_func.boundary_condition == UP
-            transmission_amplitude_conv_factor = ConversionFactors.Ctrans(s, m, a, omega, gsn_func.mode.lambda)
-            incidence_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
-            reflection_amplitude = ConversionFactors.Cref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
-        elseif gsn_func.boundary_condition == DOWN
-            # The "transmission amplitude" transforms like Binc
-            transmission_amplitude_conv_factor = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda)
-            # The "incidence amplitude" transforms like Btrans
-            incidence_amplitude = ConversionFactors.Btrans(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
-            # The "reflection amplitude" transforms like Cinc
-            reflection_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
-        elseif gsn_func.boundary_condition == OUT
-            # The "tranmission amplitude" transforms like Cinc
-            transmission_amplitude_conv_factor = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda)
-            # The "incidence amplitude" transforms like Bref
-            incidence_amplitude = ConversionFactors.Bref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
-            # The "reflection amplitude" transformslike Binc
-            reflection_amplitude = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
-        else
-            error("Does not understand the boundary condition applied to the solution")
-        end
-
-        # Convert the GSN solution to the Teukolsky solution
-        teuk_func(r) = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function(
-            gsn_func.mode.s,
-            gsn_func.mode.m,
-            gsn_func.mode.a,
-            gsn_func.mode.omega,
-            gsn_func.mode.lambda,
-            gsn_func.GSN_solution
-        )(r) / transmission_amplitude_conv_factor
-
-        return TeukolskyRadialFunction(
-            gsn_func.mode,
-            gsn_func.boundary_condition,
-            data_type(1),
-            incidence_amplitude,
-            reflection_amplitude,
-            gsn_func,
-            teuk_func,
-            UNIT_TEUKOLSKY_TRANS
-        )
+    if omega == 0 || _use_isem_method(method)
+        return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     end
+
+    # Solve for the GSN solution
+    gsn_func = GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method=method, data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+
+    # Convert asymptotic amplitudes from GSN to Teukolsky formalism
+    if gsn_func.boundary_condition == IN
+        transmission_amplitude_conv_factor = ConversionFactors.Btrans(s, m, a, omega, gsn_func.mode.lambda)
+        incidence_amplitude = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+        reflection_amplitude = ConversionFactors.Bref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+    elseif gsn_func.boundary_condition == UP
+        transmission_amplitude_conv_factor = ConversionFactors.Ctrans(s, m, a, omega, gsn_func.mode.lambda)
+        incidence_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+        reflection_amplitude = ConversionFactors.Cref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+    elseif gsn_func.boundary_condition == DOWN
+        # The "transmission amplitude" transforms like Binc
+        transmission_amplitude_conv_factor = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda)
+        # The "incidence amplitude" transforms like Btrans
+        incidence_amplitude = ConversionFactors.Btrans(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+        # The "reflection amplitude" transforms like Cinc
+        reflection_amplitude = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+    elseif gsn_func.boundary_condition == OUT
+        # The "tranmission amplitude" transforms like Cinc
+        transmission_amplitude_conv_factor = ConversionFactors.Cinc(s, m, a, omega, gsn_func.mode.lambda)
+        # The "incidence amplitude" transforms like Bref
+        incidence_amplitude = ConversionFactors.Bref(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.incidence_amplitude / transmission_amplitude_conv_factor
+        # The "reflection amplitude" transformslike Binc
+        reflection_amplitude = ConversionFactors.Binc(s, m, a, omega, gsn_func.mode.lambda) * gsn_func.reflection_amplitude / transmission_amplitude_conv_factor
+    else
+        error("Does not understand the boundary condition applied to the solution")
+    end
+
+    # Convert the GSN solution to the Teukolsky solution
+    teuk_func(r) = Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function(
+        gsn_func.mode.s,
+        gsn_func.mode.m,
+        gsn_func.mode.a,
+        gsn_func.mode.omega,
+        gsn_func.mode.lambda,
+        gsn_func.GSN_solution
+    )(r) / transmission_amplitude_conv_factor
+
+    return TeukolskyRadialFunction(
+        gsn_func.mode,
+        gsn_func.boundary_condition,
+        data_type(1),
+        incidence_amplitude,
+        reflection_amplitude,
+        missing,
+        gsn_func,
+        teuk_func,
+        UNIT_TEUKOLSKY_TRANS
+    )
 end
 
 function Teukolsky_radial(
-    s::Int, l::Int, m::Int, a, omega, boundary_condition
+    s::Int, l::Int, m::Int, a, omega, boundary_condition; method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, tol=nothing
 )
+    if _use_isem_method(method)
+        return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    end
+
     if omega != 0
-        return Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout)
+        return Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method=method)
     else
         # Compute the SWSH eigenvalue
         lambda = spin_weighted_spherical_eigenvalue(s, l, m)
@@ -786,6 +910,7 @@ function Teukolsky_radial(
             missing,
             missing,
             missing,
+            missing,
             teuk_func,
             UNIT_TEUKOLSKY_TRANS
         )
@@ -797,29 +922,30 @@ end
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
+When `method` is `"auto"` or `"ISEM"`, this overload uses `ISEM` for the homogeneous solutions.
 
 Note that for _real_ frequencies, the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
 while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
 """
-function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, method="auto")
-    if omega == 0
-        Rin = Teukolsky_radial(s, l, m, a, omega, IN)
-        Rup = Teukolsky_radial(s, l, m, a, omega, UP)
-    else
-        # NOTE This is not the most efficient implementation but ensures self-consistency
-        Xin, Xup = GSN_radial(s, l, m, a, omega; data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, method=method)
-        Rin = Teukolsky_radial(s, l, m, a, omega, IN, Xin.rsin, Xin.rsout;
-            horizon_expansion_order=Xin.horizon_expansion_order,
-            infinity_expansion_order=Xin.infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=Xin.rsmp, method=method)
-        Rup = Teukolsky_radial(s, l, m, a, omega, UP, Xup.rsin, Xup.rsout;
-            horizon_expansion_order=Xup.horizon_expansion_order,
-            infinity_expansion_order=Xup.infinity_expansion_order,
-            data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=Xup.rsmp, method=method)
+function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
+    if omega == 0 || _use_isem_method(method)
+        Rin = Teukolsky_radial(s, l, m, a, omega, IN; xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        Rup = Teukolsky_radial(s, l, m, a, omega, UP; xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        return (Rin, Rup)
     end
 
+    # NOTE This is not the most efficient implementation but ensures self-consistency
+    Xin, Xup = GSN_radial(s, l, m, a, omega; data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, method=method)
+    Rin = Teukolsky_radial(s, l, m, a, omega, IN, Xin.rsin, Xin.rsout;
+        horizon_expansion_order=Xin.horizon_expansion_order,
+        infinity_expansion_order=Xin.infinity_expansion_order,
+        data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=Xin.rsmp, method=method)
+    Rup = Teukolsky_radial(s, l, m, a, omega, UP, Xup.rsin, Xup.rsout;
+        horizon_expansion_order=Xup.horizon_expansion_order,
+        infinity_expansion_order=Xup.infinity_expansion_order,
+        data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=Xup.rsmp, method=method)
     return (Rin, Rup)
 end
 
@@ -832,14 +958,15 @@ include("Inhomogeneous/InitialConditionsY.jl")
 include("Inhomogeneous/SolutionsY.jl")
 include("Inhomogeneous/GridSampling.jl")
 include("Inhomogeneous/ConvolutionIntegrals.jl")
+include("Inhomogeneous/ModeSummation.jl")
 
 
 function Base.show(io::IO, ::MIME"text/plain", ysol::SolutionsY.YSolutionResult)
     println(io, "YSolution(")
-    print(io, "    basis="); show(io, ysol.basis_type); println(io, ",")
-    print(io, "    mode="); show(io, "text/plain", ysol.mode); println(io, ",")
-    println(io, "    rin=$(ysol.asymptotic.rin),")
-    println(io, "    rout=$(ysol.asymptotic.rout),")
+    print(io, "    basis = "); show(io, ysol.basis_type); println(io, ",")
+    print(io, "    mode = "); show(io, "text/plain", ysol.mode); println(io, ",")
+    println(io, "    rin = $(ysol.asymptotic.rin),")
+    println(io, "    rout = $(ysol.asymptotic.rout),")
     print(io, ")")
 end
 
@@ -855,7 +982,7 @@ struct PointParticleMode
 end
 
 function Base.show(io::IO, ::MIME"text/plain", mode::PointParticleMode)
-    print(io, "Mode(s=$(mode.s), l=$(mode.l), m=$(mode.m), n=$(mode.n), k=$(mode.k), a=$(mode.a), omega=$(mode.omega), lambda=$(mode.lambda))")
+    print(io, "Mode(s = $(mode.s), l = $(mode.l), m = $(mode.m), n = $(mode.n), k = $(mode.k), a = $(mode.a), omega = $(mode.omega), lambda = $(mode.lambda))")
 end
 
 struct GSNPointParticleMode
@@ -882,6 +1009,25 @@ struct TeukolskyPointParticleMode
     method # Method used in computing the convolution integral
 end
 
+struct TeukolskyPointParticleFlux
+    a
+    p
+    e
+    x
+    orbit_type::Symbol
+    infinity_energy_flux
+    infinity_angular_momentum_flux
+    infinity_carter_constant_flux
+    horizon_energy_flux
+    horizon_angular_momentum_flux
+    horizon_carter_constant_flux
+    total_modes::Int
+    tolerance
+    reached::NamedTuple
+    cost
+    result
+end
+
 function Base.show(io::IO, ::MIME"text/plain", teuk_mode::TeukolskyPointParticleMode)
     s = teuk_mode.mode.s
     
@@ -895,12 +1041,12 @@ function Base.show(io::IO, ::MIME"text/plain", teuk_mode::TeukolskyPointParticle
 
     # Print structured output with frame-specific suffixes
     println(io, "TeukolskyPointParticleMode(")
-    print(io, "    mode="); show(io, "text/plain", teuk_mode.mode); println(io, ",")
-    println(io, "    amplitude$suffix=$(teuk_mode.amplitude),")
-    println(io, "    energy_flux$suffix=$(teuk_mode.energy_flux),")
-    println(io, "    angular_momentum_flux$suffix=$(teuk_mode.angular_momentum_flux),")
-    println(io, "    Carter_const_flux$suffix=$(teuk_mode.Carter_const_flux),")
-    println(io, "    method=$(teuk_mode.method),")
+    print(io, "    mode = "); show(io, "text/plain", teuk_mode.mode); println(io, ",")
+    println(io, "    amplitude$suffix = $(teuk_mode.amplitude),")
+    println(io, "    energy_flux$suffix = $(teuk_mode.energy_flux),")
+    println(io, "    angular_momentum_flux$suffix = $(teuk_mode.angular_momentum_flux),")
+    println(io, "    Carter_const_flux$suffix = $(teuk_mode.Carter_const_flux),")
+    println(io, "    method = $(teuk_mode.method),")
     print(io, ")")
 end
 
@@ -916,13 +1062,123 @@ function Base.show(io::IO, ::MIME"text/plain", gsn_mode::GSNPointParticleMode)
     end
 
     println(io, "GSNPointParticleMode(")
-    print(io, "    mode="); show(io, "text/plain", gsn_mode.mode); println(io, ",")
-    println(io, "    amplitude$suffix=$(gsn_mode.amplitude),")
-    println(io, "    energy_flux$suffix=$(gsn_mode.energy_flux),")
-    println(io, "    angular_momentum_flux$suffix=$(gsn_mode.angular_momentum_flux),")
-    println(io, "    Carter_const_flux$suffix=$(gsn_mode.Carter_const_flux),")
-    println(io, "    method=$(gsn_mode.method),")
+    print(io, "    mode = "); show(io, "text/plain", gsn_mode.mode); println(io, ",")
+    println(io, "    amplitude$suffix = $(gsn_mode.amplitude),")
+    println(io, "    energy_flux$suffix = $(gsn_mode.energy_flux),")
+    println(io, "    angular_momentum_flux$suffix = $(gsn_mode.angular_momentum_flux),")
+    println(io, "    Carter_const_flux$suffix = $(gsn_mode.Carter_const_flux),")
+    println(io, "    method = $(gsn_mode.method),")
     print(io, ")")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", flux::TeukolskyPointParticleFlux)
+    println(io, "TeukolskyPointParticleFlux(")
+    println(io, "    orbital_parameters(a = $(flux.a), p = $(flux.p), e = $(flux.e), x = $(flux.x)),")
+    println(io, "    orbit_type = $(flux.orbit_type),")
+    println(io, "    infinity_energy_flux = $(flux.infinity_energy_flux),")
+    println(io, "    infinity_angular_momentum_flux = $(flux.infinity_angular_momentum_flux),")
+    println(io, "    infinity_carter_constant_flux = $(flux.infinity_carter_constant_flux),")
+    println(io, "    horizon_energy_flux = $(flux.horizon_energy_flux),")
+    println(io, "    horizon_angular_momentum_flux = $(flux.horizon_angular_momentum_flux),")
+    println(io, "    horizon_carter_constant_flux = $(flux.horizon_carter_constant_flux),")
+    println(io, "    total_modes = $(flux.total_modes),")
+    for key in keys(flux.reached)
+        println(io, "    $key = $(flux.reached[key]),")
+    end
+    println(io, "    tolerance = $(flux.tolerance),")
+    println(io, "    cost = $(flux.cost) seconds,")
+    print(io, ")")
+end
+
+_flux_get(result, key::Symbol, default=nothing) = hasproperty(result, key) ? getproperty(result, key) : default
+
+function _teukolsky_flux_orbit_type(e, x)
+    if e == 0.0 && (x == 1.0 || x == -1.0)
+        return :circular
+    elseif x == 1.0 || x == -1.0
+        return :eccentric
+    elseif e == 0.0
+        return :inclined
+    else
+        return :generic
+    end
+end
+
+function _teukolsky_flux_geodesic_params(a, p, e, x)
+    if x == -1.0
+        return (-a, p, e, 1.0)
+    end
+    return (a, p, e, x)
+end
+
+function _teukolsky_flux_bound_orbit(a, p, e, x)
+    ag, pg, eg, xg = _teukolsky_flux_geodesic_params(a, p, e, x)
+    try
+        KG = Kerr_Geodesics(ag, pg, eg, xg)
+        return typeof(KG) != Vector{String}
+    catch
+        return false
+    end
+end
+
+function _teukolsky_flux_reached(result, orbit_type::Symbol)
+    if orbit_type == :circular
+        return (l_reached = _flux_get(result, :l_reached),)
+    elseif orbit_type == :inclined
+        return (
+            k_reached_inf = _flux_get(result, :k_reached_inf),
+            k_reached_hor = _flux_get(result, :k_reached_hor),
+        )
+    else
+        return (
+            n_reached_inf = _flux_get(result, :n_reached_inf),
+            n_reached_hor = _flux_get(result, :n_reached_hor),
+        )
+    end
+end
+
+@doc raw"""
+    Teukolsky_pointparticle_flux(a, p, e, x; tol=1e-8, lmax=30, nmax=500, kmax=50)
+
+Compute total point-particle fluxes by automatically selecting the mode-summation strategy from the orbit type.
+"""
+function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 50, minimum_consecutive = 2, N = 64, N0 = N, K = 16, K0 = K, Nmax = 2^14, Kmax = 2^12, sample_tol = 1e-3, record = 0, record_path = nothing, fast = true, mode_abs_floor = 0.0, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1)
+    if !_teukolsky_flux_bound_orbit(a, p, e, x)
+        @warn "The specified parameters do not correspond to a bound orbit." a p e x
+        return nothing
+    end
+
+    orbit_type = _teukolsky_flux_orbit_type(e, x)
+    t0 = time()
+    result = if orbit_type == :circular
+        ModeSummation.circular_mode_summation(x == -1.0 ? -a : a, p; tol = tol, lmax = lmax, min_consecutive = minimum_consecutive)
+    elseif orbit_type == :eccentric
+        ModeSummation.eccentric_mode_summation(x == -1.0 ? -a : a, p, e; N = N, N0 = N0, Nmax = Nmax, tol = tol, lmax = lmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
+    elseif orbit_type == :inclined
+        ModeSummation.inclined_mode_summation(a, p, x; K = K, K0 = K0, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
+    else
+        ModeSummation.generic_mode_summation(a, p, e, x; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, neg_branch_scale = neg_branch_scale)
+    end
+    cost = time() - t0
+
+    return TeukolskyPointParticleFlux(
+        a,
+        p,
+        e,
+        x,
+        orbit_type,
+        result.infinity_energy_flux,
+        result.infinity_angular_momentum_flux,
+        result.infinity_carter_constant_flux,
+        result.horizon_energy_flux,
+        result.horizon_angular_momentum_flux,
+        result.horizon_carter_constant_flux,
+        result.total_modes,
+        _flux_get(result, :tolerance, tol),
+        _teukolsky_flux_reached(result, orbit_type),
+        cost,
+        result,
+    )
 end
 
 @doc raw"""
@@ -940,12 +1196,18 @@ Note that they must be powers of 2.
 """
 function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1)
     if method == "auto"
-        # For now, choose "trapezoidal"
-        method = "trapezoidal"
+        # For now, choose "isem_trapezoidal"
+        method = "isem_trapezoidal"
     end
 
     # Fill-in default values for N/K if none is given
-    if method == "trapezoidal"
+    if method == "isem_trapezoidal"
+        N = N <= 0 ? 256 : N
+        K = K <= 0 ? 64 : K
+    elseif method == "isem_levin"
+        N = N <= 0 ? 256 : N
+        K = K <= 0 ? 32 : K
+    elseif method == "trapezoidal"
         N = N <= 0 ? 256 : N
         K = K <= 0 ? 64 : K
     elseif method == "levin"
@@ -953,16 +1215,21 @@ function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a,
         K = K <= 0 ? 32 : K
     end
 
-    if method == "trapezoidal"
+    if method == "isem_trapezoidal"
+        output = ConvolutionIntegrals.convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N=N, K=K)
+    elseif method == "isem_levin"
+        output = ConvolutionIntegrals.convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k; N=N, K=K)
+    elseif method == "trapezoidal"
         output = ConvolutionIntegrals.convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N=N, K=K)
     elseif method == "levin"
         output = ConvolutionIntegrals.convolution_integral_levin(a, p, e, x, s, l, m, n, k; N=N, K=K)
     else
-        error("Currently only support method = \"trapezoidal\" or \"levin\"")
+        error("Currently only support method = \"isem_trapezoidal\" or \"isem_levin\" or \"trapezoidal\" or \"levin\"")
     end
 
+    Y_mode = _pointparticle_output_mode(output["YSolution"])
     return TeukolskyPointParticleMode(
-            PointParticleMode(s, l, m, n, k, a, output["omega"], output["YSolution"].mode.lambda),
+            PointParticleMode(s, l, m, n, k, a, output["omega"], Y_mode.lambda),
             output["Amplitude"],
             output["EnergyFlux"],
             output["AngularMomentumFlux"],
@@ -972,6 +1239,23 @@ function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a,
             output["SWSH"],
             (method=method, N=N, K=K)
         )
+end
+
+function _pointparticle_output_mode(Y_solution)
+    if hasproperty(Y_solution, :mode)
+        return Y_solution.mode
+    elseif Y_solution isa AbstractDict
+        if haskey(Y_solution, :mode)
+            return Y_solution[:mode]
+        elseif haskey(Y_solution, "mode")
+            return Y_solution["mode"]
+        elseif haskey(Y_solution, :params)
+            return Y_solution[:params]
+        elseif haskey(Y_solution, "params")
+            return Y_solution["params"]
+        end
+    end
+    error("Could not extract mode from YSolution output.")
 end
 
 @doc raw"""
