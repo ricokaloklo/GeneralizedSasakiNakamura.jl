@@ -286,6 +286,7 @@ If you have used this code's capability to solve for the gravitational waveform 
     doi = "10.1103/bljh-l413",
     journal = "Phys. Rev. D",
     volume = "113",
+    number = "6",
     pages = "L061505",
     year = "2026"
 }
