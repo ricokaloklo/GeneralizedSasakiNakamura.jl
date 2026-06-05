@@ -34,6 +34,20 @@ _DEFAULT_rhoout = 5000
 _DEFAULT_horizon_expansion_order_for_cplx_freq = 25
 _DEFAULT_infinity_expansion_order_for_cplx_freq = 25
 
+@inline function _adaptive_horizon_expansion_order(a, order::Int)
+    spin = abs(float(real(a)))
+    spin >= 1 && return max(order, 50)
+    scale = log10(inv(max(1 - spin, eps(Float64))))
+    return max(order, _DEFAULT_horizon_expansion_order, ceil(Int, 5 * max(scale, 0) - 1e-12))
+end
+
+@inline function _adaptive_infinity_expansion_order(omega, order::Int)
+    freq = abs(omega)
+    freq == 0 && return order
+    scale = -log10(float(freq))
+    return max(order, _DEFAULT_infinity_expansion_order, ceil(Int, 10 * max(scale, 0) - 1e-12))
+end
+
 # IN for purely-ingoing at the horizon and UP for purely-outgoing at infinity
 # OUT for purely-outgoing at the horizon and DOWN for purely-ingoing at infinity
 @enum BoundaryCondition begin
@@ -84,6 +98,9 @@ struct GSNRadialFunction
     method # The method used to solve the GSN equation
 end
 
+@inline _display_bool_flag(x) = (x === missing || x === nothing) ? x : Bool(x)
+@inline _display_isem_N(x) = (x === missing || x === nothing) ? "adaptive" : string(x)
+
 # Implement pretty-printing for GSNRadialFunction
 # Mostly to suppress the printing of the numerical solution
 function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
@@ -92,11 +109,12 @@ function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
     println(io, "    boundary_condition = $(gsn_func.boundary_condition),")
     if gsn_func.method == "ISEM" && gsn_func.numerical_GSN_solution isa NamedTuple
         params = gsn_func.numerical_GSN_solution
+        N_display = hasproperty(params, :N) ? _display_isem_N(params.N) : "adaptive"
         println(io, "    matching_point(xm = $(params.xm), rhom = $(params.rhom)),")
-        println(io, "    N = $(params.N),")
+        println(io, "    N = $(N_display),")
         println(io, "    tolerance = $(params.tol),")
-        println(io, "    small/large_frequency_expansion(sfe = $(params.sfe), lfe = $(params.lfe)),")
-        println(io, "    Teukolsky-Starobinsky_identity(InInf = $(params.TSinInf), OutInf = $(params.TSoutInf), InHor = $(params.TSinHor), OutHor = $(params.TSoutHor)),")
+        println(io, "    small/large_frequency_expansion(sfe = $(_display_bool_flag(params.sfe)), lfe = $(_display_bool_flag(params.lfe))),")
+        println(io, "    Teukolsky-Starobinsky_identity(InInf = $(_display_bool_flag(params.TSinInf)), OutInf = $(_display_bool_flag(params.TSoutInf)), InHor = $(_display_bool_flag(params.TSinHor)), OutHor = $(_display_bool_flag(params.TSoutHor))),")
     else
         println(io, "    rsin = $(gsn_func.rsin),")
         println(io, "    rsout = $(gsn_func.rsout),")
@@ -107,7 +125,7 @@ function Base.show(io::IO, ::MIME"text/plain", gsn_func::GSNRadialFunction)
     println(io, "    transmission_amplitude = $(gsn_func.transmission_amplitude),")
     println(io, "    incidence_amplitude = $(gsn_func.incidence_amplitude),")
     println(io, "    reflection_amplitude = $(gsn_func.reflection_amplitude),")
-    println(io, "    normalization_convention = $(gsn_func.normalization_convention)")
+    println(io, "    normalization_convention = $(gsn_func.normalization_convention),")
     println(io, "    method = $(gsn_func.method)")
     print(io, ")")
 end
@@ -161,7 +179,11 @@ end
 
 include("ISEM/ISEM.jl")
 
+@inline _is_auto_method(method) = method == "auto"
 @inline _use_isem_method(method) = method == "auto" || method == "ISEM"
+const _STATIC_OMEGA_TOL = 1e-12
+@inline _is_static_frequency(omega) = abs(omega) < _STATIC_OMEGA_TOL
+@inline _is_horizon_superradiance_frequency(a, m, omega) = isreal(omega) && !_is_static_frequency(omega) && abs(omega - m * Kerr.omega_horizon(a)) < _STATIC_OMEGA_TOL
 
 @inline function _combine_isem_down(Rin, Rup)
     Binc = Rin.incidence_amplitude
@@ -222,7 +244,6 @@ end
 end
 
 @inline function _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
-    tol = tol === nothing ? nothing : min(tol, ISEM._DEFAULT_TOL)
     if boundary_condition == IN || boundary_condition == UP
         return ISEM.Teukolsky_radial(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     elseif boundary_condition == DOWN
@@ -237,8 +258,34 @@ end
 end
 
 @inline function _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN)
-    tol = tol === nothing ? nothing : min(tol, ISEM._DEFAULT_TOL)
     return ISEM.GSN_radial(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+end
+
+function _auto_try_isem_then_linear(context, isem_build, linear_build)
+    saw_warn = Ref(false)
+    logger = EarlyFilteredLogger(
+        log -> begin
+            if log.level == Logging.Warn
+                saw_warn[] = true
+            end
+            return log.level >= Logging.Error
+        end,
+        current_logger(),
+    )
+
+    try
+        sol = with_logger(logger) do
+            isem_build()
+        end
+        if saw_warn[]
+            @info "method = \"auto\" tried ISEM, received an ISEM warning, and switched to method = \"linear\". Use method = \"ISEM\" to force ISEM." context=context
+            return linear_build()
+        end
+        return sol
+    catch err
+        @info "method = \"auto\" tried ISEM, received an ISEM error, and switched to method = \"linear\". Use method = \"ISEM\" to force ISEM." context=context error=sprint(showerror, err)
+        return linear_build()
+    end
 end
 
 @doc raw"""
@@ -279,12 +326,22 @@ Return a `GSNRadialFunction` object which contains all the information about the
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing,
+    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, tol=nothing, rsmp=nothing,
     xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN
 )
-    if omega == 0
-        return GSN_radial(s, l, m, a, omega, boundary_condition)
-    elseif _use_isem_method(method)
+    tolerance = tol === nothing ? tolerance : tol
+    if _is_static_frequency(omega)
+        return GSN_radial(s, l, m, a, zero(omega), boundary_condition)
+    elseif _is_horizon_superradiance_frequency(a, m, omega) && boundary_condition == UP
+        return _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+    elseif _is_auto_method(method)
+        context = (function_name = "GSN_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
+        return _auto_try_isem_then_linear(
+            context,
+            () -> _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min),
+            () -> GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
+        )
+    elseif method == "ISEM"
         return _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     else
         sawwarn = Ref(false)
@@ -295,6 +352,8 @@ function GSN_radial(
         lambda = spin_weighted_spheroidal_eigenvalue(s, l, m, a*omega)
         # Fill in the mode information
         mode = Mode(s, l, m, a, omega, lambda)
+        horizon_expansion_order = _adaptive_horizon_expansion_order(a, horizon_expansion_order)
+        infinity_expansion_order = _adaptive_infinity_expansion_order(omega, infinity_expansion_order)
         if boundary_condition == IN
             # Solve for Xin
             if isa(omega, Real)
@@ -651,16 +710,18 @@ end
 
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition;
-    method="auto", tolerance=Solutions._DEFAULTTOLERANCE,
+    method="auto", tolerance=Solutions._DEFAULTTOLERANCE, tol=nothing,
     xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN
 )
-    if omega != 0
+    tolerance = tol === nothing ? tolerance : tol
+    if !_is_static_frequency(omega)
         return GSN_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout;
             method=method, tolerance=tolerance, xm=xm, rhom=rhom, sfe=sfe, lfe=lfe,
             TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, N=N, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     else
-        teuk_func = Teukolsky_radial(s, l, m, a, omega, boundary_condition)
-        GSN_solution = Solutions.Sasaki_Nakamura_function_from_Teukolsky_radial_function(s, m, a, omega, teuk_func.mode.lambda, teuk_func.Teukolsky_solution)
+        omega0 = zero(omega)
+        teuk_func = Teukolsky_radial(s, l, m, a, omega0, boundary_condition)
+        GSN_solution = Solutions.Sasaki_Nakamura_function_from_Teukolsky_radial_function(s, m, a, omega0, teuk_func.mode.lambda, teuk_func.Teukolsky_solution)
 
         return GSNRadialFunction(
                 teuk_func.mode,
@@ -693,11 +754,19 @@ while the order of the asymptotic expansion at the horizon and infinity are dete
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
 while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
 """
-function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN)
-    if omega == 0
-        Xin = GSN_radial(s, l, m, a, omega, IN)
-        Xup = GSN_radial(s, l, m, a, omega, UP)
-    elseif _use_isem_method(method)
+function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, tol=nothing, method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN)
+    tolerance = tol === nothing ? tolerance : tol
+    if _is_static_frequency(omega)
+        omega0 = zero(omega)
+        Xin = GSN_radial(s, l, m, a, omega0, IN)
+        Xup = GSN_radial(s, l, m, a, omega0, UP)
+    elseif _is_horizon_superradiance_frequency(a, m, omega)
+        Xin = GSN_radial(s, l, m, a, omega, IN; method=method, tolerance=tolerance, xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, N=N, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+        Xup = GSN_radial(s, l, m, a, omega, UP; method=method, tolerance=tolerance, xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, N=N, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+    elseif _is_auto_method(method)
+        Xin = GSN_radial(s, l, m, a, omega, IN; method=method, tolerance=tolerance, xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, N=N, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+        Xup = GSN_radial(s, l, m, a, omega, UP; method=method, tolerance=tolerance, xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, N=N, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+    elseif method == "ISEM"
         Xin = _gsn_from_isem(s, l, m, a, omega, IN; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
         Xup = _gsn_from_isem(s, l, m, a, omega, UP; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     elseif isa(omega, Real)
@@ -821,10 +890,22 @@ where the value at the corresponding location $\rho = r_{*}(r) \in \mathbb{R}$ a
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout;
     horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order,
-    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing,
+    method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, tol=nothing, rsmp=nothing,
     xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing
 )
-    if omega == 0 || _use_isem_method(method)
+    tolerance = tol === nothing ? tolerance : tol
+    if _is_static_frequency(omega)
+        return Teukolsky_radial(s, l, m, a, zero(omega), boundary_condition; method="static")
+    elseif _is_horizon_superradiance_frequency(a, m, omega) && boundary_condition == UP
+        return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    elseif _is_auto_method(method)
+        context = (function_name = "Teukolsky_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
+        return _auto_try_isem_then_linear(
+            context,
+            () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
+        )
+    elseif method == "ISEM"
         return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     end
 
@@ -884,17 +965,24 @@ end
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition; method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, tol=nothing
 )
-    if _use_isem_method(method)
+    if _is_horizon_superradiance_frequency(a, m, omega) && boundary_condition == UP
         return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
-    end
-
-    if omega != 0
+    elseif !_is_static_frequency(omega) && _is_auto_method(method)
+        context = (function_name = "Teukolsky_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
+        return _auto_try_isem_then_linear(
+            context,
+            () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method="linear"),
+        )
+    elseif !_is_static_frequency(omega) && method == "ISEM"
+        return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    elseif !_is_static_frequency(omega)
         return Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method=method)
     else
         # Compute the SWSH eigenvalue
         lambda = spin_weighted_spherical_eigenvalue(s, l, m)
         # Fill in the mode information
-        mode = Mode(s, l, m, a, omega, lambda)
+        mode = Mode(s, l, m, a, zero(omega), lambda)
         if boundary_condition == IN
             teuk_func = Solutions.solve_static_Rin(s, l, m, a)
         elseif boundary_condition == UP
@@ -929,10 +1017,11 @@ while the order of the asymptotic expansion at the horizon and infinity are dete
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
 while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
 """
-function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
-    if omega == 0 || _use_isem_method(method)
-        Rin = Teukolsky_radial(s, l, m, a, omega, IN; xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
-        Rup = Teukolsky_radial(s, l, m, a, omega, UP; xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, tol=nothing, method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
+    tolerance = tol === nothing ? tolerance : tol
+    if _is_static_frequency(omega) || _is_horizon_superradiance_frequency(a, m, omega) || _use_isem_method(method)
+        Rin = Teukolsky_radial(s, l, m, a, omega, IN; method=method, xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, tol=tolerance)
+        Rup = Teukolsky_radial(s, l, m, a, omega, UP; method=method, xm=xm, rhom=rhom, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, tol=tolerance)
         return (Rin, Rup)
     end
 
@@ -1227,7 +1316,7 @@ function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a,
         error("Currently only support method = \"isem_trapezoidal\" or \"isem_levin\" or \"trapezoidal\" or \"levin\"")
     end
 
-    Y_mode = _pointparticle_output_mode(output["YSolution"])
+    Y_mode = _pointparticle_output_mode(output["YSolution"], s, l, m, a, output["omega"])
     return TeukolskyPointParticleMode(
             PointParticleMode(s, l, m, n, k, a, output["omega"], Y_mode.lambda),
             output["Amplitude"],
@@ -1241,7 +1330,7 @@ function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a,
         )
 end
 
-function _pointparticle_output_mode(Y_solution)
+function _pointparticle_output_mode(Y_solution, s, l, m, a, omega)
     if hasproperty(Y_solution, :mode)
         return Y_solution.mode
     elseif Y_solution isa AbstractDict
@@ -1254,6 +1343,9 @@ function _pointparticle_output_mode(Y_solution)
         elseif haskey(Y_solution, "params")
             return Y_solution["params"]
         end
+    elseif Y_solution === nothing
+        lambda = omega === nothing ? missing : spin_weighted_spheroidal_eigenvalue(s, l, m, a * omega)
+        return (s = s, l = l, m = m, a = a, omega = omega, lambda = lambda)
     end
     error("Could not extract mode from YSolution output.")
 end

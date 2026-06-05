@@ -5,7 +5,7 @@ using TaylorSeries
 export lfe_f, lfe_gamma, _eta, _psi, A_series, B_series, _chi, _zeta, lfe_in_zero, lfe_out_zero, lfe_ordinary_point, X_to_P
 
 _TruncatioN = 20
-_TOLERANCE = 1e-14
+_TOLERANCE = 1e-13
 
 function lfe_f(s, epsilon, tau, kappa, lambda)
     α0 = (s + 1im * (epsilon + tau) + 1) * (s + 1im * (epsilon + tau) - 1) / 4

@@ -9,7 +9,7 @@ using SpecialFunctions
 export sfe_in, sfe_out
 
 _TruncatioN = 20
-_TOLERANCE = 1e-14
+_TOLERANCE = 1e-13
 
 function mst_abc(nu, n, s, epsilon, tau, kappa, lambda)
     alpha = 1im * epsilon * kappa * (n + nu + 1 + s + 1im * epsilon) * (n + nu + 1 + s - 1im * epsilon) * (n +
@@ -24,7 +24,7 @@ end
 function backward_rec(nu, s, epsilon, tau, kappa, lambda, N = _TruncatioN)
     f = zeros(ComplexF64, N + 1)
     if N == 0 || N == 1
-        @error("N should be larger than 1.")
+        error("N should be larger than 1.")
     end
     f[N] = 1.0 + 0.0im
 
@@ -38,7 +38,7 @@ end
 function forward_rec(nu, s, epsilon, tau, kappa, lambda, N = _TruncatioN)
     f = zeros(ComplexF64, N + 1)
     if N == 0 || N == 1
-        @error("N should be larger than 1.")
+        error("N should be larger than 1.")
     end
     f[2] = 1.0 + 0.0im
 

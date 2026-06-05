@@ -10,6 +10,7 @@ export contour_phase, contour_q1, contour_q2, contour_residual
 export evaluate_power_series, evaluate_inverse_power_series, evaluate_frobenius_series
 export contour_PlusTwo_to_MinusTwo_Inf, contour_PlusTwo_to_MinusTwo_Hor, contour_MinusTwo_to_PlusTwo_Inf, contour_MinusTwo_to_PlusTwo_Hor
 export P_to_Y_coeffs_minus2_in, P_to_Y_coeffs_plus2_up
+export GSN_to_Y_coeffs_minus2_in, GSN_to_Y_coeffs_plus2_up, GSN_to_Y_solution_from_matrix
 export P_to_GSN_coefficients_from_matrix, P_to_GSN_solution_from_matrix
 export Teukolsky_to_GSN_solution
 
@@ -206,6 +207,57 @@ function P_to_GSN_solution_from_matrix(r_from_rstar, teukolsky_from_gsn_matrix, 
         X = A0 * P + A1 * Px
         Xp = B0 * P + B1 * Px
         return (X, Xp, error)
+    end
+end
+
+function _GSN_to_Y_coefficients_from_maps(p_to_y_coeffs, p_to_gsn_coeffs, gsn_unit_scale)
+    f1, f2, f3, _, _ = p_to_y_coeffs
+
+    return r -> begin
+        A0, A1, B0, B1 = p_to_gsn_coeffs(r)
+        D = A0 * B1 - A1 * B0
+        SD = gsn_unit_scale * D
+        F1 = f1(r)
+        F2 = f2(r)
+        F3 = f3(r)
+        return (
+            F1 * B1 / SD,
+            -F1 * A1 / SD,
+            (F2 * B1 - F3 * B0) / SD,
+            (-F2 * A1 + F3 * A0) / SD,
+        )
+    end
+end
+
+function GSN_to_Y_coeffs_minus2_in(teukolsky_from_gsn_matrix, m, a, omega, lambda, Btrans; coefficient_precision = nothing)
+    p_to_y_coeffs = P_to_Y_coeffs_minus2_in(m, a, omega, lambda, Btrans)
+    p_to_gsn_coeffs = P_to_GSN_coefficients_from_matrix(teukolsky_from_gsn_matrix, -2, m, a, omega, lambda; coefficient_precision = coefficient_precision)
+    return _GSN_to_Y_coefficients_from_maps(p_to_y_coeffs, p_to_gsn_coeffs, Btrans)
+end
+
+function GSN_to_Y_coeffs_plus2_up(teukolsky_from_gsn_matrix, m, a, omega, lambda, Ctrans; coefficient_precision = nothing)
+    p_to_y_coeffs = P_to_Y_coeffs_plus2_up(m, a, omega, lambda, Ctrans)
+    p_to_gsn_coeffs = P_to_GSN_coefficients_from_matrix(teukolsky_from_gsn_matrix, 2, m, a, omega, lambda; coefficient_precision = coefficient_precision)
+    return _GSN_to_Y_coefficients_from_maps(p_to_y_coeffs, p_to_gsn_coeffs, Ctrans)
+end
+
+function GSN_to_Y_solution_from_matrix(rstar_from_r, teukolsky_from_gsn_matrix, gsn_solution, s, m, a, omega, lambda, branch_transmission_amplitude; coefficient_precision = nothing)
+    if s == -2
+        coeffs = GSN_to_Y_coeffs_minus2_in(teukolsky_from_gsn_matrix, m, a, omega, lambda, branch_transmission_amplitude; coefficient_precision = coefficient_precision)
+    elseif s == 2
+        coeffs = GSN_to_Y_coeffs_plus2_up(teukolsky_from_gsn_matrix, m, a, omega, lambda, branch_transmission_amplitude; coefficient_precision = coefficient_precision)
+    else
+        error("GSN_to_Y_solution_from_matrix supports only s = -2 and s = +2.")
+    end
+
+    return r -> begin
+        Xvals = gsn_solution(rstar_from_r(r))
+        X = Xvals[1]
+        Xp = Xvals[2]
+        C11, C12, C21, C22 = coeffs(r)
+        Y = C11 * X + C12 * Xp
+        Yp = C21 * X + C22 * Xp
+        return (Y, Yp, X, zero(abs(Y)))
     end
 end
 

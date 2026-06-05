@@ -28,11 +28,24 @@ Pkg.add("GeneralizedSasakiNakamura")
 *Note: There is no need to install [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) separately as it should be automatically installed by the package manager.*
 
 ## Highlights
-### Performant frequency-domain Teukolsky solver
-Works well at *both low and high frequencies*, and takes only a few tens of milliseconds on average:
+### Two radial-solver paths
+The package supports two complementary radial-solver paths:
+
+- **Numerical path**: direct numerical integration of the radial equation using the `linear` or `Riccati` methods, with analytical near-boundary patches.
+- **Semi-analytical path**: iterative series expansion matching, selected by `method = "ISEM"` or by the default `method = "auto"` path where available.
+
+### Numerical solver path: linear/Riccati integration
+The original GSN solver works at *both low and high frequencies* by numerically evolving the radial equation and attaching analytical boundary ansatzes near the horizon and infinity:
+
+<p align="center">
+  <img width="60%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248724944-9707332b-1238-4b3b-b1c0-ac426a1b3dc6.gif">
+</p>
+
+The on-the-fly numerical-path benchmark against the Mathematica MST implementation is shown below:
+
 <table>
   <tr>
-    <th>GeneralizedSasakiNakamura.jl</th>
+    <th>GeneralizedSasakiNakamura.jl numerical path</th>
     <th><a href="https://github.com/BlackHolePerturbationToolkit/Teukolsky">Teukolsky</a> Mathematica package using the MST method </th>
   </tr>
   <tr>
@@ -41,23 +54,26 @@ Works well at *both low and high frequencies*, and takes only a few tens of mill
   </tr>
 </table>
 
-*(There was no caching! We solved the equation on-the-fly! The notebook generating this animation can be found [here](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb))*
+*(There was no caching in this benchmark; the equation was solved on the fly. The notebook generating the speed animation can be found [here](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb).)*
 
-### ISEM radial-function benchmark
-Starting from v0.9.0, the default ISEM path solves the Teukolsky and GSN radial functions on the fly at approximately millisecond scale after warm-up, while retaining interactive evaluation over a dense grid:
+### Semi-analytical solver path: iterative series expansion matching
+Starting from v0.9.0, the semi-analytical ISEM path constructs the Teukolsky and GSN radial functions directly from matched series expansions. This path is selected by `method = "ISEM"` or by `method = "auto"` where available. For real frequencies in the trained selector domain, ISEM chooses matching controls automatically and applies a local-`N` rescue scan when the split mismatch is above tolerance. If `method = "auto"` cannot obtain a reliable ISEM solution, it falls back to the legacy `linear` path. After warm-up, homogeneous radial solves are typically at millisecond scale or faster while retaining interactive evaluation over dense grids:
+
+<p align="center">
+  <img width="80%" src="docs/src/isem_matching_original_30fps.gif">
+</p>
+
+The ISEM on-the-fly Teukolsky/GSN solve and evaluation benchmark is shown below:
 
 <p align="center">
   <img width="80%" src="https://raw.githubusercontent.com/CuberYyc808/CuberYyc808.github.io/3b847bfb92587eecb078bf7284f1cbc86e476ddb/images/teukolsky_gsn_solver_demo_60s.gif">
 </p>
 
+ISEM is also used in the accelerated single-mode point-particle amplitudes and total-flux mode summations where available.
+
 Static/zero-frequency solutions are solved analytically with Gauss hypergeometric functions.
 
-### Solutions that are accurate everywhere
-Numerical solutions are *smoothly stitched* to analytical ansatzes near the horizon and infinity at user-specified locations `rsin` and `rsout` respectively:
-
-<p align="center">
-  <img width="50%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248724944-9707332b-1238-4b3b-b1c0-ac426a1b3dc6.gif">
-</p>
+Superradiance-threshold solutions with $\omega = m a / (2 r_+)$ are handled by a dedicated horizon-threshold ISEM branch.
 
 ### Easy to use
 The following code snippet lets you solve the (source-free) Teukolsky function (in frequency domain) for the mode $s=-2, \ell=2, m=2, a/M=0.7, M\omega=0.5$ that satisfies the purely-ingoing boundary condition at the horizon, $R^{\textrm{in}}$, and the purely-outgoing boundary condition at spatial infinity, $R^{\textrm{up}}$, respectively:
@@ -72,7 +88,23 @@ Rin, Rup = Teukolsky_radial(s, l, m, a, omega)
 ```
 That's it! If you run this on Julia REPL, it should give you something like this
 ```
-(TeukolskyRadialFunction(mode=Mode(s=-2, l=2, m=2, a=0.7, omega=0.5, lambda=1.696609401635342), boundary_condition=IN), TeukolskyRadialFunction(mode=Mode(s=-2, l=2, m=2, a=0.7, omega=0.5, lambda=1.696609401635342), boundary_condition=UP))
+(
+TeukolskyRadialFunction(
+    mode = Mode(s = -2, l = 2, m = 2, a = 0.7, omega = 0.5, lambda = 1.696609401635342),
+    boundary_condition = IN,
+    transmission_amplitude = 1.0 + 0.0im,
+    incidence_amplitude = 6.536587661185641 - 4.941203897066954im,
+    reflection_amplitude = -0.128246619129162 - 0.44048133496455144im,
+    normalization_convention = UNIT_TEUKOLSKY_TRANS
+),
+TeukolskyRadialFunction(
+    mode = Mode(s = -2, l = 2, m = 2, a = 0.7, omega = 0.5, lambda = 1.696609401635342),
+    boundary_condition = UP,
+    transmission_amplitude = 1.0 + 0.0im,
+    incidence_amplitude = -1.1698840333870053 - 2.545572334044037im,
+    reflection_amplitude = 2.516990858632645 - 8.644964686262956im,
+    normalization_convention = UNIT_TEUKOLSKY_TRANS
+))
 ```
 In Julia REPL, you can check out all the asymptotic amplitudes at a glimpse using something like
 ```julia
@@ -81,8 +113,8 @@ TeukolskyRadialFunction(
     mode = Mode(s = -2, l = 2, m = 2, a = 0.7, omega = 0.5, lambda = 1.696609401635342),
     boundary_condition = IN,
     transmission_amplitude = 1.0 + 0.0im,
-    incidence_amplitude = 6.5365876612287765 - 4.9412038970871555im,
-    reflection_amplitude = -0.1282466191307726 - 0.440481334972911im,
+    incidence_amplitude = 6.536587661185641 - 4.941203897066954im,
+    reflection_amplitude = -0.128246619129162 - 0.44048133496455144im,
     normalization_convention = UNIT_TEUKOLSKY_TRANS
 )
 ```
@@ -93,7 +125,7 @@ Rin(10)
 ```
 This should give
 ```
-77.57508416835319 - 429.40290952262677im
+77.57508416826994 - 429.4029095225273im
 ```
 
 #### Solving for complex frequencies
@@ -105,11 +137,11 @@ We can check out the $R^{\textrm{up}}$ solution using
 ```julia
 julia> Rup
 TeukolskyRadialFunction(
-    mode = Mode(s = -2, l = 2, m = 2, a = 0.68, omega = 0.5239751 - 0.0815126im, lambda = 1.655003080578682 + 0.3602676563885877im),
+    mode = Mode(s = -2, l = 2, m = 2, a = 0.68, omega = 0.5239751 - 0.0815126im, lambda = 1.6550030805786855 + 0.3602676563885877im),
     boundary_condition = UP,
     transmission_amplitude = 1.0 + 0.0im,
-    incidence_amplitude = -5.850900444651249e-8 - 3.80716581300155e-7im,
-    reflection_amplitude = 1.1011632133920028 + 2.1300597377432497im,
+    incidence_amplitude = -5.7809684319307504e-8 - 3.809710730287814e-7im,
+    reflection_amplitude = 1.1011632131894007 + 2.13005973884911im,
     normalization_convention = UNIT_TEUKOLSKY_TRANS
 )
 ```
@@ -120,7 +152,7 @@ Rup.incidence_amplitude
 
 This should give
 ```julia
--5.850900444651249e-8 - 3.80716581300155e-7im
+-5.7809684319307504e-8 - 3.809710730287814e-7im
 ```
 
 #### Solving the inhomogeneous radial Teukolsky/SN equation with a point-particle source on a generic timelike bound orbit
@@ -135,17 +167,17 @@ To have a glimpse of the output, one can do so with
 julia> mode_info
 TeukolskyPointParticleMode(
     mode = Mode(s = -2, l = 2, m = 2, n = 0, k = 0, a = 0.9, omega = 0.06568724726732737, lambda = 3.6067890121199833),
-    amplitude_inf = 0.00023429507957491088 - 6.558414418883069e-5im,
-    energy_flux_inf = 1.091733010828344e-6,
-    angular_momentum_flux_inf = 3.3240333740438795e-5,
-    Carter_const_flux_inf = 5.890504440487091e-5,
+    amplitude_inf = 0.00023429507956756622 - 6.5584144409953e-5im,
+    energy_flux_inf = 1.0917330112997913e-6,
+    angular_momentum_flux_inf = 3.32403337547931e-5,
+    Carter_const_flux_inf = 5.890504443030812e-5,
     method = (method = "isem_trapezoidal", N = 256, K = 64),
 )
 ```
 To access for example the amplitude at infinity,
 ```julia
 julia> mode_info.amplitude
-0.00023429507957491088 - 6.558414418883069e-5im
+0.00023429507956756622 - 6.5584144409953e-5im
 ```
 which is the value for $Z^{\infty}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near infinity for that particular frequency.
 
@@ -158,38 +190,38 @@ The output should be
 ```julia
 julia> mode_info
 TeukolskyPointParticleMode(
-    mode = Mode(s = 2, l = 2, m = 2, n = 0, k = 0, a = 0.9, omega = 0.06568724726732737, lambda = -0.3932109878800167),
-    amplitude_hor = 0.006089946888787634 - 0.0014130019665122818im,
-    energy_flux_hor = -2.843814878427963e-9,
-    angular_momentum_flux_hor = -8.658651402621547e-8,
-    Carter_const_flux_hor = -1.5343956812841173e-7,
+    mode = Mode(s = 2, l = 2, m = 2, n = 0, k = 0, a = 0.9, omega = 0.06568724726732737, lambda = -0.3932109878800166),
+    amplitude_hor = 0.006089946888798024 - 0.0014130019665199167im,
+    energy_flux_hor = -2.8438148784387398e-9,
+    angular_momentum_flux_hor = -8.658651402654361e-8,
+    Carter_const_flux_hor = -1.5343956812899322e-7,
     method = (method = "isem_trapezoidal", N = 256, K = 64),
 )
 ```
 To access for example the amplitude at the horizon,
 ```julia
 julia> mode_info.amplitude
-0.006089946888787634 - 0.0014130019665122818im
+0.006089946888798024 - 0.0014130019665199167im
 ```
 which is the value for $Z^{\mathrm{H}}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near the horizon for that particular frequency.
 
 Total fluxes can be computed with the orbit-aware high-level interface. A generic-orbit total-flux run can be substantially slower than a single-mode calculation because it performs a full mode summation.
 ```julia
-julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.5, 0.8)
+julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.5, 0.8; tol=1e-8)
 TeukolskyPointParticleFlux(
     orbital_parameters(a = 0.9, p = 6.0, e = 0.5, x = 0.8),
     orbit_type = generic,
-    infinity_energy_flux = 0.0008574854084537015,
-    infinity_angular_momentum_flux = 0.007923702306847358,
-    infinity_carter_constant_flux = 0.016863188846310453,
-    horizon_energy_flux = -8.85672967507385e-6,
-    horizon_angular_momentum_flux = -0.0001261648555129498,
-    horizon_carter_constant_flux = 0.00011196574370747144,
+    infinity_energy_flux = 0.0008574853907334083,
+    infinity_angular_momentum_flux = 0.007923702251676327,
+    infinity_carter_constant_flux = 0.016863188510667797,
+    horizon_energy_flux = -8.85672969880499e-6,
+    horizon_angular_momentum_flux = -0.0001261648557146267,
+    horizon_carter_constant_flux = 0.00011196574351492719,
     total_modes = 185914,
     n_reached_inf = 51,
     n_reached_hor = 29,
     tolerance = 1.0e-8,
-    cost = 198.14140391349792 seconds,
+    cost = 191.83913803100586 seconds,
 )
 ```
 
@@ -238,8 +270,11 @@ If you have used this code's capability to solve for the gravitational waveform 
     eprint = "2511.08673",
     archivePrefix = "arXiv",
     primaryClass = "gr-qc",
-    month = "11",
-    year = "2025"
+    doi = "10.1103/9ngz-k1lr",
+    journal = "Phys. Rev. D",
+    volume = "113",
+    pages = "124007",
+    year = "2026"
 }
 
 @article{Lo:2025lpo,
@@ -248,8 +283,11 @@ If you have used this code's capability to solve for the gravitational waveform 
     eprint = "2512.07937",
     archivePrefix = "arXiv",
     primaryClass = "gr-qc",
-    month = "12",
-    year = "2025"
+    doi = "10.1103/bljh-l413",
+    journal = "Phys. Rev. D",
+    volume = "113",
+    pages = "L061505",
+    year = "2026"
 }
 ```
 

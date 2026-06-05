@@ -12,7 +12,7 @@ using .AsymptoticAmplitudes
 export _Pin, _Pup, _P
 
 _TruncatioN = 40
-_TOLERANCE = 1e-14
+_TOLERANCE = 1e-13
 _xm = - 1.0
 _rhom = 1.0
 _MATCHING_ACCEPT_TOL = 1e-12
@@ -103,14 +103,17 @@ end
 
 @inline function _make_piecewise_solution(split, lower_eval, upper_eval, norm)
     function _P(x)
-        if x < split
+        x_selector = real(x)
+        if x_selector < split
             return _normalize_solution(lower_eval, x, norm)
-        elseif split <= x < 0.0
+        elseif split <= x_selector < 0.0
             return _normalize_solution(upper_eval, x, norm)
         end
     end
     return _P
 end
+
+@inline _is_horizon_superradiance_threshold(s, epsilon, tau) = abs(epsilon + tau) < 1e-12
 
 function _adaptive_piecewise_solution(split, lower_eval, upper_eval, norm, split_min, split_max; mismatch_tol = 1e-12, maxiter = 16, tol = _TOLERANCE)
     lo = min(split_min, split_max)
@@ -305,7 +308,9 @@ function _Pin_real_adaptive(s, l, m, a, omega, xm = _xm, N = _TruncatioN, tol = 
     lambda = params.lambda
     Btrans = B_trans(s, epsilon, tau, kappa)
 
-    coeffs_zero = Iteration.an_zero(s, epsilon, tau, kappa, lambda, N)
+    coeffs_zero = N === nothing ?
+        Iteration.LocalSolutionAtZero.an_zero_auto(s, epsilon, tau, kappa, lambda, Iteration._auto_nmax(lambda, epsilon, kappa); tol = tol)[1] :
+        Iteration.an_zero(s, epsilon, tau, kappa, lambda, N)
     xm_max = -Iteration.convergence_radius_an_zero(coeffs_zero, tol)
 
     if TSinInf == 1
@@ -448,11 +453,25 @@ function _Pup_real_adaptive(s, l, m, a, omega, xm = _xm, N = _TruncatioN, tol = 
     tau = params.tau
     lambda = params.lambda
     Ctrans = C_trans(s, epsilon, kappa)
+    use_resonant_zero_in = s > 0 && _is_horizon_superradiance_threshold(s, epsilon, tau) && TSinHor == 0
+    use_resonant_zero_out = s < 0 && _is_horizon_superradiance_threshold(s, epsilon, tau) && TSoutHor == 0
 
-    coeffs_zero_in = Iteration.an_zero(s, epsilon, tau, kappa, lambda, N)
-    xm_a = -Iteration.convergence_radius_an_zero(coeffs_zero_in, tol)
-    coeffs_zero_out = Iteration.bn_zero(s, epsilon, tau, kappa, lambda, N)
-    xm_b = -Iteration.convergence_radius_bn_zero(coeffs_zero_out, tol)
+    xm_a = if use_resonant_zero_in
+        -0.25
+    else
+        coeffs_zero_in = N === nothing ?
+            Iteration.LocalSolutionAtZero.an_zero_auto(s, epsilon, tau, kappa, lambda, Iteration._auto_nmax(lambda, epsilon, kappa); tol = tol)[1] :
+            Iteration.an_zero(s, epsilon, tau, kappa, lambda, N)
+        -Iteration.convergence_radius_an_zero(coeffs_zero_in, tol)
+    end
+    xm_b = if use_resonant_zero_out
+        -0.25
+    else
+        coeffs_zero_out = N === nothing ?
+            Iteration.LocalSolutionAtZero.bn_zero_auto(s, epsilon, tau, kappa, lambda, Iteration._auto_nmax(lambda, epsilon, kappa); tol = tol)[1] :
+            Iteration.bn_zero(s, epsilon, tau, kappa, lambda, N)
+        -Iteration.convergence_radius_bn_zero(coeffs_zero_out, tol)
+    end
     xm_max = max(xm_a, xm_b)
 
     if TSoutInf == 1
@@ -475,6 +494,8 @@ function _Pup_real_adaptive(s, l, m, a, omega, xm = _xm, N = _TruncatioN, tol = 
         else
             x_list_zero_in, coe_list_zero_in, P_zero_in = iterate_zero_in(xm_min, s, epsilon, tau, kappa, lambda, N, tol, lfe)
         end
+    elseif use_resonant_zero_in
+        x_list_zero_in, coe_list_zero_in, P_zero_in = iterate_zero_in_resonant_log(xm_min, s, epsilon, kappa, lambda, N, tol)
     else
         x_list_zero_in, coe_list_zero_in, P_zero_in = iterate_zero_in(xm_min, s, epsilon, tau, kappa, lambda, N, tol, lfe)
     end
@@ -486,6 +507,8 @@ function _Pup_real_adaptive(s, l, m, a, omega, xm = _xm, N = _TruncatioN, tol = 
         else
             x_list_zero_out, coe_list_zero_out, P_zero_out = iterate_zero_out(xm_min, s, epsilon, tau, kappa, lambda, N, tol, lfe)
         end
+    elseif use_resonant_zero_out
+        x_list_zero_out, coe_list_zero_out, P_zero_out = iterate_zero_out_resonant_log(xm_min, s, epsilon, kappa, lambda, N, tol)
     else
         x_list_zero_out, coe_list_zero_out, P_zero_out = iterate_zero_out(xm_min, s, epsilon, tau, kappa, lambda, N, tol, lfe)
     end
@@ -750,25 +773,53 @@ function _Pup_contour(s, l, m, a, omega, rhom = _rhom, xm = _xm, N = _TruncatioN
     return _P, (Cinc / Ctrans, Cref / Ctrans)
 end
 
-function _Pin(s, l, m, a, omega; xm = _xm, rhom = _rhom, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0, TSinInf = 0, TSoutInf = 0, TSinHor = 0, components = false)
+function _Pin(s, l, m, a, omega; xm = _xm, rhom = _rhom, N = nothing, tol = _TOLERANCE, sfe = 0, lfe = 0, TSinInf = 0, TSoutInf = 0, TSinHor = 0, components = false)
     solve_at_N = if _is_omega_complex(omega)
-        Ncand -> _Pin_contour(s, l, m, a, omega, rhom, xm, Ncand, tol, sfe, lfe, TSinInf, TSoutInf, TSinHor; components = true)
+        Ncand -> _Pin_contour(s, l, m, a, omega, rhom, xm, Ncand === nothing ? _TruncatioN : Ncand, tol, sfe, lfe, TSinInf, TSoutInf, TSinHor; components = true)
     else
         Ncand -> _Pin_real_adaptive(s, l, m, a, omega, xm, Ncand, tol, sfe, lfe, TSinInf, TSoutInf, TSinHor; components = true)
     end
-    return _adaptive_N_solution((branch = "Pin", s = s, l = l, m = m, a = a, omega = omega), solve_at_N, N, components)
+    if N === nothing
+        result = solve_at_N(nothing)
+        if components
+            return result[1], result[2], _components_with_N_metadata(result[3], nothing, [nothing])
+        end
+        return result[1], result[2]
+    end
+    Nfixed = max(Int(N), _MIN_MATCHING_N)
+    result = solve_at_N(Nfixed)
+    if components
+        comp = _components_with_N_metadata(result[3], Nfixed, [Nfixed])
+        _warn_matching_mismatch((branch = "Pin", s = s, l = l, m = m, a = a, omega = omega), comp.split_mismatch, comp.xsplit, Nfixed, _MATCHING_ACCEPT_TOL)
+        return result[1], result[2], comp
+    end
+    return result[1], result[2]
 end
 
-function _Pup(s, l, m, a, omega; xm = _xm, rhom = _rhom, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0, TSoutInf = 0, TSinHor = 0, TSoutHor = 0, components = false)
+function _Pup(s, l, m, a, omega; xm = _xm, rhom = _rhom, N = nothing, tol = _TOLERANCE, sfe = 0, lfe = 0, TSoutInf = 0, TSinHor = 0, TSoutHor = 0, components = false)
     solve_at_N = if _is_omega_complex(omega)
-        Ncand -> _Pup_contour(s, l, m, a, omega, rhom, xm, Ncand, tol, sfe, lfe, TSoutInf, TSinHor, TSoutHor; components = true)
+        Ncand -> _Pup_contour(s, l, m, a, omega, rhom, xm, Ncand === nothing ? _TruncatioN : Ncand, tol, sfe, lfe, TSoutInf, TSinHor, TSoutHor; components = true)
     else
         Ncand -> _Pup_real_adaptive(s, l, m, a, omega, xm, Ncand, tol, sfe, lfe, TSoutInf, TSinHor, TSoutHor; components = true)
     end
-    return _adaptive_N_solution((branch = "Pup", s = s, l = l, m = m, a = a, omega = omega), solve_at_N, N, components)
+    if N === nothing
+        result = solve_at_N(nothing)
+        if components
+            return result[1], result[2], _components_with_N_metadata(result[3], nothing, [nothing])
+        end
+        return result[1], result[2]
+    end
+    Nfixed = max(Int(N), _MIN_MATCHING_N)
+    result = solve_at_N(Nfixed)
+    if components
+        comp = _components_with_N_metadata(result[3], Nfixed, [Nfixed])
+        _warn_matching_mismatch((branch = "Pup", s = s, l = l, m = m, a = a, omega = omega), comp.split_mismatch, comp.xsplit, Nfixed, _MATCHING_ACCEPT_TOL)
+        return result[1], result[2], comp
+    end
+    return result[1], result[2]
 end
 
-function _P(s, l, m, a, omega; xm = _xm, rhom = _rhom, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0, TSinInf = 0, TSoutInf = 0, TSinHor = 0, TSoutHor = 0, components = false)
+function _P(s, l, m, a, omega; xm = _xm, rhom = _rhom, N = nothing, tol = _TOLERANCE, sfe = 0, lfe = 0, TSinInf = 0, TSoutInf = 0, TSinHor = 0, TSoutHor = 0, components = false)
     Pin, (Binc, Bref) = _Pin(s, l, m, a, omega; xm = xm, rhom = rhom, N = N, tol = tol, sfe = sfe, lfe = lfe, TSinInf = TSinInf, TSoutInf = TSoutInf, TSinHor = TSinHor, components = components)
     Pup, (Cinc, Cref) = _Pup(s, l, m, a, omega; xm = xm, rhom = rhom, N = N, tol = tol, sfe = sfe, lfe = lfe, TSoutInf = TSoutInf, TSinHor = TSinHor, TSoutHor = TSoutHor, components = components)
     return Pin, Pup, (Binc, Bref, Cinc, Cref)

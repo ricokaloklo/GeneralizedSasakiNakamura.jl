@@ -24,8 +24,8 @@ Pkg.add("GeneralizedSasakiNakamura")
 *Note: There is no need to install [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) separately as it should be automatically installed by the package manager.*
 
 ## Highlights
-### Performant frequency-domain Teukolsky solver
-Works well at *both low and high frequencies*, and takes only a few tens of milliseconds on average:
+### Numerical solver path: linear/Riccati integration
+The numerical path directly evolves the radial equation with the `linear` or `Riccati` methods and stitches analytical boundary ansatzes near the horizon and infinity:
 ```@raw html
 <table>
   <tr>
@@ -39,10 +39,16 @@ Works well at *both low and high frequencies*, and takes only a few tens of mill
 </table>
 ```
 
-*(There was no caching! We solved the equation on-the-fly! The notebook generating this animation can be found [here](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb))*
+*(There was no caching in this benchmark; the equation was solved on the fly. The notebook generating this animation can be found [here](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb).)*
 
-### ISEM radial-function benchmark
-Starting from v0.9.0, the default ISEM path solves the Teukolsky and GSN radial functions on the fly at approximately millisecond scale after warm-up, while retaining interactive evaluation over a dense grid:
+### Semi-analytical solver path: iterative series expansion matching
+Starting from v0.9.0, the default ISEM path solves the Teukolsky and GSN radial functions on the fly at approximately millisecond scale after warm-up, while retaining interactive evaluation over a dense grid. For real frequencies in the trained selector domain, ISEM chooses matching controls automatically and performs a local-`N` rescue scan if the split mismatch is above tolerance. If `method = "auto"` cannot obtain a reliable ISEM solution, it falls back to the legacy `linear` path.
+
+```@raw html
+<p align="center">
+  <img width="80%" src="isem_matching_original_30fps.gif">
+</p>
+```
 
 ```@raw html
 <p align="center">
@@ -52,8 +58,10 @@ Starting from v0.9.0, the default ISEM path solves the Teukolsky and GSN radial 
 
 Static/zero-frequency solutions are solved analytically with Gauss hypergeometric functions.
 
+Superradiance-threshold solutions with $\omega = m a / (2 r_+)$ are handled by a dedicated horizon-threshold ISEM branch.
+
 ### Solutions that are accurate everywhere
-Numerical solutions are *smoothly stitched* to analytical ansatzes near the horizon and infinity at user-specified locations `rsin` and `rsout` respectively:
+Numerical-path solutions are *smoothly stitched* to analytical ansatzes near the horizon and infinity at user-specified locations `rsin` and `rsout` respectively:
 
 ```@raw html
 <p align="center">
@@ -191,21 +199,21 @@ Teukolsky_pointparticle_flux(0.9, 6.0, 0.01, 0.99)
 the example above produced the following result on the test machine:
 
 ```julia
-julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.5, 0.8)
+julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.5, 0.8; tol = 1e-8)
 TeukolskyPointParticleFlux(
     orbital_parameters(a = 0.9, p = 6.0, e = 0.5, x = 0.8),
     orbit_type = generic,
-    infinity_energy_flux = 0.0008574854084537015,
-    infinity_angular_momentum_flux = 0.007923702306847358,
-    infinity_carter_constant_flux = 0.016863188846310453,
-    horizon_energy_flux = -8.85672967507385e-6,
-    horizon_angular_momentum_flux = -0.0001261648555129498,
-    horizon_carter_constant_flux = 0.00011196574370747144,
+    infinity_energy_flux = 0.0008574853907334083,
+    infinity_angular_momentum_flux = 0.007923702251676327,
+    infinity_carter_constant_flux = 0.016863188510667797,
+    horizon_energy_flux = -8.85672969880499e-6,
+    horizon_angular_momentum_flux = -0.0001261648557146267,
+    horizon_carter_constant_flux = 0.00011196574351492719,
     total_modes = 185914,
     n_reached_inf = 51,
     n_reached_hor = 29,
     tolerance = 1.0e-8,
-    cost = 198.14140391349792 seconds,
+    cost = 191.83913803100586 seconds,
 )
 ```
 

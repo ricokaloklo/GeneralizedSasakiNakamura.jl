@@ -5,7 +5,10 @@ using ..GeneralizedSasakiNakamura: NormalizationConvention, UNIT_GSN_TRANS, UNIT
 using ..GeneralizedSasakiNakamura: Mode, GSNRadialFunction, TeukolskyRadialFunction
 using ..GeneralizedSasakiNakamura: ConversionFactors, Solutions, r_from_rstar, rstar_from_r
 using ..GeneralizedSasakiNakamura: InitialConditions, AsymptoticExpansionCoefficients
+using ..GeneralizedSasakiNakamura: spin_weighted_spherical_eigenvalue
 using StaticArrays
+using Logging
+using Serialization
 
 include("Matching.jl")
 using .Matching
@@ -20,12 +23,21 @@ export matching_controls
 const _DEFAULT_XM = -1.0
 const _DEFAULT_RHOM = 1.0
 const _DEFAULT_N = 40
-const _DEFAULT_TOL = 1e-14
+const _DEFAULT_TOL = 1e-13
 const _GSN_HORIZON_ASYMPTOTIC_ORDER = 12
 const _GSN_INFINITY_ASYMPTOTIC_ORDER = 20
 const _GSN_HORIZON_DELTA_R_MAX = 0.03
 const _GSN_INFINITY_PHASE_MIN = 30.0
 const _GSN_ASYMPTOTIC_PATCH_RELATIVE_MISMATCH_MAX = 1e-4
+const _RADIAL_MATCHING_WARNING_TOL = 1e-8
+const _STATIC_OMEGA_TOL = 1e-12
+const _SELECTOR_MODEL_FILE = joinpath(@__DIR__, "selector_mlp_model.jls")
+const _SELECTOR_PAYLOAD = Ref{Any}(nothing)
+
+@inline _is_static_frequency(omega) = abs(omega) < _STATIC_OMEGA_TOL
+@inline _horizon_frequency(a, m) = m * a / (2 * (1 + sqrt(1 - a^2)))
+@inline _is_horizon_superradiance_frequency(a, m, omega) = isreal(omega) && !_is_static_frequency(omega) && abs(omega - _horizon_frequency(a, m)) < _STATIC_OMEGA_TOL
+@inline _use_large_frequency_expansion(a, omega) = isreal(omega) && abs(sqrt(1 - a^2) * omega) > 3
 
 @inline function _is_omega_complex(omega)
     return !iszero(imag(complex(omega)))
@@ -38,55 +50,142 @@ end
     return abs(imag(ω)) / denom
 end
 
+@inline function _selector_available(s, l, m, a, omega, boundary_condition)
+    return isreal(omega) &&
+        s in (-2, 2) &&
+        2 <= l <= 30 &&
+        abs(m) <= l &&
+        abs(m) <= 30 &&
+        abs(a) <= 0.99 &&
+        real(omega) > 0 &&
+        boundary_condition in (IN, UP) &&
+        isfile(_SELECTOR_MODEL_FILE)
+end
+
+function _selector_payload()
+    payload = _SELECTOR_PAYLOAD[]
+    payload !== nothing && return payload
+    payload = deserialize(_SELECTOR_MODEL_FILE)
+    _SELECTOR_PAYLOAD[] = payload
+    return payload
+end
+
+function _selector_features(s::Int, l::Int, m::Int, a, omega, boundary_condition)
+    lf = Float32(max(l, 1))
+    logw = Float32((log10(max(Float64(real(omega)), 1e-12)) + 4.0) / 6.0)
+    bup = boundary_condition == UP ? 1.0f0 : 0.0f0
+    x = Float32[
+        Float32(s) / 2.0f0,
+        Float32(l) / 30.0f0,
+        Float32(m) / 30.0f0,
+        Float32(m) / lf,
+        Float32(abs(m)) / lf,
+        Float32(a),
+        Float32(abs(a)),
+        Float32(sign(a)),
+        logw,
+        bup,
+        Float32(l) / 30.0f0 * logw,
+        Float32(abs(a)) * logw,
+    ]
+    append!(x, s == -2 ? Float32[1, 0] : Float32[0, 1])
+    for li in 2:30
+        push!(x, l == li ? 1.0f0 : 0.0f0)
+    end
+    for mi in -30:30
+        push!(x, m == mi ? 1.0f0 : 0.0f0)
+    end
+    append!(x, boundary_condition == IN ? Float32[1, 0] : Float32[0, 1])
+    return reshape(x, :, 1)
+end
+
+function _selector_predict_controls(s::Int, l::Int, m::Int, a, omega, boundary_condition)
+    payload = _selector_payload()
+    model = payload.model
+    X = _selector_features(s, l, m, a, omega, boundary_condition)
+    H = max.(model.W1 * X .+ model.b1, 0.0f0)
+    ZN = model.WN * H .+ model.bN
+    ZB = model.WB * H .+ model.bB
+    nidx = argmax(@view ZN[:, 1])
+    flags = ntuple(i -> ZB[i, 1] >= 0.0f0, 7)
+    return (
+        N = Int(payload.N_classes[nidx]),
+        sfe = flags[1],
+        lfe = flags[2],
+        TSinInf = flags[3],
+        TSoutInf = flags[4],
+        TSinHor = flags[5],
+        TSoutHor = flags[6],
+        fallback = flags[7],
+    )
+end
+
 @inline function matching_controls(s, l, m, a, omega; boundary_condition=IN)
+    if _selector_available(s, l, m, a, omega, boundary_condition)
+        pred = _selector_predict_controls(s, l, m, a, omega, boundary_condition)
+        return (
+            xm = _DEFAULT_XM,
+            rhom = _DEFAULT_RHOM,
+            N = pred.N,
+            tol = _DEFAULT_TOL,
+            sfe = pred.sfe,
+            lfe = pred.lfe,
+            TSinInf = pred.TSinInf,
+            TSoutInf = pred.TSoutInf,
+            TSinHor = pred.TSinHor,
+            TSoutHor = pred.TSoutHor,
+            boundary_condition = boundary_condition,
+            selector_fallback = pred.fallback,
+        )
+    end
     absomega = abs(omega)
     small_real_omega = isreal(omega) && absomega < 0.01
-    sfe = (small_real_omega && abs(s) == 2) ? 1 : 0
-    lfe = 0
-    N = max(Int64(floor(20 - 20 * log10(1 - abs(a)) - 2 * log(l))), 15)
+    sfe = small_real_omega && abs(s) == 2
+    lfe = false
+    N = _legacy_matching_N(a, l)
     xm = _DEFAULT_XM
     if boundary_condition == IN && s == 1 && isreal(omega)
         N = max(N, 50)
         xm = -0.6
-        TSinInf = 0
+        TSinInf = false
     elseif boundary_condition == IN && s == 2 && isreal(omega) && iszero(a) && l == 2
         if m == 2
             N = 55
             xm = -0.6
-            sfe = absomega < 0.1 ? 1 : sfe
-            TSinInf = 0
+            sfe = absomega < 0.1 ? true : sfe
+            TSinInf = false
         elseif m == 1
             N = 60
             xm = -0.6
-            TSinInf = 0
+            TSinInf = false
         elseif m == 0
             N = 80
             xm = -0.8
-            TSinInf = 0
+            TSinInf = false
         elseif m == -1
             N = 25
             xm = -0.4
-            TSinInf = 0
+            TSinInf = false
         else
             N = 40
             xm = -0.5
-            TSinInf = 0
+            TSinInf = false
         end
     elseif boundary_condition == IN && s == 2 && isreal(omega) && l == 2 && m != 2
         N = 10
         xm = -0.9
-        TSinInf = 0
+        TSinInf = false
     elseif boundary_condition == IN && s == 2 && isreal(omega)
         # Direct +2 infinity TSI is inaccurate for small/moderate real frequencies.
         N = max(N, 50)
         xm = -0.6
-        TSinInf = 0
+        TSinInf = false
     else
-        TSinInf = s == 2 && isreal(omega) ? 1 : 0
+        TSinInf = s == 2 && isreal(omega)
     end
-    TSoutInf = s == -2 && isreal(omega) ? 1 : 0
-    TSinHor = 0
-    TSoutHor = 0
+    TSoutInf = s == -2 && isreal(omega)
+    TSinHor = false
+    TSoutHor = false
     return (
         xm = xm,
         rhom = _DEFAULT_RHOM,
@@ -104,6 +203,136 @@ end
 
 @inline function _resolve_option(user_value, default_value)
     return user_value === nothing ? default_value : user_value
+end
+
+@inline function _legacy_matching_N(a, l)
+    return max(Int64(floor(20 - 20 * log10(1 - abs(a)) - 2 * log(l))), 15)
+end
+
+@inline function _y_default_N(a, l, omega)
+    return _legacy_matching_N(a, l)
+end
+
+@inline function _radial_controls(defaults; xm, rhom, N, tol, sfe, lfe, TSinInf, TSoutInf, TSinHor, TSoutHor)
+    return (
+        xm = _resolve_option(xm, defaults.xm),
+        rhom = _resolve_option(rhom, defaults.rhom),
+        N = _resolve_option(N, defaults.N),
+        tol = _resolve_option(tol, defaults.tol),
+        sfe = _resolve_option(sfe, defaults.sfe),
+        lfe = _resolve_option(lfe, defaults.lfe),
+        TSinInf = _resolve_option(TSinInf, defaults.TSinInf),
+        TSoutInf = _resolve_option(TSoutInf, defaults.TSoutInf),
+        TSinHor = _resolve_option(TSinHor, defaults.TSinHor),
+        TSoutHor = _resolve_option(TSoutHor, defaults.TSoutHor),
+    )
+end
+
+@inline function _metadata_mismatch(metadata)
+    value = _metadata_property(metadata, :split_mismatch, Inf)
+    value === missing && return Inf
+    mismatch = Float64(value)
+    return isfinite(mismatch) ? mismatch : Inf
+end
+
+function _local_n_rescue_values(n0::Int)
+    vals = Int[n0]
+    for d in (1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 50)
+        push!(vals, n0 + d)
+        push!(vals, max(10, n0 - d))
+    end
+    return (n for n in unique(vals) if 10 <= n <= 120)
+end
+
+@inline function _with_N(c, N::Int)
+    return (
+        xm = c.xm,
+        rhom = c.rhom,
+        N = N,
+        tol = c.tol,
+        sfe = c.sfe,
+        lfe = c.lfe,
+        TSinInf = c.TSinInf,
+        TSoutInf = c.TSoutInf,
+        TSinHor = c.TSinHor,
+        TSoutHor = c.TSoutHor,
+    )
+end
+
+@inline function _with_lfe(c, lfe::Bool)
+    return (
+        xm = c.xm,
+        rhom = c.rhom,
+        N = c.N,
+        tol = c.tol,
+        sfe = c.sfe,
+        lfe = lfe,
+        TSinInf = c.TSinInf,
+        TSoutInf = c.TSoutInf,
+        TSinHor = c.TSinHor,
+        TSoutHor = c.TSoutHor,
+    )
+end
+
+function _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c)
+    try
+        teuk_func, metadata = Logging.with_logger(Logging.NullLogger()) do
+            _build_teukolsky_function(
+                s,
+                l,
+                m,
+                a,
+                omega,
+                boundary_condition;
+                xm = c.xm,
+                rhom = c.rhom,
+                N = c.N,
+                tol = c.tol,
+                sfe = c.sfe,
+                lfe = c.lfe,
+                TSinInf = c.TSinInf,
+                TSoutInf = c.TSoutInf,
+                TSinHor = c.TSinHor,
+                TSoutHor = c.TSoutHor,
+                return_metadata = true,
+            )
+        end
+        return (teuk_func = teuk_func, metadata = metadata, mismatch = _metadata_mismatch(metadata), controls = c, error = nothing)
+    catch err
+        return (teuk_func = nothing, metadata = missing, mismatch = Inf, controls = c, error = err)
+    end
+end
+
+function _rescue_teukolsky_by_local_N(s, l, m, a, omega, boundary_condition, base)
+    best_valid = nothing
+    best_any = nothing
+    high_lfe_scale = _use_large_frequency_expansion(a, omega)
+    candidates = if high_lfe_scale
+        Bool(base.lfe) ? (base, _with_lfe(base, false)) : (base, _with_lfe(base, true))
+    elseif isreal(omega) && !Bool(base.lfe)
+        (base, _with_lfe(base, true))
+    else
+        (base,)
+    end
+    for candidate in candidates
+        for n in _local_n_rescue_values(Int(candidate.N))
+            c = _with_N(candidate, n)
+            result = _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c)
+            if result.error === nothing
+                if best_any === nothing || result.mismatch < best_any.mismatch
+                    best_any = result
+                end
+                if result.mismatch <= _RADIAL_MATCHING_WARNING_TOL
+                    best_valid = result
+                    break
+                end
+            elseif best_any === nothing
+                best_any = result
+            end
+        end
+        best_valid !== nothing && break
+    end
+    return best_valid === nothing ? best_any : best_valid
 end
 
 @inline function _validate_y_branch(s, boundary_condition)
@@ -170,6 +399,64 @@ end
 @inline function _rho_parameters(s, l, m, a, omega)
     params = Matching.Parameters.rho_parameters(Matching.Parameters.TeukolskyParameters(s, l, m, a, omega))
     return params.kappa, params.epsilon, params.tau, params.lambda, params.z
+end
+
+@inline _is_negative_real_frequency(omega) = isreal(omega) && real(omega) < -_STATIC_OMEGA_TOL
+@inline _conjugate_or_missing(x) = x === missing ? missing : conj(x)
+@inline _conjugate_solution_value(x) = x isa Tuple ? map(_conjugate_solution_value, x) : _conjugate_or_missing(x)
+@inline _conjugate_solution_function(f) = f === missing ? missing : (args...; kwargs...) -> _conjugate_solution_value(f(args...; kwargs...))
+
+function _conjugate_teukolsky_radial_function(f::TeukolskyRadialFunction, m::Int, omega)
+    mode = Mode(f.mode.s, f.mode.l, m, f.mode.a, omega, f.mode.lambda)
+    return TeukolskyRadialFunction(
+        mode,
+        f.boundary_condition,
+        _conjugate_or_missing(f.transmission_amplitude),
+        _conjugate_or_missing(f.incidence_amplitude),
+        _conjugate_or_missing(f.reflection_amplitude),
+        _conjugate_solution_function(f.P_solution),
+        f.GSN_solution === missing ? missing : _conjugate_gsn_radial_function(f.GSN_solution, m, omega),
+        _conjugate_solution_function(f.Teukolsky_solution),
+        f.normalization_convention,
+    )
+end
+
+function _conjugate_gsn_radial_function(f::GSNRadialFunction, m::Int, omega)
+    mode = Mode(f.mode.s, f.mode.l, m, f.mode.a, omega, f.mode.lambda)
+    return GSNRadialFunction(
+        mode,
+        f.boundary_condition,
+        f.rsin,
+        f.rsout,
+        f.rsmp,
+        f.horizon_expansion_order,
+        f.infinity_expansion_order,
+        _conjugate_or_missing(f.transmission_amplitude),
+        _conjugate_or_missing(f.incidence_amplitude),
+        _conjugate_or_missing(f.reflection_amplitude),
+        f.numerical_GSN_solution,
+        _conjugate_solution_function(f.numerical_Riccati_solution),
+        _conjugate_solution_function(f.GSN_solution),
+        f.normalization_convention,
+        f.method,
+    )
+end
+
+function _conjugate_y_radial_function(f::YRadialFunction, m::Int, omega)
+    mode = Mode(f.mode.s, f.mode.l, m, f.mode.a, omega, f.mode.lambda)
+    return YRadialFunction(
+        mode,
+        f.boundary_condition,
+        _conjugate_or_missing(f.transmission_amplitude),
+        _conjugate_or_missing(f.incidence_amplitude),
+        _conjugate_or_missing(f.reflection_amplitude),
+        _conjugate_solution_function(f.P_solution),
+        _conjugate_solution_function(f.Teukolsky_solution),
+        _conjugate_solution_function(f.X_solution),
+        _conjugate_solution_function(f.Y_scalar_solution),
+        _conjugate_solution_function(f.Y_solution),
+        f.normalization_convention,
+    )
 end
 
 @inline _kerr_delta(r, a) = r^2 + a^2 - 2 * r
@@ -420,7 +707,7 @@ end
     T, Tp, _ = Matching.TeukolskyTransformation.Tx(s, epsilon, kappa, tau)
     function Rsoln(r)
         x = Matching.TeukolskyTransformation.r_to_x(r, kappa)
-        Pval, Px, Pxx, error = P(x)
+        Pval, Px, _, error = P(x)
         R = T(x) * Pval
         Rp = - (Tp(x) * Pval + T(x) * Px) / (2 * kappa)
         Rpp = Matching.TeukolskyTransformation.d2R(r, R, Rp, s, a, omega, m, lambda)
@@ -433,10 +720,8 @@ end
     T, Tp, _ = Matching.TeukolskyTransformation.Tx(s, epsilon, kappa, tau)
     function Rsoln(r)
         x = Matching.TeukolskyTransformation.r_to_x(r, kappa)
-        rho = - x * z
         r = Matching.TeukolskyTransformation.x_to_r(x, kappa)
-        Pval, Pρ, Pρρ, error = P(rho)
-        Px = -z * Pρ
+        Pval, Px, _, error = P(x)
         R = T(x) * Pval
         Rp = - (Tp(x) * Pval + T(x) * Px) / (2 * kappa)
         Rpp = Matching.TeukolskyTransformation.d2R(r, R, Rp, s, a, omega, m, lambda)
@@ -467,6 +752,39 @@ end
     mode = Mode(s, l, m, a, omega, lambda)
     teuk_func = TeukolskyRadialFunction(mode, boundary_condition, one(incidence_amplitude), incidence_amplitude, reflection_amplitude, P, missing, Rsoln, UNIT_TEUKOLSKY_TRANS)
     return return_metadata ? (teuk_func, metadata) : teuk_func
+end
+
+@inline function _build_superradiance_threshold_teukolsky_function(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, return_metadata=false)
+    boundary_condition == UP || error("Superradiance-threshold ISEM special branch currently supports only UP.")
+    defaults = matching_controls(s, l, m, a, omega; boundary_condition = boundary_condition)
+    controls = _radial_controls(defaults; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    P, _, metadata = _Pup(s, l, m, a, omega; xm=controls.xm, rhom=controls.rhom, N=controls.N, tol=controls.tol, sfe=controls.sfe, lfe=controls.lfe, TSoutInf=controls.TSoutInf, TSinHor=controls.TSinHor, TSoutHor=controls.TSoutHor, components=true)
+    kappa, epsilon, tau, lambda = _isem_parameters(s, l, m, a, omega)
+    Rsoln = _teukolsky_solution_real(P, s, a, omega, m, lambda, kappa, epsilon, tau)
+    mode = Mode(s, l, m, a, omega, lambda)
+    teuk_func = TeukolskyRadialFunction(mode, boundary_condition, 1.0 + 0.0im, missing, missing, P, missing, Rsoln, UNIT_TEUKOLSKY_TRANS)
+    return return_metadata ? (teuk_func, metadata) : teuk_func
+end
+
+function _build_teukolsky_function_fixed(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, return_metadata=false)
+    defaults = matching_controls(s, l, m, a, omega; boundary_condition = boundary_condition)
+    base = _radial_controls(defaults; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    result = _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, base)
+    if N === nothing && (result.error !== nothing || result.mismatch > _RADIAL_MATCHING_WARNING_TOL)
+        rescued = _rescue_teukolsky_by_local_N(s, l, m, a, omega, boundary_condition, base)
+        if rescued !== nothing && rescued.error === nothing && rescued.mismatch <= _RADIAL_MATCHING_WARNING_TOL
+            result = rescued
+        elseif result.error !== nothing
+            result = rescued
+        end
+    end
+    if result.error !== nothing
+        error("ISEM radial construction failed after selector/local-N controls; consider method = \"linear\" or method = \"Riccati\". Original error: $(sprint(showerror, result.error))")
+    end
+    if result.mismatch > _RADIAL_MATCHING_WARNING_TOL
+        @warn "ISEM radial matching mismatch above tolerance after selector/local-N controls; consider method = \"linear\" or method = \"Riccati\"" s=s l=l m=m a=a omega=omega boundary_condition=boundary_condition mismatch=result.mismatch controls=result.controls
+    end
+    return return_metadata ? (result.teuk_func, result.metadata) : result.teuk_func
 end
 
 @inline function _combine_down(Rin::TeukolskyRadialFunction, Rup::TeukolskyRadialFunction)
@@ -554,8 +872,8 @@ end
     end
 
     transmission_amplitude = teuk_func.transmission_amplitude / trans_factor
-    incidence_amplitude = teuk_func.incidence_amplitude / incidence_factor
-    reflection_amplitude = teuk_func.reflection_amplitude / reflection_factor
+    incidence_amplitude = teuk_func.incidence_amplitude === missing ? missing : teuk_func.incidence_amplitude / incidence_factor
+    reflection_amplitude = teuk_func.reflection_amplitude === missing ? missing : teuk_func.reflection_amplitude / reflection_factor
     return transmission_amplitude, incidence_amplitude, reflection_amplitude
 end
 
@@ -567,27 +885,23 @@ end
         rhom = _metadata_property(metadata, :rhom, rhom),
         N = _metadata_property(metadata, :N, N),
         tol = tol,
-        sfe = sfe,
-        lfe = lfe,
-        TSinInf = TSinInf,
-        TSoutInf = TSoutInf,
-        TSinHor = TSinHor,
-        TSoutHor = TSoutHor,
+        sfe = Bool(sfe),
+        lfe = Bool(lfe),
+        TSinInf = Bool(TSinInf),
+        TSoutInf = Bool(TSoutInf),
+        TSinHor = Bool(TSinHor),
+        TSoutHor = Bool(TSoutHor),
         xm_requested = _metadata_property(metadata, :xm, xm),
         xm_min = _metadata_property(metadata, :xm_min, missing),
         xm_max = _metadata_property(metadata, :xm_max, missing),
         xm_match = _metadata_property(metadata, :xm_match, missing),
         split_mismatch = _metadata_property(metadata, :split_mismatch, missing),
-        N_candidates = _metadata_property(metadata, :N_candidates, missing),
     )
 end
 
 @inline function _build_gsn_function_from_teukolsky(teuk_func::TeukolskyRadialFunction; isem_parameters = missing, use_asymptotic_patches = true, gsn_horizon_delta_r_max = _GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min = _GSN_INFINITY_PHASE_MIN)
     mode = teuk_func.mode
     teukolsky_from_gsn_matrix = r -> begin
-        if r isa BigFloat
-            return Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(mode.s, mode.m, big(mode.a), big(mode.omega), big(mode.lambda), r)
-        end
         return Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(mode.s, mode.m, mode.a, mode.omega, mode.lambda, r)
     end
     if teuk_func.P_solution !== missing && !_is_omega_complex(mode.omega)
@@ -603,10 +917,11 @@ end
         vals = raw_gsn_solution(rs)
         return vals ./ gsn_transmission_amplitude
     end
-    incidence_amplitude /= gsn_transmission_amplitude
-    reflection_amplitude /= gsn_transmission_amplitude
+    incidence_amplitude = incidence_amplitude === missing ? missing : incidence_amplitude / gsn_transmission_amplitude
+    reflection_amplitude = reflection_amplitude === missing ? missing : reflection_amplitude / gsn_transmission_amplitude
     transmission_amplitude = one(gsn_transmission_amplitude)
-    gsn_solution = use_asymptotic_patches ?
+    can_use_asymptotic_patches = use_asymptotic_patches && incidence_amplitude !== missing && reflection_amplitude !== missing
+    gsn_solution = can_use_asymptotic_patches ?
         _with_gsn_asymptotic_patches(
             gsn_solution_unit_trans,
             mode,
@@ -639,50 +954,83 @@ end
 end
 
 function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::BoundaryCondition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
+    if _is_static_frequency(omega)
+        lambda = spin_weighted_spherical_eigenvalue(s, l, m)
+        mode = Mode(s, l, m, a, zero(omega), lambda)
+        if boundary_condition == IN
+            teuk_func = Solutions.solve_static_Rin(s, l, m, a)
+        elseif boundary_condition == UP
+            teuk_func = Solutions.solve_static_Rup(s, l, m, a)
+        else
+            error("Static Teukolsky modes currently support only IN and UP boundary conditions.")
+        end
+
+        return TeukolskyRadialFunction(
+            mode,
+            boundary_condition,
+            1,
+            missing,
+            missing,
+            missing,
+            missing,
+            teuk_func,
+            UNIT_TEUKOLSKY_TRANS,
+        )
+    end
+
+    if _is_negative_real_frequency(omega)
+        positive_func = Teukolsky_radial(s, l, -m, a, -omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        return _conjugate_teukolsky_radial_function(positive_func, m, omega)
+    end
+
+    if _is_horizon_superradiance_frequency(a, m, omega) && boundary_condition == UP
+        return _build_superradiance_threshold_teukolsky_function(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    end
+
     if boundary_condition == DOWN || boundary_condition == OUT
         Rin = Teukolsky_radial(s, l, m, a, omega, IN; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
         Rup = Teukolsky_radial(s, l, m, a, omega, UP; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
         return boundary_condition == DOWN ? _combine_down(Rin, Rup) : _combine_out(Rin, Rup)
     end
 
-    defaults = matching_controls(s, l, m, a, omega; boundary_condition = boundary_condition)
-    xm = _resolve_option(xm, defaults.xm)
-    rhom = _resolve_option(rhom, defaults.rhom)
-    N = _resolve_option(N, defaults.N)
-    tol = _resolve_option(tol, defaults.tol)
-    sfe = _resolve_option(sfe, defaults.sfe)
-    lfe = _resolve_option(lfe, defaults.lfe)
-    TSinInf = _resolve_option(TSinInf, defaults.TSinInf)
-    TSoutInf = _resolve_option(TSoutInf, defaults.TSoutInf)
-    TSinHor = _resolve_option(TSinHor, defaults.TSinHor)
-    TSoutHor = _resolve_option(TSoutHor, defaults.TSoutHor)
-    return _build_teukolsky_function(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    return _build_teukolsky_function_fixed(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
 end
 
 function GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::BoundaryCondition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, use_gsn_asymptotic_patches=false, gsn_horizon_delta_r_max=_GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=_GSN_INFINITY_PHASE_MIN)
+    if _is_negative_real_frequency(omega)
+        positive_func = GSN_radial(s, l, -m, a, -omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+        return _conjugate_gsn_radial_function(positive_func, m, omega)
+    end
+
+    if _is_horizon_superradiance_frequency(a, m, omega) && boundary_condition == UP
+        teuk_func, metadata = _build_superradiance_threshold_teukolsky_function(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, return_metadata=true)
+        defaults = matching_controls(s, l, m, a, omega; boundary_condition = boundary_condition)
+        controls = _radial_controls(defaults; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        isem_parameters = _isem_parameter_summary(; xm=controls.xm, rhom=controls.rhom, N=controls.N, tol=controls.tol, sfe=controls.sfe, lfe=controls.lfe, TSinInf=controls.TSinInf, TSoutInf=controls.TSoutInf, TSinHor=controls.TSinHor, TSoutHor=controls.TSoutHor, metadata=metadata)
+        return _build_gsn_function_from_teukolsky(teuk_func; isem_parameters=isem_parameters, use_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+    end
+
+    if boundary_condition == DOWN || boundary_condition == OUT
+        teuk_func = Teukolsky_radial(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        defaults = matching_controls(s, l, m, a, omega; boundary_condition = boundary_condition)
+        controls = _radial_controls(defaults; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        isem_parameters = _isem_parameter_summary(; xm=controls.xm, rhom=controls.rhom, N=controls.N, tol=controls.tol, sfe=controls.sfe, lfe=controls.lfe, TSinInf=controls.TSinInf, TSoutInf=controls.TSoutInf, TSinHor=controls.TSinHor, TSoutHor=controls.TSoutHor)
+        return _build_gsn_function_from_teukolsky(teuk_func; isem_parameters=isem_parameters, use_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+    end
+    teuk_func, metadata = _build_teukolsky_function_fixed(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, return_metadata=true)
     defaults = matching_controls(s, l, m, a, omega; boundary_condition = boundary_condition)
-    xm = _resolve_option(xm, defaults.xm)
-    rhom = _resolve_option(rhom, defaults.rhom)
-    N = _resolve_option(N, defaults.N)
-    tol = _resolve_option(tol, defaults.tol)
-    sfe = _resolve_option(sfe, defaults.sfe)
-    lfe = _resolve_option(lfe, defaults.lfe)
-    TSinInf = _resolve_option(TSinInf, defaults.TSinInf)
-    TSoutInf = _resolve_option(TSoutInf, defaults.TSoutInf)
-    TSinHor = _resolve_option(TSinHor, defaults.TSinHor)
-    TSoutHor = _resolve_option(TSoutHor, defaults.TSoutHor)
-    teuk_func, metadata = _build_teukolsky_function(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, return_metadata=true)
-    isem_parameters = _isem_parameter_summary(; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, metadata=metadata)
+    controls = _radial_controls(defaults; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    isem_parameters = _isem_parameter_summary(; xm=controls.xm, rhom=controls.rhom, N=controls.N, tol=controls.tol, sfe=controls.sfe, lfe=controls.lfe, TSinInf=controls.TSinInf, TSoutInf=controls.TSoutInf, TSinHor=controls.TSinHor, TSoutHor=controls.TSoutHor, metadata=metadata)
     return _build_gsn_function_from_teukolsky(teuk_func; isem_parameters=isem_parameters, use_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
 end
 
-function GSN_radial(s::Int, l::Int, m::Int, a, omega; xm=_DEFAULT_XM, rhom=_DEFAULT_RHOM, N=_DEFAULT_N, tol=_DEFAULT_TOL, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, use_gsn_asymptotic_patches=false, gsn_horizon_delta_r_max=_GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=_GSN_INFINITY_PHASE_MIN)
+function GSN_radial(s::Int, l::Int, m::Int, a, omega; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, use_gsn_asymptotic_patches=false, gsn_horizon_delta_r_max=_GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=_GSN_INFINITY_PHASE_MIN)
     Xin = GSN_radial(s, l, m, a, omega, IN; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     Xup = GSN_radial(s, l, m, a, omega, UP; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     return Xin, Xup
 end
 
-function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; xm=_DEFAULT_XM, rhom=_DEFAULT_RHOM, N=_DEFAULT_N, tol=_DEFAULT_TOL, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
+function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
     Rin = Teukolsky_radial(s, l, m, a, omega, IN; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     Rup = Teukolsky_radial(s, l, m, a, omega, UP; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     return Rin, Rup
@@ -730,17 +1078,11 @@ end
 end
 
 function Y_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::BoundaryCondition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
-    defaults = matching_controls(s, l, m, a, omega; boundary_condition = boundary_condition)
-    xm = _resolve_option(xm, defaults.xm)
-    rhom = _resolve_option(rhom, defaults.rhom)
-    N = _resolve_option(N, defaults.N)
-    tol = _resolve_option(tol, defaults.tol)
-    sfe = _resolve_option(sfe, defaults.sfe)
-    lfe = _resolve_option(lfe, defaults.lfe)
-    TSinInf = _resolve_option(TSinInf, defaults.TSinInf)
-    TSoutInf = _resolve_option(TSoutInf, defaults.TSoutInf)
-    TSinHor = _resolve_option(TSinHor, defaults.TSinHor)
-    TSoutHor = _resolve_option(TSoutHor, defaults.TSoutHor)
+    if _is_negative_real_frequency(omega)
+        positive_func = Y_radial(s, l, -m, a, -omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        return _conjugate_y_radial_function(positive_func, m, omega)
+    end
+
     return _build_y_solution(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
 end
 

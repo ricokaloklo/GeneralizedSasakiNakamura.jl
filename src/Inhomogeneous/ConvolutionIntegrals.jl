@@ -22,6 +22,29 @@ function horizon_factor(ω, a, m)
     return ω / (κ * (2 * rp)^3 * (κ^2 + 4 * ϵ0^2) * 64pi)
 end
 
+const _INHOMOGENEOUS_RESONANCE_TOL = 1e-12
+
+@inline _omega_horizon(a, m) = m * a / (2 * (1 + sqrt(1 - a^2)))
+@inline _skip_infinity_mode(ω; tol = _INHOMOGENEOUS_RESONANCE_TOL) = abs(ω) < tol
+@inline _skip_horizon_mode(a, m, ω; tol = _INHOMOGENEOUS_RESONANCE_TOL) = abs(ω - _omega_horizon(a, m)) < tol
+@inline _skip_radiative_mode(s, a, m, ω; tol = _INHOMOGENEOUS_RESONANCE_TOL) =
+    (s == -2 && _skip_infinity_mode(ω; tol = tol)) || (s == 2 && _skip_horizon_mode(a, m, ω; tol = tol))
+
+function _zero_radiative_mode(ω, trajectory; reason = "")
+    return Dict(
+        "Amplitude" => 0.0 + 0.0im,
+        "omega" => ω,
+        "EnergyFlux" => 0.0,
+        "AngularMomentumFlux" => 0.0,
+        "CarterConstantFlux" => 0.0,
+        "Trajectory" => trajectory,
+        "YSolution" => nothing,
+        "SWSH" => nothing,
+        "SkippedMode" => true,
+        "SkippedReason" => reason,
+    )
+end
+
 const _generic_trapezoidal_cache = Dict{Tuple, Any}()
 const _eccentric_trapezoidal_cache = Dict{Tuple, Any}()
 const _inclined_trapezoidal_cache = Dict{Tuple, Any}()
@@ -163,6 +186,16 @@ function convolution_integral_generic_trapezoidal_isem(a, p, e, x, s, l, m, n, k
     if _generic_trapezoidal_last_key[] === key
         return _generic_trapezoidal_last_result[]
     end
+    KG = Kerr_Geodesics(a, p, e, x)
+    Frequencies = KG["Frequencies"]
+    Γ = Frequencies["ϒt"]
+    omega = (m * Frequencies["ϒϕ"] + n * Frequencies["ϒr"] + k * Frequencies["ϒθ"]) / Γ
+    if _skip_radiative_mode(s, a, m, omega)
+        result = _zero_radiative_mode(omega, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
+        _generic_trapezoidal_last_key[] = key
+        _generic_trapezoidal_last_result[] = result
+        return result
+    end
     ctx = _generic_trapezoidal_context(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
 
     result = if s == 2
@@ -212,6 +245,12 @@ function convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sa
     ϒθ = Frequencies["ϒθ"]
     ϒφ = Frequencies["ϒϕ"]
     omega = (m * ϒφ + n * ϒr + k * ϒθ) / Γ
+    if _skip_radiative_mode(s, a, m, omega)
+        result = _zero_radiative_mode(omega, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
+        _generic_levin_last_key[] = key
+        _generic_levin_last_result[] = result
+        return result
+    end
     KG_samp = kerr_geo_generic_sample_cheby(KG, N_sample, K_sample)
     KG_trap = kerr_geo_generic_sample(KG, N_sample, K_sample)
     carter_samp = carter_ingredients_sample(KG_trap, a, m, omega)
@@ -745,6 +784,14 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
     ϒφ = Frequencies["ϒϕ"]
     a = KG_master["a"]
     ω = (m * ϒφ + n * ϒr + k * ϒθ) / Γ
+    if _skip_radiative_mode(s, a, m, ω)
+        res = _zero_radiative_mode(ω, KG_master; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
+        res["N_sample_requested"] = N0
+        res["K_sample_requested"] = K0
+        res["N_sample"] = N0
+        res["K_sample"] = K0
+        return res
+    end
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
     Ysol = _generic_isem_y_solution(s, l, m, a, ω)
 
@@ -839,6 +886,14 @@ function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, 
     ϒφ = Frequencies["ϒϕ"]
     a = KG_master["a"]
     ω = (m * ϒφ + n * ϒr + k * ϒθ) / Γ
+    if _skip_radiative_mode(s, a, m, ω)
+        res = _zero_radiative_mode(ω, KG_master; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
+        res["N_sample_requested"] = N0
+        res["K_sample_requested"] = K0
+        res["N_sample"] = N0
+        res["K_sample"] = K0
+        return res
+    end
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
     Ysol = _generic_isem_y_solution(s, l, m, a, ω)
 
@@ -1316,6 +1371,12 @@ function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample)
     ϒr = Frequencies["ϒr"]
     ϒφ = Frequencies["ϒϕ"]
     omega = (m * ϒφ + n * ϒr) / Γ
+    if _skip_radiative_mode(s, a, m, omega)
+        result = _zero_radiative_mode(omega, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
+        _eccentric_levin_last_key[] = key
+        _eccentric_levin_last_result[] = result
+        return result
+    end
     rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(500.0, 10pi / abs(omega))
     KG_samp = kerr_geo_eccentric_sample_cheby(KG, N_sample)
@@ -1796,6 +1857,9 @@ function convolution_integral_circular_equatorial_isem(a, p, s, l, m)
     Γ = KG["Frequencies"]["ϒt"]
     ϒφ = KG["Frequencies"]["ϒϕ"]
     ω = m * ϒφ / Γ
+    if _skip_radiative_mode(s, a, m, ω)
+        return _zero_radiative_mode(ω, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
+    end
 
     r = p
     θ = π / 2
@@ -1966,6 +2030,12 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
     ϒφ = Frequencies["ϒϕ"]
     a = KG_sample["a"]
     ω = (m * ϒφ + n * ϒr) / Γ
+    if _skip_radiative_mode(s, a, m, ω)
+        res = _zero_radiative_mode(ω, KG_sample; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
+        res["N_sample_requested"] = N_sample
+        res["N_sample"] = N_sample
+        return res
+    end
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
     Ysol = _isem_y_solution(s, l, m, a, ω)
 
@@ -2098,6 +2168,16 @@ function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m
     ispow2(Kmax) || throw(ArgumentError("Kmax must be a power of 2"))
     K_sample <= Kmax || throw(ArgumentError("K_sample must not exceed Kmax"))
     K_interval = K_sample
+    Frequencies = KG_sample["Frequencies"]
+    Γ = Frequencies["ϒt"]
+    a = KG_sample["a"]
+    ω = (m * Frequencies["ϒϕ"] + k * Frequencies["ϒθ"]) / Γ
+    if _skip_radiative_mode(s, a, m, ω)
+        res = _zero_radiative_mode(ω, KG_sample; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
+        res["K_sample_requested"] = K_sample
+        res["K_sample"] = K_sample
+        return res
+    end
     ctx = _inclined_trapezoidal_context(KG_sample, s, l, m, k, K_interval, cache)
     SHsamp = threaded_sampling ? GridSampling.swsh_sample_threaded(ctx.SH, ctx.KG_samp) : ctx.SHsamp
     res = _inclined_flux_from_sample(ctx.KG_samp, ctx.Ysol, ctx.Ydic, SHsamp, s, ctx.a, ctx.omega, m, k)
@@ -2171,6 +2251,12 @@ function convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K_sample)
     ϒθ = Frequencies["ϒθ"]
     ϒφ = Frequencies["ϒϕ"]
     omega = (m * ϒφ + k * ϒθ) / Γ
+    if _skip_radiative_mode(s, a, m, omega)
+        result = _zero_radiative_mode(omega, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
+        _inclined_levin_last_key[] = key
+        _inclined_levin_last_result[] = result
+        return result
+    end
 
     rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(200.0, 10pi / abs(omega))

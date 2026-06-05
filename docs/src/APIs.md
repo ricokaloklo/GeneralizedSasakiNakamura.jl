@@ -70,12 +70,17 @@ Keyword summary:
 
 | keyword | default | meaning |
 | :--- | :--- | :--- |
-| `method` | `"auto"` | `"auto"` and `"ISEM"` use the ISEM homogeneous solver; `"linear"` and `"Riccati"` use the legacy GSN ODE solvers |
-| `tolerance` | internal default | ODE or ISEM matching tolerance, depending on method |
+| `method` | `"auto"` | `"auto"` tries ISEM first and falls back to `"linear"` if ISEM emits a matching warning or construction error; `"ISEM"` forces ISEM; `"linear"` and `"Riccati"` use the legacy GSN ODE solvers |
+| `tol` | internal default | ISEM matching tolerance or alias for the ODE tolerance in high-level calls |
+| `tolerance` | internal default | legacy ODE tolerance; `tol` takes precedence when both are supplied |
 | `xm`, `rhom` | `nothing` | optional ISEM matching controls |
-| `N` | `nothing` | optional ISEM expansion order override |
+| `N` | `nothing` | optional ISEM expansion order override; when omitted, ISEM uses selector/default controls plus local-`N` rescue |
 | `sfe`, `lfe` | `nothing` | optional small/large-frequency expansion switches |
 | `TSinInf`, `TSoutInf`, `TSinHor`, `TSoutHor` | `nothing` | optional Teukolsky-Starobinsky identity switches |
+
+For real frequencies in the trained selector domain, ISEM predicts matching controls and then rescues failed or high-mismatch builds by scanning nearby `N` values. This rescue is applied at the shared Teukolsky/P-construction layer, so `Teukolsky_radial`, `GSN_radial`, and `Y_radial` all use it. Direct low-level `_P`, `_Pin`, and `_Pup` calls are internal and do not apply the public-interface rescue layer.
+
+Static modes with `abs(omega) < 1e-12` use the analytic zero-frequency branch. Horizon-threshold modes with real `omega = m a / (2 r_+)` and `UP` boundary condition use the dedicated superradiance-threshold branch.
 
 Returned objects are `TeukolskyRadialFunction`. They are callable:
 
@@ -97,7 +102,7 @@ X = GSN_radial(s, l, m, a, omega, IN; method = "auto")
 X = GSN_radial(s, l, m, a, omega, UP; method = "auto")
 ```
 
-`method = "auto"` currently routes real-frequency homogeneous solutions through ISEM. Legacy `"linear"` and `"Riccati"` methods remain available for direct GSN ODE evolution.
+`method = "auto"` tries ISEM first for homogeneous solutions and falls back to `"linear"` if ISEM emits a matching warning or construction error. Legacy `"linear"` and `"Riccati"` methods remain available for direct GSN ODE evolution. The ISEM matching controls, local-`N` rescue, static branch, and superradiance-threshold branch follow the same rules as `Teukolsky_radial`.
 
 Returned objects are `GSNRadialFunction`. They are callable:
 
@@ -134,9 +139,9 @@ Method choices:
 
 | method | meaning |
 | :--- | :--- |
-| `"auto"` | currently selects `"isem_trapezoidal"` |
-| `"isem_trapezoidal"` | ISEM radial solution with trapezoidal convolution |
-| `"isem_levin"` | ISEM radial solution with Levin convolution |
+| `"auto"` | selects `"isem_trapezoidal"` |
+| `"isem_trapezoidal"` | ISEM radial solution with adaptive trapezoidal convolution |
+| `"isem_levin"` | ISEM radial solution with Levin convolution where supported |
 | `"trapezoidal"` | legacy radial solution with trapezoidal convolution |
 | `"levin"` | legacy radial solution with Levin convolution |
 
@@ -150,7 +155,7 @@ The return type is `TeukolskyPointParticleMode`. Its main fields are:
 | `angular_momentum_flux` | single-mode angular-momentum flux |
 | `Carter_const_flux` | single-mode Carter-constant flux |
 | `trajectory` | geodesic data used by the convolution |
-| `Y_solution` | auxiliary radial solution used by the convolution |
+| `Y_solution` | auxiliary ISEM radial solution used by the convolution |
 | `SWSH` | spin-weighted spheroidal harmonic data |
 | `method` | named tuple recording the method and grid sizes |
 
@@ -200,6 +205,8 @@ Important keywords:
 | `fast` | `true` | use cached/presampled fast summation path where available |
 
 If the supplied orbital parameters do not define a bound orbit according to `KerrGeodesics`, the function emits a warning and returns `nothing`.
+
+The public tolerance keyword is `tol`. The returned object displays this value as `tolerance`.
 
 The return type is `TeukolskyPointParticleFlux`:
 
@@ -279,7 +286,7 @@ Stores a homogeneous Teukolsky radial solution.
 | `transmission_amplitude` | Teukolsky transmission amplitude |
 | `incidence_amplitude` | Teukolsky incidence amplitude |
 | `reflection_amplitude` | Teukolsky reflection amplitude |
-| `P_solution` | internal ISEM `P` solution when available |
+| `P_solution` | internal ISEM `P` solution when available; this is an internal callable, not the public rescue interface |
 | `GSN_solution` | associated `GSNRadialFunction` when available |
 | `Teukolsky_solution` | callable radial solution |
 | `normalization_convention` | normally `UNIT_TEUKOLSKY_TRANS` |
@@ -298,7 +305,7 @@ Stores a homogeneous GSN radial solution.
 | `transmission_amplitude` | GSN transmission amplitude |
 | `incidence_amplitude` | GSN incidence amplitude |
 | `reflection_amplitude` | GSN reflection amplitude |
-| `numerical_GSN_solution` | ODE solution for legacy methods; ISEM metadata for `method == "ISEM"` |
+| `numerical_GSN_solution` | ODE solution for legacy methods; ISEM matching metadata for `method == "ISEM"` |
 | `numerical_Riccati_solution` | Riccati ODE solution when applicable |
 | `GSN_solution` | callable GSN radial solution |
 | `normalization_convention` | normally `UNIT_GSN_TRANS` |

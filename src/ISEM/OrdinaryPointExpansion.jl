@@ -3,11 +3,11 @@ module OrdinaryPointExpansion
 include("TeukolskyTransformation.jl")
 using .TeukolskyTransformation
 
-export ordinary_point_coeffs, evaluate_ordinary_point_series, error_ordinary,
+export ordinary_point_coeffs, ordinary_point_coeffs_auto, evaluate_ordinary_point_series, error_ordinary,
        convergence_radius_x0_left, convergence_radius_x0_right,
        convergence_radius_rho_left, convergence_radius_rho_right
 
-const _TOLERANCE = 1e-15
+const _TOLERANCE = 1e-13
 const C0 = 0.0 + 0.0im
 const C1 = 1.0 + 0.0im
 const I1 = 1.0im
@@ -55,6 +55,64 @@ function ordinary_point_coeffs(s, epsilon, tau, kappa, lambda, x0, P, P_prime, N
     end
 
     return a
+end
+
+@inline function _ordinary_update_radius(coeff, n, scale, tol)
+    cn = abs(coeff) / scale
+    return iszero(cn) ? Inf : (tol / cn)^(1 / n)
+end
+
+function ordinary_point_coeffs_auto(s, epsilon, tau, kappa, lambda, x0, P, P_prime, Nmax::Integer = 100; tol = _TOLERANCE, patience = 12, min_order = 10)
+    coeffs = ComplexF64[P, P_prime]
+    x0m1 = x0 - 1
+    abs(x0 * x0m1) ≤ eps(Float64) && error("Denominator in ordinary point recurrence is zero because x0=0 or x0=1. x0 must be an ordinary point.")
+
+    ek = epsilon * kappa
+    x02 = x0 * x0
+    two_x0_minus_1 = 2 * x0 - 1
+    common_denom = x0m1 * x0
+    Nopt = min_order
+    Ropt = 0.0
+    bad = 0
+
+    @inbounds for n in 2:Nmax
+        nc = Float64(n)
+        nm1 = nc - 1
+        denom = nm1 * nc * common_denom
+        term_an_minus_1 = - nm1 * (
+            s + nc * two_x0_minus_1 +
+            I1 * (-I1 + epsilon + 2 * x02 * ek + tau - 2 * x0 * (ek + tau - I1))
+        )
+        term_an_minus_2 = (
+            -2 - nc^2 + s + s^2 - epsilon^2 - 3I1 * ek - 2I1 * s * ek +
+            6I1 * x0 * ek + 2I1 * s * x0 * ek + 2 * x0 * epsilon * ek +
+            lambda + nc * (3 - 2I1 * two_x0_minus_1 * ek + 2I1 * tau) -
+            3I1 * tau - 2 * x0 * ek * tau + tau^2
+        )
+        cn = if n == 2
+            (term_an_minus_1 * coeffs[2] + term_an_minus_2 * coeffs[1]) / denom
+        else
+            term_an_minus_3 = 2 * ek * (2I1 - I1 * nc + I1 * s - tau + epsilon)
+            (term_an_minus_1 * coeffs[n] + term_an_minus_2 * coeffs[n - 1] + term_an_minus_3 * coeffs[n - 2]) / denom
+        end
+        push!(coeffs, cn)
+        if n >= min_order
+            prefix = @view(coeffs[1:n + 1])
+            Rleft = convergence_radius_x0_left(x0, s, epsilon, tau, kappa, lambda, prefix, tol)
+            Rright = convergence_radius_x0_right(x0, s, epsilon, tau, kappa, lambda, prefix, tol)
+            Rn = min(Rleft, Rright)
+            if isfinite(Rn) && Rn > Ropt
+                Ropt = Rn
+                Nopt = n
+                bad = 0
+            else
+                bad += 1
+            end
+        end
+        n >= min_order && bad >= patience && n > Nopt && break
+    end
+
+    return coeffs[1:Nopt + 1], Nopt, Ropt
 end
 
 function ordinary_point_coeffs(s, epsilon, tau, kappa, lambda, z, rho0, P, P_prime, N::Integer)
