@@ -538,6 +538,20 @@ end
     return min(0.1 * max(max_flux, eps(Float64)) * tol, 1e-16)
 end
 
+@inline function _suspect_min_sample(min_stop::Int, max_stop::Int, excess::Float64, level100::Int, level1e4::Int, level1e8::Int)
+    target = min_stop
+    if excess > 1e8
+        target = max(target, level1e8)
+    elseif excess > 1e4
+        target = max(target, level1e4)
+    elseif excess > 100.0
+        target = max(target, level100)
+    elseif excess > 10.0
+        target = max(target, 2 * min_stop)
+    end
+    return min(target, max_stop)
+end
+
 function _phase_vector_exp!(out::Vector{ComplexF64}, base_omega::Float64, freq_vec::Vector{Float64}, mode_index::Int, q_vec::Vector{Float64}, fixed_phase::Vector{ComplexF64})
     @inbounds for i in eachindex(q_vec)
         out[i] = exp(im * (base_omega * freq_vec[i] + mode_index * q_vec[i])) * fixed_phase[i]
@@ -837,23 +851,8 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         allow_stop = (N2 >= min_stop_N && K2 >= min_stop_K) || !significant_for_alias
         has_flux_reference = max_flux > 100 * eps(Float64)
         low_flux_done = mode_abs_floor > 0.0 && abs(energy2) < mode_abs_floor
-        suspect_min_N = min_stop_N
-        suspect_min_K = min_stop_K
-        if has_flux_reference && !low_flux_done
-            if excess > 1e8
-                suspect_min_N = min(max(suspect_min_N, 4096), Nmax)
-                suspect_min_K = min(max(suspect_min_K, 512), Kmax)
-            elseif excess > 1e4
-                suspect_min_N = min(max(suspect_min_N, 2048), Nmax)
-                suspect_min_K = min(max(suspect_min_K, 512), Kmax)
-            elseif excess > 100.0
-                suspect_min_N = min(max(suspect_min_N, 1024), Nmax)
-                suspect_min_K = min(max(suspect_min_K, 256), Kmax)
-            elseif excess > 10.0
-                suspect_min_N = min(max(suspect_min_N, 2 * min_stop_N), Nmax)
-                suspect_min_K = min(max(suspect_min_K, 2 * min_stop_K), Kmax)
-            end
-        end
+        suspect_min_N = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_N, Nmax, excess, 1024, 2048, 4096) : min_stop_N
+        suspect_min_K = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_K, Kmax, excess, 256, 512, 512) : min_stop_K
         suspect_needs_extra = has_flux_reference && !low_flux_done && (N2 < suspect_min_N || K2 < suspect_min_K)
         if relE == 0.0
             if allow_stop && !suspect_needs_extra
@@ -940,15 +939,23 @@ function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, 
         res2 = _generic_flux_from_sample(next_sample, next_Ysamp, next_SHsamp, s, l, m, n, k, a, ω, ϒθ)
         N = N2
         K = K2
-        factor = max(abs(res2["EnergyFlux"]) / flux_scale, 1.0)
+        excess = abs(res2["EnergyFlux"]) / flux_scale
+        factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
         low_flux_cutoff = _low_flux_cutoff(max_flux, tol)
         relE = _relative_energy_change(res2["EnergyFlux"], res["EnergyFlux"])
+        low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor
+        significant_for_alias = abs(res2["EnergyFlux"]) > low_flux_cutoff
+        allow_stop = (N >= min_stop_N && K >= min_stop_K) || !significant_for_alias
+        has_flux_reference = max_flux > 100 * eps(Float64)
+        suspect_min_N = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_N, Nmax, excess, 1024, 2048, 4096) : min_stop_N
+        suspect_min_K = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_K, Kmax, excess, 256, 512, 512) : min_stop_K
+        suspect_needs_extra = has_flux_reference && !low_flux_done && (N < suspect_min_N || K < suspect_min_K)
         if relE == 0.0
             KG_samp = next_sample
             Ysamp = next_Ysamp
             SHsamp = next_SHsamp
             res = res2
-            if N >= min_stop_N && K >= min_stop_K && abs(res2["EnergyFlux"]) < flux_scale && abs(res2["EnergyFlux"]) < low_flux_cutoff
+            if allow_stop && !suspect_needs_extra
                 break
             end
             continue
@@ -957,10 +964,7 @@ function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, 
         Ysamp = next_Ysamp
         SHsamp = next_SHsamp
         res = res2
-        low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor
-        significant_for_alias = abs(res2["EnergyFlux"]) > low_flux_cutoff
-        allow_stop = (N >= min_stop_N && K >= min_stop_K) || !significant_for_alias
-        if allow_stop && (factor * relE <= effective_sample_tol || abs(res2["EnergyFlux"]) < low_flux_cutoff || low_flux_done) && abs(res2["EnergyFlux"]) < flux_scale
+        if allow_stop && !suspect_needs_extra && (factor * relE <= effective_sample_tol || abs(res2["EnergyFlux"]) < low_flux_cutoff || low_flux_done)
             if zero_low_flux && low_flux_done
                 res["Amplitude"] = 0.0 + 0.0im
                 res["EnergyFlux"] = 0.0
@@ -2078,21 +2082,25 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
         res2 = _eccentric_flux_from_sample(KG_samp2, Ysamp2, SH, s, a, ω, m, n)
         low_flux_cutoff = _low_flux_cutoff(Float64(max_flux), Float64(tol))
         relE = _relative_energy_change(res2["EnergyFlux"], res["EnergyFlux"])
+        excess = abs(res2["EnergyFlux"]) / flux_scale
+        factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
         significant_for_alias = abs(res2["EnergyFlux"]) > low_flux_cutoff
         allow_stop = (N2 >= min_stop_N) || !significant_for_alias
         low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor
+        has_flux_reference = Float64(max_flux) > 100 * eps(Float64)
+        suspect_min_N = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_N, Nmax, excess, 1024, 2048, 4096) : min_stop_N
+        suspect_needs_extra = has_flux_reference && !low_flux_done && N2 < suspect_min_N
         if relE == 0.0
             N = N2
             KG_samp = KG_samp2
             Ysamp = Ysamp2
             res = res2
-            if allow_stop && abs(res2["EnergyFlux"]) < flux_scale && abs(res2["EnergyFlux"]) < low_flux_cutoff
+            if allow_stop && !suspect_needs_extra
                 break
             end
             continue
         end
-        factor = max(abs(res2["EnergyFlux"]) / flux_scale, 1.0)
-        if allow_stop && (factor * relE <= effective_sample_tol || abs(res2["EnergyFlux"]) < low_flux_cutoff || low_flux_done) && abs(res2["EnergyFlux"]) < flux_scale
+        if allow_stop && !suspect_needs_extra && (factor * relE <= effective_sample_tol || abs(res2["EnergyFlux"]) < low_flux_cutoff || low_flux_done)
             if zero_low_flux && low_flux_done
                 res2["Amplitude"] = 0.0 + 0.0im
                 res2["EnergyFlux"] = 0.0
@@ -2215,21 +2223,25 @@ function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m
         relL = _relative_energy_change(res2["AngularMomentumFlux"], res["AngularMomentumFlux"])
         relQ = _relative_energy_change(res2["CarterConstantFlux"], res["CarterConstantFlux"])
         rel = max(relE, relL, relQ)
+        excess = abs(res2["EnergyFlux"]) / flux_scale
+        factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
         significant_for_alias = abs(res2["EnergyFlux"]) > low_flux_cutoff
         allow_stop = (K2 >= min_stop_K) || !significant_for_alias
         low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor
+        has_flux_reference = Float64(max_flux) > 100 * eps(Float64)
+        suspect_min_K = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_K, Kmax, excess, 256, 512, 512) : min_stop_K
+        suspect_needs_extra = has_flux_reference && !low_flux_done && K2 < suspect_min_K
         if rel == 0.0
             K_interval = K2
             SHsamp = next_SHsamp
             ctx = (KG_samp = next_sample, Ysol = ctx.Ysol, Ydic = ctx.Ydic, SH = ctx.SH, SHsamp = SHsamp, omega = ctx.omega, a = ctx.a, m = ctx.m, Trajectory = ctx.Trajectory)
             res = res2
-            if allow_stop && abs(res2["EnergyFlux"]) < flux_scale && abs(res2["EnergyFlux"]) < low_flux_cutoff
+            if allow_stop && !suspect_needs_extra
                 break
             end
             continue
         end
-        factor = max(abs(res2["EnergyFlux"]) / flux_scale, 1.0)
-        if allow_stop && (factor * rel <= effective_sample_tol || abs(res2["EnergyFlux"]) < low_flux_cutoff || low_flux_done) && abs(res2["EnergyFlux"]) < flux_scale
+        if allow_stop && !suspect_needs_extra && (factor * rel <= effective_sample_tol || abs(res2["EnergyFlux"]) < low_flux_cutoff || low_flux_done)
             if zero_low_flux && low_flux_done
                 res2["Amplitude"] = 0.0 + 0.0im
                 res2["EnergyFlux"] = 0.0
