@@ -38,14 +38,14 @@ _DEFAULT_infinity_expansion_order_for_cplx_freq = 25
     spin = abs(float(real(a)))
     spin >= 1 && return max(order, 50)
     scale = log10(inv(max(1 - spin, eps(Float64))))
-    return max(order, _DEFAULT_horizon_expansion_order, ceil(Int, 5 * max(scale, 0) - 1e-12))
+    return scale, max(order, _DEFAULT_horizon_expansion_order, ceil(Int, 10 * max(scale, 0) - 1e-12))
 end
 
 @inline function _adaptive_infinity_expansion_order(omega, order::Int)
     freq = abs(omega)
     freq == 0 && return order
     scale = -log10(float(freq))
-    return max(order, _DEFAULT_infinity_expansion_order, ceil(Int, 10 * max(scale, 0) - 1e-12))
+    return scale, max(order, _DEFAULT_infinity_expansion_order, ceil(Int, 10 * max(scale, 0) - 1e-12))
 end
 
 # IN for purely-ingoing at the horizon and UP for purely-outgoing at infinity
@@ -261,7 +261,34 @@ end
     return ISEM.GSN_radial(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
 end
 
-function _auto_try_isem_then_linear(context, isem_build, linear_build)
+function _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    saw_warn = Ref(false)
+    logger = EarlyFilteredLogger(
+        log -> begin
+            if log.level == Logging.Warn
+                saw_warn[] = true
+            end
+            return log.level >= Logging.Error
+        end,
+        current_logger(),
+    )
+
+    try
+        sol = with_logger(logger) do
+            riccati_build()
+        end
+        if saw_warn[]
+            @info "method = \"auto\" tried Riccati, received a warning, and switched to method = \"linear\"." context=context
+            return linear_build()
+        end
+        return sol
+    catch err
+        @info "method = \"auto\" tried Riccati, received an error, and switched to method = \"linear\"." context=context error=sprint(showerror, err)
+        return linear_build()
+    end
+end
+
+function _auto_try_isem_then_legacy(context, isem_build, riccati_build, linear_build)
     saw_warn = Ref(false)
     logger = EarlyFilteredLogger(
         log -> begin
@@ -278,13 +305,13 @@ function _auto_try_isem_then_linear(context, isem_build, linear_build)
             isem_build()
         end
         if saw_warn[]
-            @info "method = \"auto\" tried ISEM, received an ISEM warning, and switched to method = \"linear\". Use method = \"ISEM\" to force ISEM." context=context
-            return linear_build()
+            @info "method = \"auto\" tried ISEM, received an ISEM warning, and switched to legacy auto (Riccati, then linear). Use method = \"ISEM\" to force ISEM." context=context
+            return _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
         end
         return sol
     catch err
-        @info "method = \"auto\" tried ISEM, received an ISEM error, and switched to method = \"linear\". Use method = \"ISEM\" to force ISEM." context=context error=sprint(showerror, err)
-        return linear_build()
+        @info "method = \"auto\" tried ISEM, received an ISEM error, and switched to legacy auto (Riccati, then linear). Use method = \"ISEM\" to force ISEM." context=context error=sprint(showerror, err)
+        return _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
     end
 end
 
@@ -336,9 +363,10 @@ function GSN_radial(
         return _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     elseif _is_auto_method(method)
         context = (function_name = "GSN_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
-        return _auto_try_isem_then_linear(
+        return _auto_try_isem_then_legacy(
             context,
             () -> _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min),
+            () -> GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
             () -> GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
         )
     elseif method == "ISEM"
@@ -352,8 +380,10 @@ function GSN_radial(
         lambda = spin_weighted_spheroidal_eigenvalue(s, l, m, a*omega)
         # Fill in the mode information
         mode = Mode(s, l, m, a, omega, lambda)
-        horizon_expansion_order = _adaptive_horizon_expansion_order(a, horizon_expansion_order)
-        infinity_expansion_order = _adaptive_infinity_expansion_order(omega, infinity_expansion_order)
+        horizon_scale, horizon_expansion_order = _adaptive_horizon_expansion_order(a, horizon_expansion_order)
+        infinity_scale, infinity_expansion_order = _adaptive_infinity_expansion_order(omega, infinity_expansion_order)
+        rsin = min(horizon_scale * rsin, rsin)
+        rsout = max(10 * infinity_scale * rsout, rsout)
         if boundary_condition == IN
             # Solve for Xin
             if isa(omega, Real)
@@ -900,9 +930,10 @@ function Teukolsky_radial(
         return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     elseif _is_auto_method(method)
         context = (function_name = "Teukolsky_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
-        return _auto_try_isem_then_linear(
+        return _auto_try_isem_then_legacy(
             context,
             () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
             () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
         )
     elseif method == "ISEM"
@@ -969,10 +1000,11 @@ function Teukolsky_radial(
         return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     elseif !_is_static_frequency(omega) && _is_auto_method(method)
         context = (function_name = "Teukolsky_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
-        return _auto_try_isem_then_linear(
+        return _auto_try_isem_then_legacy(
             context,
             () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
-            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method="linear"),
+            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method="Riccati", tolerance = tol === nothing ? Solutions._DEFAULTTOLERANCE : tol),
+            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method="linear", tolerance = tol === nothing ? Solutions._DEFAULTTOLERANCE : tol),
         )
     elseif !_is_static_frequency(omega) && method == "ISEM"
         return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)

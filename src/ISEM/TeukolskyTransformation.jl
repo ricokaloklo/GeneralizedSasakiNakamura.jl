@@ -210,35 +210,32 @@ function P_to_GSN_solution_from_matrix(r_from_rstar, teukolsky_from_gsn_matrix, 
     end
 end
 
-function _GSN_to_Y_coefficients_from_maps(p_to_y_coeffs, p_to_gsn_coeffs, gsn_unit_scale)
-    f1, f2, f3, _, _ = p_to_y_coeffs
-
-    return r -> begin
-        A0, A1, B0, B1 = p_to_gsn_coeffs(r)
-        D = A0 * B1 - A1 * B0
-        SD = gsn_unit_scale * D
-        F1 = f1(r)
-        F2 = f2(r)
-        F3 = f3(r)
-        return (
-            F1 * B1 / SD,
-            -F1 * A1 / SD,
-            (F2 * B1 - F3 * B0) / SD,
-            (-F2 * A1 + F3 * A0) / SD,
-        )
+function _GSN_to_Y_direct_coeffs_plus2_up(m, a, omega, lambda)
+    return (r, rs = _rstar_from_r(a, r)) -> begin
+        F11 = (exp(im * omega * rs) * (-((-1 + sqrt(1 - a^2) + r) / (1 + sqrt(1 - a^2) - r)))^(((im / 2) * a * m) / sqrt(1 - a^2)) * (a^2 + (-2 + r) * r)^3 * (-10 * a^6 + 4 * a^4 * (8 + im * a * (-m + a * omega)) * r + a^2 * (-24 + a * ((6 * im) * m + a * (-24 - lambda - (6 * im) * omega + 2 * (m - a * omega)^2))) * r^2 + 2 * a^2 * (23 + lambda + im * a * (-2 * m + 5 * a * omega)) * r^3 + 2 * (-6 + a * (im * m + a * (-10 - lambda - (6 * im) * omega + (m - 3 * a * omega) * (m - a * omega)))) * r^4 + 2 * (9 + lambda + (4 * im) * a^2 * omega) * r^5 - (6 + lambda + 2 * omega * (3 * im + 2 * a * m - 3 * a^2 * omega)) * r^6 + (2 * im) * omega * r^7 + 2 * omega^2 * r^8)) / (((a^2 + (-2 + r) * r)^2 * (a^2 + r^2))^(3 / 2) * (-((24 + lambda * (10 + lambda) + (12 * im) * omega) * r^4) - 24 * a^3 * m * r * (im + 2 * omega * r) + (4 * im) * a * m * r^2 * (6 + r * (8 + 2 * lambda + (3 * im) * omega * r)) + 12 * a^4 * (-1 + 2 * omega * r * (im + omega * r)) + 4 * a^2 * r * (6 + r * (-3 + 6 * m^2 + 3 * omega^2 * r^2 - (2 * im) * omega * (3 + r + lambda * r)))))
+        F12 = (2 * exp(im * omega * rs) * r * ((-1 + sqrt(1 - a^2) + r) / (-1 - sqrt(1 - a^2) + r))^(((im / 2) * a * m) / sqrt(1 - a^2)) * sqrt((a^2 + (-2 + r) * r)^2 * (a^2 + r^2)) * ((-im) * a * m * r + a^2 * (-2 + im * omega * r) + r * (3 + r * (-1 + im * omega * r)))) / ((a^2 + (-2 + r) * r) * (-((24 + lambda * (10 + lambda) + (12 * im) * omega) * r^4) - 24 * a^3 * m * r * (im + 2 * omega * r) + (4 * im) * a * m * r^2 * (6 + r * (8 + 2 * lambda + (3 * im) * omega * r)) + 12 * a^4 * (-1 + 2 * omega * r * (im + omega * r)) + 4 * a^2 * r * (6 + r * (-3 + 6 * m^2 + 3 * omega^2 * r^2 - (2 * im) * omega * (3 + r + lambda * r)))))
+        F21 = (exp(im * omega * rs) * (-((-1 + sqrt(1 - a^2) + r) / (1 + sqrt(1 - a^2) - r)))^(((im / 2) * a * m) / sqrt(1 - a^2)) * (a^2 + (-2 + r) * r)^3 * (2 * a^5 * m * r * (7 * im + 4 * omega * r) + a^2 * r^3 * (4 * (3 + lambda) - 3 * lambda * r - 4 * (3 + m^2 - (3 * im) * omega) * r + (2 * im) * (2 + lambda) * omega * r^2) + r^5 * (2 * (6 + lambda) - (6 + lambda) * r + im * (6 + lambda) * omega * r^2 + 2 * omega^2 * r^3) - im * a * m * r^4 * (16 + r * (-2 + lambda + (2 * im) * omega * r)) - im * a^3 * m * r^2 * (24 + r * (-16 + lambda + (10 * im) * omega * r)) - 2 * a^6 * (-4 + omega * r * (7 * im + 2 * omega * r)) - a^4 * r * (16 + r * (-2 + 4 * m^2 + lambda * (2 - im * omega * r) + 2 * omega * (-12 * im + r * (8 * im + 3 * omega * r)))))) / (r * ((a^2 + (-2 + r) * r)^2 * (a^2 + r^2))^(3 / 2) * (-((24 + lambda * (10 + lambda) + (12 * im) * omega) * r^4) - 24 * a^3 * m * r * (im + 2 * omega * r) + (4 * im) * a * m * r^2 * (6 + r * (8 + 2 * lambda + (3 * im) * omega * r)) + 12 * a^4 * (-1 + 2 * omega * r * (im + omega * r)) + 4 * a^2 * r * (6 + r * (-3 + 6 * m^2 + 3 * omega^2 * r^2 - (2 * im) * omega * (3 + r + lambda * r)))))
+        F22 = (exp(im * omega * rs) * ((-1 + sqrt(1 - a^2) + r) / (-1 - sqrt(1 - a^2) + r))^(((im / 2) * a * m) / sqrt(1 - a^2)) * sqrt((a^2 + (-2 + r) * r)^2 * (a^2 + r^2)) * (2 * a^2 + (4 * im) * a * (m - a * omega) * r - (6 + lambda) * r^2 + (2 * im) * omega * r^3)) / ((a^2 + (-2 + r) * r) * (-((24 + lambda * (10 + lambda) + (12 * im) * omega) * r^4) - 24 * a^3 * m * r * (im + 2 * omega * r) + (4 * im) * a * m * r^2 * (6 + r * (8 + 2 * lambda + (3 * im) * omega * r)) + 12 * a^4 * (-1 + 2 * omega * r * (im + omega * r)) + 4 * a^2 * r * (6 + r * (-3 + 6 * m^2 + 3 * omega^2 * r^2 - (2 * im) * omega * (3 + r + lambda * r)))))
+        return F11, F12, F21, F22
     end
 end
 
-function GSN_to_Y_coeffs_minus2_in(teukolsky_from_gsn_matrix, m, a, omega, lambda, Btrans; coefficient_precision = nothing)
-    p_to_y_coeffs = P_to_Y_coeffs_minus2_in(m, a, omega, lambda, Btrans)
-    p_to_gsn_coeffs = P_to_GSN_coefficients_from_matrix(teukolsky_from_gsn_matrix, -2, m, a, omega, lambda; coefficient_precision = coefficient_precision)
-    return _GSN_to_Y_coefficients_from_maps(p_to_y_coeffs, p_to_gsn_coeffs, Btrans)
+function _GSN_to_Y_direct_coeffs_minus2_in(m, a, omega, lambda)
+    return (r, rs = _rstar_from_r(a, r)) -> begin
+        F11 = (-10 * a^6 + 4 * a^4 * (8 + im * a * (m - a * omega)) * r + a^2 * (-24 + a * ((-6 * im) * m + a * (-20 - lambda + (6 * im) * omega + 2 * (m - a * omega)^2))) * r^2 + 2 * a^2 * (19 + lambda + im * a * (2 * m - 5 * a * omega)) * r^3 + 2 * (-6 + a * ((-im) * m + a * (-6 - lambda + (6 * im) * omega + (m - 3 * a * omega) * (m - a * omega)))) * r^4 + 2 * (5 + lambda - (4 * im) * a^2 * omega) * r^5 - (2 + lambda - 2 * omega * (3 * im - 2 * a * m + 3 * a^2 * omega)) * r^6 - (2 * im) * omega * r^7 + 2 * omega^2 * r^8) / (exp(im * omega * rs) * (-((-1 + sqrt(1 - a^2) + r) / (1 + sqrt(1 - a^2) - r)))^(((im / 2) * a * m) / sqrt(1 - a^2)) * (a^2 + (-2 + r) * r)^3 * ((a^2 + r^2) / (a^2 + (-2 + r) * r)^2)^(3 / 2) * (-12 * a^4 + 24 * a^2 * (1 + im * a * (m - a * omega)) * r + 12 * a * ((-2 * im) * m + a * (-1 + (2 * im) * omega + 2 * (m - a * omega)^2)) * r^2 + (8 * im) * a * (-(lambda * m) + a * (-3 + lambda) * omega) * r^3 - (lambda * (2 + lambda) - 12 * omega * (im - a * m + a^2 * omega)) * r^4))
+        F12 = (2 * r * (a^2 + (-2 + r) * r) * sqrt((a^2 + r^2) / (a^2 + (-2 + r) * r)^2) * (im * a * m * r + a^2 * (-2 - im * omega * r) + r * (3 + r * (-1 - im * omega * r)))) / (exp(im * omega * rs) * ((-1 + sqrt(1 - a^2) + r) / (-1 - sqrt(1 - a^2) + r))^(((im / 2) * a * m) / sqrt(1 - a^2)) * (-12 * a^4 + 24 * a^2 * (1 + im * a * (m - a * omega)) * r + 12 * a * ((-2 * im) * m + a * (-1 + (2 * im) * omega + 2 * (m - a * omega)^2)) * r^2 + (8 * im) * a * (-(lambda * m) + a * (-3 + lambda) * omega) * r^3 - (lambda * (2 + lambda) - 12 * omega * (im - a * m + a^2 * omega)) * r^4))
+        F21 = (((-1 + sqrt(1 - a^2) + r) / (-1 - sqrt(1 - a^2) + r))^(1 - ((im / 2) * a * m) / sqrt(1 - a^2)) * (2 * a^5 * m * r * (-7 * im + 4 * omega * r) + a * m * r^4 * (16 * im + im * (-6 + lambda) * r + 2 * omega * r^2) + a^3 * m * r^2 * (24 * im + im * (-20 + lambda) * r + 10 * omega * r^2) + r^5 * (2 * (2 + lambda) - (2 + lambda) * r - im * (2 + lambda) * omega * r^2 + 2 * omega^2 * r^3) - a^4 * r * (16 + 2 * (-5 + lambda + 2 * m^2 + (12 * im) * omega) * r + im * (-20 + lambda) * omega * r^2 + 6 * omega^2 * r^3) + a^6 * (8 + 2 * omega * r * (7 * im - 2 * omega * r)) + a^2 * r^3 * (-4 - 4 * m^2 * r + (4 * im) * omega * (-3 + r) * r + lambda * (4 + r * (-3 - (2 * im) * omega * r))))) / (exp(im * omega * rs) * r * (-1 + sqrt(1 - a^2) + r)^2 * (a^2 + r^2) * sqrt((a^2 + r^2) / (a^2 + (-2 + r) * r)^2) * (-12 * a^4 + 24 * a^2 * (1 + im * a * (m - a * omega)) * r + 12 * a * ((-2 * im) * m + a * (-1 + (2 * im) * omega + 2 * (m - a * omega)^2)) * r^2 + (8 * im) * a * (-(lambda * m) + a * (-3 + lambda) * omega) * r^3 - (lambda * (2 + lambda) - 12 * omega * (im - a * m + a^2 * omega)) * r^4))
+        F22 = (((-1 + sqrt(1 - a^2) + r) / (-1 - sqrt(1 - a^2) + r))^(1 - ((im / 2) * a * m) / sqrt(1 - a^2)) * (a^2 + r^2) * (2 * a^2 + (4 * im) * a * (-m + a * omega) * r - (2 + lambda) * r^2 - (2 * im) * omega * r^3)) / (exp(im * omega * rs) * (-1 + sqrt(1 - a^2) + r)^2 * sqrt((a^2 + r^2) / (a^2 + (-2 + r) * r)^2) * (-12 * a^4 + 24 * a^2 * (1 + im * a * (m - a * omega)) * r + 12 * a * ((-2 * im) * m + a * (-1 + (2 * im) * omega + 2 * (m - a * omega)^2)) * r^2 + (8 * im) * a * (-(lambda * m) + a * (-3 + lambda) * omega) * r^3 - (lambda * (2 + lambda) - 12 * omega * (im - a * m + a^2 * omega)) * r^4))
+        return F11, F12, F21, F22
+    end
 end
 
-function GSN_to_Y_coeffs_plus2_up(teukolsky_from_gsn_matrix, m, a, omega, lambda, Ctrans; coefficient_precision = nothing)
-    p_to_y_coeffs = P_to_Y_coeffs_plus2_up(m, a, omega, lambda, Ctrans)
-    p_to_gsn_coeffs = P_to_GSN_coefficients_from_matrix(teukolsky_from_gsn_matrix, 2, m, a, omega, lambda; coefficient_precision = coefficient_precision)
-    return _GSN_to_Y_coefficients_from_maps(p_to_y_coeffs, p_to_gsn_coeffs, Ctrans)
+function GSN_to_Y_coeffs_minus2_in(_teukolsky_from_gsn_matrix, m, a, omega, lambda, _Btrans; coefficient_precision = nothing)
+    return _GSN_to_Y_direct_coeffs_minus2_in(m, a, omega, lambda)
+end
+
+function GSN_to_Y_coeffs_plus2_up(_teukolsky_from_gsn_matrix, m, a, omega, lambda, _Ctrans; coefficient_precision = nothing)
+    return _GSN_to_Y_direct_coeffs_plus2_up(m, a, omega, lambda)
 end
 
 function GSN_to_Y_solution_from_matrix(rstar_from_r, teukolsky_from_gsn_matrix, gsn_solution, s, m, a, omega, lambda, branch_transmission_amplitude; coefficient_precision = nothing)
@@ -251,10 +248,11 @@ function GSN_to_Y_solution_from_matrix(rstar_from_r, teukolsky_from_gsn_matrix, 
     end
 
     return r -> begin
-        Xvals = gsn_solution(rstar_from_r(r))
+        rs = rstar_from_r(r)
+        Xvals = gsn_solution(rs)
         X = Xvals[1]
         Xp = Xvals[2]
-        C11, C12, C21, C22 = coeffs(r)
+        C11, C12, C21, C22 = coeffs(r, rs)
         Y = C11 * X + C12 * Xp
         Yp = C21 * X + C22 * Xp
         return (Y, Yp, X, zero(abs(Y)))
@@ -738,7 +736,7 @@ end
 
 function d2P(x, P, dP, s, epsilon, kappa, tau, lambda)
     q1, q2 = calculate_q1_q2(x, s, epsilon, kappa, tau, lambda)
-    return - (q1 * dP + q2 * P) / (x) * (1 - x)
+    return - (q1 * dP + q2 * P) / (x * (1 - x))
 end
 
 function calculate_q3_q4(x, s, epsilon, kappa, tau, lambda)

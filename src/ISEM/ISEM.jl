@@ -8,6 +8,7 @@ using ..GeneralizedSasakiNakamura: InitialConditions, AsymptoticExpansionCoeffic
 using ..GeneralizedSasakiNakamura: spin_weighted_spherical_eigenvalue
 using StaticArrays
 using Logging
+using LoggingExtras
 using Serialization
 
 include("Matching.jl")
@@ -301,6 +302,71 @@ function _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary
     catch err
         return (teuk_func = nothing, metadata = missing, mismatch = Inf, controls = c, error = err)
     end
+end
+
+@inline function _normalization_probe_radius(a)
+    rp = 1 + sqrt(1 - a^2)
+    return rp + 0.25
+end
+
+@inline function _normalized_radial_probe(result, s, m, a, omega)
+    result.error !== nothing && return nothing
+    result.teuk_func.incidence_amplitude === missing && return nothing
+    r = _normalization_probe_radius(a)
+    r <= 1 + sqrt(1 - a^2) && return nothing
+    value = result.teuk_func.Teukolsky_solution(r)[1] / result.teuk_func.incidence_amplitude
+    return isfinite(abs(value)) ? value : nothing
+end
+
+@inline function _relative_probe_difference(a, b)
+    (a === nothing || b === nothing) && return Inf
+    return abs(a - b) / max(abs(a), abs(b), 1e-300)
+end
+
+@inline function _needs_normalization_stability_guard(s, l, m, omega, boundary_condition, base, result)
+    result.error !== nothing && return false
+    a = result.teuk_func.mode.a
+    !_selector_available(s, l, m, a, omega, boundary_condition) && Int(base.N) >= 45 && return true
+    result.teuk_func.incidence_amplitude !== missing && abs(result.teuk_func.incidence_amplitude) > 1e6 && return true
+    return false
+end
+
+function _downward_n_values(n0::Int)
+    values = Int[]
+    for n in n0:-4:10
+        push!(values, n)
+    end
+    10 in values || push!(values, 10)
+    return unique(values)
+end
+
+function _guard_teukolsky_normalization_stability(s, l, m, a, omega, boundary_condition, base, result)
+    _needs_normalization_stability_guard(s, l, m, omega, boundary_condition, base, result) || return result
+    reference_probe = _normalized_radial_probe(result, s, m, a, omega)
+    reference_probe === nothing && return result
+
+    stable_result = nothing
+    previous_result = nothing
+    previous_probe = nothing
+    for n in reverse(_downward_n_values(Int(base.N)))
+        c = _with_N(base, n)
+        candidate = _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c)
+        candidate.error === nothing || continue
+        candidate.mismatch <= _RADIAL_MATCHING_WARNING_TOL || continue
+        probe = _normalized_radial_probe(candidate, s, m, a, omega)
+        probe === nothing && continue
+        if previous_probe !== nothing && _relative_probe_difference(probe, previous_probe) <= 1e-6
+            stable_result = candidate
+            break
+        end
+        previous_result = candidate
+        previous_probe = probe
+    end
+
+    stable_result === nothing && return result
+    current_probe = _normalized_radial_probe(result, s, m, a, omega)
+    stable_probe = _normalized_radial_probe(stable_result, s, m, a, omega)
+    _relative_probe_difference(current_probe, stable_probe) > 1e-6 ? stable_result : result
 end
 
 function _rescue_teukolsky_by_local_N(s, l, m, a, omega, boundary_condition, base)
@@ -778,11 +844,14 @@ function _build_teukolsky_function_fixed(s, l, m, a, omega, boundary_condition; 
             result = rescued
         end
     end
+    if N === nothing && result !== nothing && result.error === nothing && result.mismatch <= _RADIAL_MATCHING_WARNING_TOL
+        result = _guard_teukolsky_normalization_stability(s, l, m, a, omega, boundary_condition, result.controls, result)
+    end
     if result.error !== nothing
         error("ISEM radial construction failed after selector/local-N controls; consider method = \"linear\" or method = \"Riccati\". Original error: $(sprint(showerror, result.error))")
     end
     if result.mismatch > _RADIAL_MATCHING_WARNING_TOL
-        @warn "ISEM radial matching mismatch above tolerance after selector/local-N controls; consider method = \"linear\" or method = \"Riccati\"" s=s l=l m=m a=a omega=omega boundary_condition=boundary_condition mismatch=result.mismatch controls=result.controls
+        @warn "ISEM radial matching mismatch above tolerance after selector/local-N controls; method = \"auto\" will switch to legacy auto (Riccati, then linear)" s=s l=l m=m a=a omega=omega boundary_condition=boundary_condition mismatch=result.mismatch controls=result.controls
     end
     return return_metadata ? (result.teuk_func, result.metadata) : result.teuk_func
 end
@@ -1077,13 +1146,144 @@ end
     return YRadialFunction(mode, boundary_condition, branch_transmission_amplitude, branch_transmission_amplitude * teuk_func.incidence_amplitude, branch_transmission_amplitude * teuk_func.reflection_amplitude, teuk_func.P_solution, teuk_func.Teukolsky_solution, Xsoln, Yscalar, Ysoln, UNIT_TEUKOLSKY_TRANS)
 end
 
-function Y_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::BoundaryCondition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
+@inline function _y_fallback_horizon_expansion_order(a)
+    denom = max(1 - abs(float(a)), eps(Float64))
+    return max(20, ceil(Int, 5 * max(log10(inv(denom)), 0)))
+end
+
+@inline function _y_fallback_infinity_expansion_order(omega)
+    ω = abs(float(real(omega)))
+    if ω <= 0
+        return 30
+    end
+    return max(20, ceil(Int, 10 * max(-log10(ω), 0) + 10))
+end
+
+function _build_y_solution_from_gsn(s, l, m, a, omega, boundary_condition; method="Riccati", tol=nothing)
+    _validate_y_branch(s, boundary_condition)
+    iszero(omega) && error("Y_radial currently requires nonzero omega.")
+    isreal(omega) || error("Y_radial currently supports only real omega.")
+
+    parent = parentmodule(@__MODULE__)
+    X_func = getfield(parent, :GSN_radial)(
+        s,
+        l,
+        m,
+        a,
+        omega,
+        boundary_condition,
+        getfield(parent, :_DEFAULT_rsin),
+        getfield(parent, :_DEFAULT_rsout);
+        method=method,
+        tolerance = tol === nothing ? Solutions._DEFAULTTOLERANCE : tol,
+        horizon_expansion_order = _y_fallback_horizon_expansion_order(a),
+        infinity_expansion_order = _y_fallback_infinity_expansion_order(omega),
+    )
+    lambda = X_func.mode.lambda
+    branch_transmission_amplitude = _y_branch_transmission_amplitude(s, m, a, omega, lambda)
+    teukolsky_from_gsn_matrix = r -> Solutions.Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
+    Ysoln = Matching.TeukolskyTransformation.GSN_to_Y_solution_from_matrix(
+        r -> rstar_from_r(a, r),
+        teukolsky_from_gsn_matrix,
+        X_func.GSN_solution,
+        s,
+        m,
+        a,
+        omega,
+        lambda,
+        branch_transmission_amplitude,
+    )
+
+    conv_incidence = s == -2 ?
+        ConversionFactors.Binc(s, m, a, omega, lambda) :
+        ConversionFactors.Cinc(s, m, a, omega, lambda)
+    conv_reflection = s == -2 ?
+        ConversionFactors.Bref(s, m, a, omega, lambda) :
+        ConversionFactors.Cref(s, m, a, omega, lambda)
+    incidence_amplitude = X_func.incidence_amplitude === missing ? missing : conv_incidence * X_func.incidence_amplitude
+    reflection_amplitude = X_func.reflection_amplitude === missing ? missing : conv_reflection * X_func.reflection_amplitude
+    Xsoln = r -> X_func.GSN_solution(rstar_from_r(a, r))[1]
+    Yscalar = r -> Ysoln(r)[1]
+
+    mode = Mode(s, l, m, a, omega, lambda)
+    return YRadialFunction(mode, boundary_condition, branch_transmission_amplitude, incidence_amplitude, reflection_amplitude, missing, missing, Xsoln, Yscalar, Ysoln, UNIT_TEUKOLSKY_TRANS)
+end
+
+function _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    saw_warn = Ref(false)
+    logger = EarlyFilteredLogger(
+        log -> begin
+            if log.level == Logging.Warn
+                saw_warn[] = true
+            end
+            return log.level >= Logging.Error
+        end,
+        current_logger(),
+    )
+
+    try
+        sol = with_logger(logger) do
+            riccati_build()
+        end
+        if saw_warn[]
+            @info "Y_radial method = \"auto\" tried Riccati, received a warning, and switched to method = \"linear\"." context=context
+            return linear_build()
+        end
+        return sol
+    catch err
+        @info "Y_radial method = \"auto\" tried Riccati, received an error, and switched to method = \"linear\"." context=context error=sprint(showerror, err)
+        return linear_build()
+    end
+end
+
+function _try_y_isem_then_legacy(context, isem_build, riccati_build, linear_build)
+    saw_warn = Ref(false)
+    logger = EarlyFilteredLogger(
+        log -> begin
+            if log.level == Logging.Warn
+                saw_warn[] = true
+            end
+            return log.level >= Logging.Error
+        end,
+        current_logger(),
+    )
+
+    try
+        sol = with_logger(logger) do
+            isem_build()
+        end
+        if saw_warn[]
+            @info "Y_radial method = \"auto\" tried ISEM, received an ISEM warning, and switched to legacy auto (Riccati, then linear). Use method = \"ISEM\" to force ISEM." context=context
+            return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+        end
+        return sol
+    catch err
+        @info "Y_radial method = \"auto\" tried ISEM, received an ISEM error, and switched to legacy auto (Riccati, then linear). Use method = \"ISEM\" to force ISEM." context=context error=sprint(showerror, err)
+        return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+end
+
+function Y_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::BoundaryCondition; method="auto", xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
     if _is_negative_real_frequency(omega)
-        positive_func = Y_radial(s, l, -m, a, -omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        positive_func = Y_radial(s, l, -m, a, -omega, boundary_condition; method=method, xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
         return _conjugate_y_radial_function(positive_func, m, omega)
     end
 
-    return _build_y_solution(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    if method == "ISEM"
+        return _build_y_solution(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+    elseif method == "Riccati" || method == "linear"
+        return _build_y_solution_from_gsn(s, l, m, a, omega, boundary_condition; method=method, tol=tol)
+    elseif method == "auto"
+        context = (function_name = "Y_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
+        return _try_y_isem_then_legacy(
+            context,
+            () -> _build_y_solution(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+            () -> _build_y_solution_from_gsn(s, l, m, a, omega, boundary_condition; method="Riccati", tol=tol),
+            () -> _build_y_solution_from_gsn(s, l, m, a, omega, boundary_condition; method="linear", tol=tol),
+        )
+    else
+        error("Method must be 'auto', 'ISEM', 'Riccati', or 'linear'")
+    end
 end
 
 (y_func::YRadialFunction)(coord) = y_func.Y_scalar_solution(coord)

@@ -349,7 +349,7 @@ function _Pin_real_adaptive(s, l, m, a, omega, xm = _xm, N = _TruncatioN, tol = 
     end
 
     xm_match = (xm < xm_min || xm > xm_max) ? (xm_min + xm_max) / 2 : xm
-    _P, (CInfIn, CInfOut), xsplit, split_mismatch = _iterative_adaptive_refit_pin(xm_match, xm_min, xm_max, P_inf_in, P_inf_out, P_zero_in, (Btrans, s, epsilon, tau, kappa); mismatch_tol = 1e-12, maxiter = 5, N = N)
+    _P, (CInfIn, CInfOut), xsplit, split_mismatch = _iterative_adaptive_refit_pin(xm_match, xm_min, xm_max, P_inf_in, P_inf_out, P_zero_in, (Btrans, s, epsilon, tau, kappa); mismatch_tol = 1e-12, maxiter = 2, N = N)
     Binc = B_inc(CInfIn, epsilon, tau, kappa)
     Bref = B_ref(CInfOut, s, epsilon, tau, kappa)
 
@@ -514,7 +514,7 @@ function _Pup_real_adaptive(s, l, m, a, omega, xm = _xm, N = _TruncatioN, tol = 
     end
 
     xm_match = (xm < xm_min || xm > xm_max) ? (xm_min + xm_max) / 2 : xm
-    _P, (CZeroIn, CZeroOut), xsplit, split_mismatch = _iterative_adaptive_refit_pup(xm_match, xm_min, xm_max, P_inf_out, P_zero_in, P_zero_out, (Ctrans, s, epsilon, tau, kappa); mismatch_tol = 1e-12, maxiter = 5, N = N)
+    _P, (CZeroIn, CZeroOut), xsplit, split_mismatch = _iterative_adaptive_refit_pup(xm_match, xm_min, xm_max, P_inf_out, P_zero_in, P_zero_out, (Ctrans, s, epsilon, tau, kappa); mismatch_tol = 1e-12, maxiter = 2, N = N)
     Cinc = C_inc(CZeroOut, epsilon, tau, kappa)
     Cref = C_ref(CZeroIn, s, epsilon, tau, kappa)
 
