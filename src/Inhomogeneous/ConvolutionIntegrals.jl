@@ -824,7 +824,8 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         energy2 = s == -2 ? abs2(integral2) / (4.0pi * ω^2) : hf * abs2(integral2)
         N = N2
         K = K2
-        factor = max(abs(energy2) / flux_scale, 1.0)
+        excess = abs(energy2) / flux_scale
+        factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
         low_flux_cutoff = _low_flux_cutoff(max_flux, tol)
         relE = _relative_energy_change(energy2, energy)
         KG_samp = next_sample
@@ -834,14 +835,33 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         energy = energy2
         significant_for_alias = abs(energy2) > low_flux_cutoff
         allow_stop = (N2 >= min_stop_N && K2 >= min_stop_K) || !significant_for_alias
+        has_flux_reference = max_flux > 100 * eps(Float64)
+        low_flux_done = mode_abs_floor > 0.0 && abs(energy2) < mode_abs_floor
+        suspect_min_N = min_stop_N
+        suspect_min_K = min_stop_K
+        if has_flux_reference && !low_flux_done
+            if excess > 1e8
+                suspect_min_N = min(max(suspect_min_N, 4096), Nmax)
+                suspect_min_K = min(max(suspect_min_K, 512), Kmax)
+            elseif excess > 1e4
+                suspect_min_N = min(max(suspect_min_N, 2048), Nmax)
+                suspect_min_K = min(max(suspect_min_K, 512), Kmax)
+            elseif excess > 100.0
+                suspect_min_N = min(max(suspect_min_N, 1024), Nmax)
+                suspect_min_K = min(max(suspect_min_K, 256), Kmax)
+            elseif excess > 10.0
+                suspect_min_N = min(max(suspect_min_N, 2 * min_stop_N), Nmax)
+                suspect_min_K = min(max(suspect_min_K, 2 * min_stop_K), Kmax)
+            end
+        end
+        suspect_needs_extra = has_flux_reference && !low_flux_done && (N2 < suspect_min_N || K2 < suspect_min_K)
         if relE == 0.0
-            if allow_stop && abs(energy2) < flux_scale && abs(energy2) < low_flux_cutoff
+            if allow_stop && !suspect_needs_extra
                 break
             end
             continue
         end
-        low_flux_done = mode_abs_floor > 0.0 && abs(energy2) < mode_abs_floor
-        if allow_stop && (factor * relE <= effective_sample_tol || abs(energy2) < low_flux_cutoff || low_flux_done) && abs(energy2) < flux_scale
+        if allow_stop && !suspect_needs_extra && (factor * relE <= effective_sample_tol || abs(energy2) < low_flux_cutoff || low_flux_done)
                 if zero_low_flux && mode_abs_floor > 0.0 && abs(energy) < mode_abs_floor
                     integral = 0.0 + 0.0im
                     energy = 0.0
