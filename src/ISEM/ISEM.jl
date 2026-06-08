@@ -34,6 +34,10 @@ const _RADIAL_MATCHING_WARNING_TOL = 1e-8
 const _STATIC_OMEGA_TOL = 1e-12
 const _SELECTOR_MODEL_FILE = joinpath(@__DIR__, "selector_mlp_model.jls")
 const _SELECTOR_PAYLOAD = Ref{Any}(nothing)
+const _CONTROL_SOURCE_SELECTOR = :selector
+const _CONTROL_SOURCE_SECOND_LAYER = :second_layer
+const _CONTROL_SOURCE_LOCAL_N = :local_N
+const _CONTROL_SOURCE_NORMALIZATION_GUARD = :normalization_guard
 
 @inline _is_static_frequency(omega) = abs(omega) < _STATIC_OMEGA_TOL
 @inline _horizon_frequency(a, m) = m * a / (2 * (1 + sqrt(1 - a^2)))
@@ -121,16 +125,36 @@ function _selector_predict_controls(s::Int, l::Int, m::Int, a, omega, boundary_c
     )
 end
 
+@inline function _is_lfe_stall_risk(s::Int, l::Int, m::Int, omega, boundary_condition)
+    return boundary_condition == UP &&
+        isreal(omega) &&
+        abs(s) == 2 &&
+        4.0 <= real(omega) <= 5.0 &&
+        8 <= l <= 10 &&
+        abs(m) >= l - 1
+end
+
+@inline function _selector_lfe_override(s::Int, l::Int, m::Int, omega, boundary_condition)
+    return boundary_condition == UP &&
+        isreal(omega) &&
+        abs(s) == 2 &&
+        4.0 <= real(omega) <= 9.0 &&
+        2 <= l <= 10 &&
+        abs(m) >= l - 1 &&
+        !_is_lfe_stall_risk(s, l, m, omega, boundary_condition)
+end
+
 @inline function matching_controls(s, l, m, a, omega; boundary_condition=IN)
     if _selector_available(s, l, m, a, omega, boundary_condition)
         pred = _selector_predict_controls(s, l, m, a, omega, boundary_condition)
+        lfe = _selector_lfe_override(s, l, m, omega, boundary_condition) ? true : pred.lfe
         return (
             xm = _DEFAULT_XM,
             rhom = _DEFAULT_RHOM,
             N = pred.N,
             tol = _DEFAULT_TOL,
             sfe = pred.sfe,
-            lfe = pred.lfe,
+            lfe = lfe,
             TSinInf = pred.TSinInf,
             TSoutInf = pred.TSoutInf,
             TSinHor = pred.TSinHor,
@@ -275,7 +299,70 @@ end
     )
 end
 
-function _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c)
+function _unique_control_candidates(candidates)
+    seen = Set{Tuple{Int,Bool,Bool,Bool,Bool,Bool,Bool}}()
+    out = Any[]
+    for c in candidates
+        key = (Int(c.N), Bool(c.sfe), Bool(c.lfe), Bool(c.TSinInf), Bool(c.TSoutInf), Bool(c.TSinHor), Bool(c.TSoutHor))
+        key in seen && continue
+        push!(seen, key)
+        push!(out, c)
+    end
+    return out
+end
+
+@inline function _second_layer_rule_A(s::Int, l::Int, m::Int, omega, boundary_condition)
+    return boundary_condition == UP &&
+        isreal(omega) &&
+        s == 2 &&
+        l == 2 &&
+        abs(m) >= 1 &&
+        0.04 <= real(omega) <= 0.80 &&
+        !_is_lfe_stall_risk(s, l, m, omega, boundary_condition)
+end
+
+@inline function _second_layer_rule_B(l::Int, omega, boundary_condition, base)
+    return boundary_condition == UP &&
+        isreal(omega) &&
+        l >= 23 &&
+        !Bool(base.lfe) &&
+        real(omega) <= 1.60
+end
+
+function _second_layer_repair_candidates(s, l, m, omega, boundary_condition, base)
+    candidates = Any[]
+    if _second_layer_rule_A(Int(s), Int(l), Int(m), omega, boundary_condition)
+        lfe_base = _with_lfe(base, true)
+        push!(candidates, lfe_base)
+        for n in (20, 27, 28, 50)
+            push!(candidates, _with_N(lfe_base, n))
+        end
+    elseif _second_layer_rule_B(Int(l), omega, boundary_condition, base)
+        push!(candidates, _with_N(base, 20))
+        push!(candidates, _with_lfe(_with_N(base, 20), true))
+        push!(candidates, base)
+        push!(candidates, _with_lfe(base, true))
+    end
+    return _unique_control_candidates(candidates)
+end
+
+function _rescue_teukolsky_by_second_layer_candidates(s, l, m, a, omega, boundary_condition, base)
+    best_any = nothing
+    for c in _second_layer_repair_candidates(s, l, m, omega, boundary_condition, base)
+        result = _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c; rescue_source = _CONTROL_SOURCE_SECOND_LAYER)
+        if result.error === nothing
+            if best_any === nothing || result.mismatch < best_any.mismatch
+                best_any = result
+            end
+            result.mismatch <= _RADIAL_MATCHING_WARNING_TOL && return result
+        elseif best_any === nothing
+            best_any = result
+        end
+    end
+    return best_any
+end
+
+function _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c; rescue_source = _CONTROL_SOURCE_SELECTOR)
     try
         teuk_func, metadata = Logging.with_logger(Logging.NullLogger()) do
             _build_teukolsky_function(
@@ -298,10 +385,28 @@ function _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary
                 return_metadata = true,
             )
         end
+        metadata = _attach_control_metadata(metadata, c, rescue_source)
         return (teuk_func = teuk_func, metadata = metadata, mismatch = _metadata_mismatch(metadata), controls = c, error = nothing)
     catch err
         return (teuk_func = nothing, metadata = missing, mismatch = Inf, controls = c, error = err)
     end
+end
+
+@inline function _attach_control_metadata(metadata, c, rescue_source)
+    metadata === missing && return metadata
+    return merge(metadata, (
+        control_rescue_source = rescue_source,
+        control_xm = c.xm,
+        control_rhom = c.rhom,
+        control_N = c.N,
+        control_tol = c.tol,
+        control_sfe = Bool(c.sfe),
+        control_lfe = Bool(c.lfe),
+        control_TSinInf = Bool(c.TSinInf),
+        control_TSoutInf = Bool(c.TSoutInf),
+        control_TSinHor = Bool(c.TSinHor),
+        control_TSoutHor = Bool(c.TSoutHor),
+    ))
 end
 
 @inline function _normalization_probe_radius(a)
@@ -350,7 +455,7 @@ function _guard_teukolsky_normalization_stability(s, l, m, a, omega, boundary_co
     previous_probe = nothing
     for n in reverse(_downward_n_values(Int(base.N)))
         c = _with_N(base, n)
-        candidate = _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c)
+        candidate = _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c; rescue_source = _CONTROL_SOURCE_NORMALIZATION_GUARD)
         candidate.error === nothing || continue
         candidate.mismatch <= _RADIAL_MATCHING_WARNING_TOL || continue
         probe = _normalized_radial_probe(candidate, s, m, a, omega)
@@ -383,7 +488,7 @@ function _rescue_teukolsky_by_local_N(s, l, m, a, omega, boundary_condition, bas
     for candidate in candidates
         for n in _local_n_rescue_values(Int(candidate.N))
             c = _with_N(candidate, n)
-            result = _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c)
+            result = _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, c; rescue_source = _CONTROL_SOURCE_LOCAL_N)
             if result.error === nothing
                 if best_any === nothing || result.mismatch < best_any.mismatch
                     best_any = result
@@ -837,6 +942,12 @@ function _build_teukolsky_function_fixed(s, l, m, a, omega, boundary_condition; 
     base = _radial_controls(defaults; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     result = _try_build_teukolsky_function_with_controls(s, l, m, a, omega, boundary_condition, base)
     if N === nothing && (result.error !== nothing || result.mismatch > _RADIAL_MATCHING_WARNING_TOL)
+        second_layer = _rescue_teukolsky_by_second_layer_candidates(s, l, m, a, omega, boundary_condition, base)
+        if second_layer !== nothing && second_layer.error === nothing && second_layer.mismatch <= _RADIAL_MATCHING_WARNING_TOL
+            result = second_layer
+        end
+    end
+    if N === nothing && (result.error !== nothing || result.mismatch > _RADIAL_MATCHING_WARNING_TOL)
         rescued = _rescue_teukolsky_by_local_N(s, l, m, a, omega, boundary_condition, base)
         if rescued !== nothing && rescued.error === nothing && rescued.mismatch <= _RADIAL_MATCHING_WARNING_TOL
             result = rescued
@@ -848,10 +959,10 @@ function _build_teukolsky_function_fixed(s, l, m, a, omega, boundary_condition; 
         result = _guard_teukolsky_normalization_stability(s, l, m, a, omega, boundary_condition, result.controls, result)
     end
     if result.error !== nothing
-        error("ISEM radial construction failed after selector/local-N controls; consider method = \"linear\" or method = \"Riccati\". Original error: $(sprint(showerror, result.error))")
+        error("ISEM radial construction failed after selector/second-layer/local-N controls; consider method = \"linear\" or method = \"Riccati\". Original error: $(sprint(showerror, result.error))")
     end
     if result.mismatch > _RADIAL_MATCHING_WARNING_TOL
-        @warn "ISEM radial matching mismatch above tolerance after selector/local-N controls; method = \"auto\" will switch to legacy auto (Riccati, then linear)" s=s l=l m=m a=a omega=omega boundary_condition=boundary_condition mismatch=result.mismatch controls=result.controls
+        @warn "ISEM radial matching mismatch above tolerance after selector/second-layer/local-N controls; method = \"auto\" will switch to legacy auto (Riccati, then linear)" s=s l=l m=m a=a omega=omega boundary_condition=boundary_condition mismatch=result.mismatch controls=result.controls
     end
     return return_metadata ? (result.teuk_func, result.metadata) : result.teuk_func
 end
@@ -951,15 +1062,16 @@ end
 @inline function _isem_parameter_summary(; xm, rhom, N, tol, sfe, lfe, TSinInf, TSoutInf, TSinHor, TSoutHor, metadata=missing)
     return (
         xm = _metadata_property(metadata, :xsplit, _metadata_property(metadata, :xm_match, xm)),
-        rhom = _metadata_property(metadata, :rhom, rhom),
-        N = _metadata_property(metadata, :N, N),
-        tol = tol,
-        sfe = Bool(sfe),
-        lfe = Bool(lfe),
-        TSinInf = Bool(TSinInf),
-        TSoutInf = Bool(TSoutInf),
-        TSinHor = Bool(TSinHor),
-        TSoutHor = Bool(TSoutHor),
+        rhom = _metadata_property(metadata, :control_rhom, _metadata_property(metadata, :rhom, rhom)),
+        N = _metadata_property(metadata, :control_N, _metadata_property(metadata, :N, N)),
+        tol = _metadata_property(metadata, :control_tol, tol),
+        sfe = Bool(_metadata_property(metadata, :control_sfe, sfe)),
+        lfe = Bool(_metadata_property(metadata, :control_lfe, lfe)),
+        TSinInf = Bool(_metadata_property(metadata, :control_TSinInf, TSinInf)),
+        TSoutInf = Bool(_metadata_property(metadata, :control_TSoutInf, TSoutInf)),
+        TSinHor = Bool(_metadata_property(metadata, :control_TSinHor, TSinHor)),
+        TSoutHor = Bool(_metadata_property(metadata, :control_TSoutHor, TSoutHor)),
+        rescue_source = _metadata_property(metadata, :control_rescue_source, _CONTROL_SOURCE_SELECTOR),
         xm_requested = _metadata_property(metadata, :xm, xm),
         xm_min = _metadata_property(metadata, :xm_min, missing),
         xm_max = _metadata_property(metadata, :xm_max, missing),
