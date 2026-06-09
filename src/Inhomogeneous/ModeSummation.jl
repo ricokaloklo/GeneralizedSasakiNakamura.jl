@@ -197,7 +197,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
     N = N0
     record_path = record_path === nothing ? "eccentric_mode_data_a_$(_record_tag(a))_p_$(_record_tag(p))_e_$(_record_tag(e)).h5" : record_path
 
-    KG = Kerr_Geodesics(a, p, e, 1.0)
+    KG = kerr_geo_orbit(a, p, e, 1.0)
     KG_sample = kerr_geo_eccentric_sample_dense(KG, Nmax)
     Energy_flux_inf = Vector{Float64}()
     Energy_flux_hor = Vector{Float64}()
@@ -659,7 +659,7 @@ function inclined_mode_flux(a, p, x, l, m, k; K = 16, Kmax = 2^12, sample_tol = 
         return (l = l, m = m, k = k, infinity = mode.infinity, horizon = mode.horizon)
     end
 
-    KG = Kerr_Geodesics(a, p, 0.0, x)
+    KG = kerr_geo_orbit(a, p, 0.0, x)
     KG_sample = kerr_geo_inclined_sample_dense(KG, x, Kmax)
     flux_inf = convolution_integral_inclined_trapezoidal_isem(KG_sample, -2, l, m, k, K; Kmax = Kmax, sample_tol = sample_tol)
     flux_hor = convolution_integral_inclined_trapezoidal_isem(KG_sample, 2, l, m, k, K; Kmax = Kmax, sample_tol = sample_tol)
@@ -696,7 +696,7 @@ function inclined_mode_summation(a, p, x; K = 16, K0 = K, Kmax = 2^12, tol = 1e-
     K = K0
     record_path = record_path === nothing ? "inclined_mode_data_a_$(_record_tag(a))_p_$(_record_tag(p))_x_$(_record_tag(x)).h5" : record_path
 
-    KG = Kerr_Geodesics(a, p, 0.0, x)
+    KG = kerr_geo_orbit(a, p, 0.0, x)
     KG_sample = kerr_geo_inclined_sample_dense(KG, x, Kmax)
     Energy_flux_inf = Float64[]
     Energy_flux_hor = Float64[]
@@ -1090,7 +1090,7 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
 
     record_path = record_path === nothing ? "generic_mode_data_a_$(_record_tag(a))_p_$(_record_tag(p))_e_$(_record_tag(e))_x_$(_record_tag(x)).h5" : record_path
 
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
     if typeof(KG) == Vector{String}
         return KG
     end

@@ -17,7 +17,7 @@ using .Solutions
 using SpinWeightedSpheroidalHarmonics
 using DifferentialEquations # Should have been compiled by now
 using Logging, LoggingExtras
-using KerrGeodesics: Kerr_Geodesics
+using KerrGeodesics: kerr_geo_orbit
 
 export GSN_radial, Teukolsky_radial # Homogeneous solutions
 export GSN_pointparticle_mode, Teukolsky_pointparticle_mode, Teukolsky_pointparticle_flux # Inhomogeneous solutions
@@ -1235,7 +1235,7 @@ end
 function _teukolsky_flux_bound_orbit(a, p, e, x)
     ag, pg, eg, xg = _teukolsky_flux_geodesic_params(a, p, e, x)
     try
-        KG = Kerr_Geodesics(ag, pg, eg, xg)
+        KG = kerr_geo_orbit(ag, pg, eg, xg)
         return typeof(KG) != Vector{String}
     catch
         return false

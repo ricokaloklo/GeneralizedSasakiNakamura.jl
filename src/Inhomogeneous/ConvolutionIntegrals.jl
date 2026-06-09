@@ -83,7 +83,7 @@ end
 function _generic_trapezoidal_context(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
     key = (a, p, e, x, s, l, m, n, k, N_sample, K_sample)
     return get!(_generic_trapezoidal_cache, key) do
-        KG = Kerr_Geodesics(a, p, e, x)
+        KG = kerr_geo_orbit(a, p, e, x)
         Frequencies = KG["Frequencies"]
         Γ = Frequencies["ϒt"]
         ϒr = Frequencies["ϒr"]
@@ -106,7 +106,7 @@ end
 function _eccentric_trapezoidal_context(a, p, e, s, l, m, n, N_sample)
     key = (a, p, e, s, l, m, n, N_sample)
     return get!(_eccentric_trapezoidal_cache, key) do
-        KG = Kerr_Geodesics(a, p, e, 1.0)
+        KG = kerr_geo_orbit(a, p, e, 1.0)
         Frequencies = KG["Frequencies"]
         Γ = Frequencies["ϒt"]
         ϒθ = Frequencies["ϒθ"]
@@ -186,7 +186,7 @@ function convolution_integral_generic_trapezoidal_isem(a, p, e, x, s, l, m, n, k
     if _generic_trapezoidal_last_key[] === key
         return _generic_trapezoidal_last_result[]
     end
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
     omega = (m * Frequencies["ϒϕ"] + n * Frequencies["ϒr"] + k * Frequencies["ϒθ"]) / Γ
@@ -238,7 +238,7 @@ function convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sa
     if _generic_levin_last_key[] === key
         return _generic_levin_last_result[]
     end
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
     ϒr = Frequencies["ϒr"]
@@ -984,7 +984,7 @@ function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, 
 end
 
 function generic_mode_flux(a, p, e, x, s::Int, l::Int, m::Int, n::Int, k::Int; N0::Int = 64, K0::Int = 16, Nmax::Int = 2^14, Kmax::Int = 2^12, sample_tol::Float64 = 1e-3, tol::Float64 = 1e-8, max_flux::Float64 = 1.0, mode_abs_floor::Float64 = 0.0, zero_low_flux::Bool = false, threaded_sampling::Bool = false)
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
     if typeof(KG) == Vector{String}
         return KG
     end
@@ -1207,7 +1207,7 @@ end
 
 function convolution_integral_generic_trapezoidal(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
 
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -1263,7 +1263,7 @@ end
 
 function convolution_integral_generic_levin(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
 
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -1328,7 +1328,7 @@ function convolution_integral_generic_levin(a, p, e, x, s, l, m, n, k, N_sample,
 end
 
 function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sample)
-    KG = Kerr_Geodesics(a, p, e, 1.0)  # Assume this handles equatorial case
+    KG = kerr_geo_orbit(a, p, e, 1.0)  # Assume this handles equatorial case
     
     # Extract frequencies and compute omega (radial-only mode)
     Frequencies = KG["Frequencies"]
@@ -1388,7 +1388,7 @@ end
 
 function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample)
 
-    KG = Kerr_Geodesics(a, p, e, 1.0)
+    KG = kerr_geo_orbit(a, p, e, 1.0)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -1454,7 +1454,7 @@ function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample)
 end
 
 function convolution_integral_inclined_trapezoidal(a, p, x, s, l, m, k, K_sample)
-    KG = Kerr_Geodesics(a, p, 0.0, x)  # Assume this handles radial-fixed case
+    KG = kerr_geo_orbit(a, p, 0.0, x)  # Assume this handles radial-fixed case
     
     # Extract frequencies and compute omega (polar-only mode)
     Frequencies = KG["Frequencies"]
@@ -1520,7 +1520,7 @@ end
 
 function convolution_integral_inclined_levin(a, p, x, s, l, m, k, K_sample)
 
-    KG = Kerr_Geodesics(a, p, 0.0, x)
+    KG = kerr_geo_orbit(a, p, 0.0, x)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -1588,7 +1588,7 @@ end
 
 function convolution_integral_circular_equatorial_m2(a, p, l, m)
 
-    KG = Kerr_Geodesics(a, p, 0.0, 1.0)
+    KG = kerr_geo_orbit(a, p, 0.0, 1.0)
     E = KG["Energy"]
     Lz = KG["AngularMomentum"]
     Γ = KG["Frequencies"]["ϒt"]
@@ -1668,7 +1668,7 @@ end
 
 function convolution_integral_circular_equatorial_p2(a, p, l, m)
 
-    KG = Kerr_Geodesics(a, p, 0.0, 1.0)
+    KG = kerr_geo_orbit(a, p, 0.0, 1.0)
     E = KG["Energy"]
     Lz = KG["AngularMomentum"]
     Γ = KG["Frequencies"]["ϒt"]
@@ -1765,7 +1765,7 @@ function convolution_integral_circular_equatorial(a, p, s, l, m)
 end
 
 function convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N = 256, K = 64)
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
     if typeof(KG) == Vector{String}
         return KG
     end
@@ -1820,7 +1820,7 @@ function convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N = 256, K 
 end
 
 function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
     if typeof(KG) == Vector{String}
         return KG
     end
@@ -1875,7 +1875,7 @@ function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
 end
 
 function convolution_integral_circular_equatorial_isem(a, p, s, l, m)
-    KG = Kerr_Geodesics(a, p, 0.0, 1.0)
+    KG = kerr_geo_orbit(a, p, 0.0, 1.0)
     E = KG["Energy"]
     Lz = KG["AngularMomentum"]
     Γ = KG["Frequencies"]["ϒt"]
@@ -1992,7 +1992,7 @@ function convolution_integral_circular_equatorial_isem(a, p, s, l, m)
 end
 
 function convolution_integral_eccentric_trapezoidal_isem(a, p, e, s, l, m, n, N_sample; Nmax::Int = 2^14, kwargs...)
-    KG = Kerr_Geodesics(a, p, e, 1.0)
+    KG = kerr_geo_orbit(a, p, e, 1.0)
     KG_sample = kerr_geo_eccentric_sample_dense(KG, Nmax)
     return convolution_integral_eccentric_trapezoidal_isem(KG_sample, s, l, m, n, N_sample; Nmax = Nmax, kwargs...)
 end
@@ -2129,7 +2129,7 @@ function convolution_integral_eccentric_levin_isem(a, p, e, s, l, m, n, N_sample
         return _eccentric_levin_last_result[]
     end
 
-    KG = Kerr_Geodesics(a, p, e, 1.0)
+    KG = kerr_geo_orbit(a, p, e, 1.0)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -2265,7 +2265,7 @@ function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m
 end
 
 function convolution_integral_inclined_trapezoidal_isem(a, p, x, s, l, m, k, K_sample; Kmax::Int = 2^12, kwargs...)
-    KG = Kerr_Geodesics(a, p, 0.0, x)
+    KG = kerr_geo_orbit(a, p, 0.0, x)
     KG_sample = kerr_geo_inclined_sample_dense(KG, x, Kmax)
     return convolution_integral_inclined_trapezoidal_isem(KG_sample, s, l, m, k, K_sample; Kmax = Kmax, kwargs...)
 end
@@ -2276,7 +2276,7 @@ function convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K_sample)
         return _inclined_levin_last_result[]
     end
 
-    KG = Kerr_Geodesics(a, p, 0.0, x)
+    KG = kerr_geo_orbit(a, p, 0.0, x)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -2355,7 +2355,7 @@ function convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K_sample)
 end
 
 function convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 256, K = 64, Nmax::Int = 2^14, Kmax::Int = 2^12, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 0.0, zero_low_flux::Bool = false, threaded_sampling::Bool = false)
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
     if typeof(KG) == Vector{String}
         return KG
     end
@@ -2383,7 +2383,7 @@ function convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 25
 end
 
 function convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
-    KG = Kerr_Geodesics(a, p, e, x)
+    KG = kerr_geo_orbit(a, p, e, x)
     if typeof(KG) == Vector{String}
         return KG
     end
