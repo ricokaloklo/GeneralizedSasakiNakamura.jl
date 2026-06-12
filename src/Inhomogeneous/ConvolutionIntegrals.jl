@@ -549,6 +549,14 @@ end
     elseif excess > 10.0
         target = max(target, 2 * min_stop)
     end
+
+    return min(target, max_stop)
+end
+
+@inline function _eccentric_fourier_min_sample(min_stop::Int, max_stop::Int, n::Integer)
+    harmonic = abs(n)
+    harmonic == 0 && return min_stop
+    target = nextpow(2, max(min_stop, 4 * harmonic))
     return min(target, max_stop)
 end
 
@@ -2073,7 +2081,7 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
     res = _eccentric_flux_from_sample(KG_samp, Ysamp, SH, s, a, ω, m, n)
     flux_scale = max(Float64(max_flux), eps(Float64))
     effective_sample_tol = min(sample_tol, 3.0 * sqrt(Float64(tol)))
-    min_stop_N = min(max(4N_sample, 256), Nmax)
+    min_stop_N = _eccentric_fourier_min_sample(min(max(4N_sample, 256), Nmax), Nmax, n)
 
     while N < Nmax
         N2 = min(2N, Nmax)
