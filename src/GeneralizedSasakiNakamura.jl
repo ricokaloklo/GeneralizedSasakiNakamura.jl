@@ -17,10 +17,12 @@ using .Solutions
 using SpinWeightedSpheroidalHarmonics
 using DifferentialEquations # Should have been compiled by now
 using Logging, LoggingExtras
-using KerrGeodesics: kerr_geo_orbit
+using KerrGeodesics
 
 export GSN_radial, Teukolsky_radial # Homogeneous solutions
 export GSN_pointparticle_mode, Teukolsky_pointparticle_mode, Teukolsky_pointparticle_flux # Inhomogeneous solutions
+export BoundaryCondition, NormalizationConvention, Mode, GSNRadialFunction, TeukolskyRadialFunction, YRadialFunction
+export Y_radial
 export ISEM
 
 # Default values
@@ -34,14 +36,14 @@ _DEFAULT_rhoout = 5000
 _DEFAULT_horizon_expansion_order_for_cplx_freq = 25
 _DEFAULT_infinity_expansion_order_for_cplx_freq = 25
 
-@inline function _adaptive_horizon_expansion_order(a, order::Int)
+function _adaptive_horizon_expansion_order(a, order::Int)
     spin = abs(float(real(a)))
     spin >= 1 && return max(order, 50)
     scale = log10(inv(max(1 - spin, eps(Float64))))
     return scale, max(order, _DEFAULT_horizon_expansion_order, ceil(Int, 10 * max(scale, 0) - 1e-12))
 end
 
-@inline function _adaptive_infinity_expansion_order(omega, order::Int)
+function _adaptive_infinity_expansion_order(omega, order::Int)
     freq = abs(omega)
     freq == 0 && return order
     scale = -log10(float(freq))
@@ -98,8 +100,8 @@ struct GSNRadialFunction
     method # The method used to solve the GSN equation
 end
 
-@inline _display_bool_flag(x) = (x === missing || x === nothing) ? x : Bool(x)
-@inline _display_isem_N(x) = (x === missing || x === nothing) ? "adaptive" : string(x)
+_display_bool_flag(x) = (x === missing || x === nothing) ? x : Bool(x)
+_display_isem_N(x) = (x === missing || x === nothing) ? "adaptive" : string(x)
 
 # Implement pretty-printing for GSNRadialFunction
 # Mostly to suppress the printing of the numerical solution
@@ -179,13 +181,16 @@ end
 
 include("ISEM/ISEM.jl")
 
-@inline _is_auto_method(method) = method == "auto"
-@inline _use_isem_method(method) = method == "auto" || method == "ISEM"
-const _STATIC_OMEGA_TOL = 1e-12
-@inline _is_static_frequency(omega) = abs(omega) < _STATIC_OMEGA_TOL
-@inline _is_horizon_superradiance_frequency(a, m, omega) = isreal(omega) && !_is_static_frequency(omega) && abs(omega - m * Kerr.omega_horizon(a)) < _STATIC_OMEGA_TOL
+const YRadialFunction = ISEM.YRadialFunction
+const Y_radial = ISEM.Y_radial
 
-@inline function _combine_isem_down(Rin, Rup)
+_is_auto_method(method) = method == "auto"
+_use_isem_method(method) = method == "auto" || method == "ISEM"
+const _STATIC_OMEGA_TOL = 1e-12
+_is_static_frequency(omega) = abs(omega) < _STATIC_OMEGA_TOL
+_is_horizon_superradiance_frequency(a, m, omega) = isreal(omega) && !_is_static_frequency(omega) && abs(omega - m * Kerr.omega_horizon(a)) < _STATIC_OMEGA_TOL
+
+function _combine_isem_down(Rin, Rup)
     Binc = Rin.incidence_amplitude
     Bref = Rin.reflection_amplitude
     Cinc = Rup.incidence_amplitude
@@ -214,7 +219,7 @@ const _STATIC_OMEGA_TOL = 1e-12
     )
 end
 
-@inline function _combine_isem_out(Rin, Rup)
+function _combine_isem_out(Rin, Rup)
     Binc = Rin.incidence_amplitude
     Bref = Rin.reflection_amplitude
     Cinc = Rup.incidence_amplitude
@@ -243,7 +248,7 @@ end
     )
 end
 
-@inline function _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
+function _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
     if boundary_condition == IN || boundary_condition == UP
         return ISEM.Teukolsky_radial(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     elseif boundary_condition == DOWN
@@ -257,7 +262,7 @@ end
     end
 end
 
-@inline function _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN)
+function _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, use_gsn_asymptotic_patches=true, gsn_horizon_delta_r_max=ISEM._GSN_HORIZON_DELTA_R_MAX, gsn_infinity_phase_min=ISEM._GSN_INFINITY_PHASE_MIN)
     return ISEM.GSN_radial(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
 end
 
@@ -1259,11 +1264,11 @@ function _teukolsky_flux_reached(result, orbit_type::Symbol)
 end
 
 @doc raw"""
-    Teukolsky_pointparticle_flux(a, p, e, x; tol=1e-8, lmax=30, nmax=500, kmax=50)
+    Teukolsky_pointparticle_flux(a, p, e, x; tol=1e-8, lmax=30, nmax=500, kmax=20)
 
 Compute total point-particle fluxes by automatically selecting the mode-summation strategy from the orbit type.
 """
-function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 50, minimum_consecutive = 2, N = 64, N0 = N, K = 16, K0 = K, Nmax = 2^14, Kmax = 2^12, sample_tol = 1e-3, record = 0, record_path = nothing, fast = true, mode_abs_floor = 0.0, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1)
+function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 20, minimum_consecutive = 2, N = 64, N0 = N, K = 16, K0 = K, Nmax = 2^14, Kmax = 2^12, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, mode_abs_floor = 1e-16, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, tail_levin = nothing, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = 1e-16, levin_max_depth::Int = 8)
     if !_teukolsky_flux_bound_orbit(a, p, e, x)
         @warn "The specified parameters do not correspond to a bound orbit." a p e x
         return nothing
@@ -1274,11 +1279,11 @@ function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 
     result = if orbit_type == :circular
         ModeSummation.circular_mode_summation(x == -1.0 ? -a : a, p; tol = tol, lmax = lmax, min_consecutive = minimum_consecutive)
     elseif orbit_type == :eccentric
-        ModeSummation.eccentric_mode_summation(x == -1.0 ? -a : a, p, e; N = N, N0 = N0, Nmax = Nmax, tol = tol, lmax = lmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
+        ModeSummation.eccentric_mode_summation(x == -1.0 ? -a : a, p, e; N = N, N0 = N0, Nmax = Nmax, tol = tol, lmax = lmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, tail_levin = tail_levin === nothing ? true : tail_levin, tail_levin_infinity = tail_levin_infinity, tail_levin_horizon = tail_levin_horizon, levin_nmin = levin_nmin, levin_mode_abs_floor = levin_mode_abs_floor, levin_max_depth = levin_max_depth)
     elseif orbit_type == :inclined
         ModeSummation.inclined_mode_summation(a, p, x; K = K, K0 = K0, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
     else
-        ModeSummation.generic_mode_summation(a, p, e, x; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, neg_branch_scale = neg_branch_scale)
+        ModeSummation.generic_mode_summation(a, p, e, x; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, neg_branch_scale = neg_branch_scale, tail_levin = tail_levin === nothing ? true : tail_levin, tail_levin_infinity = tail_levin_infinity, tail_levin_horizon = tail_levin_horizon, levin_nmin = levin_nmin, levin_mode_abs_floor = levin_mode_abs_floor, levin_max_depth = levin_max_depth)
     end
     cost = time() - t0
 
@@ -1311,11 +1316,13 @@ The orbit is specified by `p` the semi-latus rectum, `e` the eccentricity and `x
 
 In addition, we compute also the energy, angular momentum and Carter constant flux at infinity (for s = - 2) and the horizon (for s = + 2). Note that these values are formalism-independent.
 
-The numerical method to compute the convolution integral is specified by `method` (default: `auto`), which can either be `trapezoidal` or `levin`.
-We sample the trajectory over a grid of size N x K, where N and K are the number of Chebyshev nodes in the radial and the polar direction, respectively.
-Note that they must be powers of 2.
+The numerical method to compute the convolution integral is specified by `method` (default: `auto`).
+Use `method = "isem_trapezoidal"` for the ISEM trapezoidal path and `method = "isem_levin"` for the ISEM Levin path.
+Legacy non-ISEM paths remain available as `method = "trapezoidal"` and `method = "levin"`.
+For adaptive ISEM Levin, `levin_max_depth` controls the maximum bisection depth; `Nmax` and `Kmax` are fixed-grid caps used by trapezoidal and non-adaptive paths.
 """
-function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1)
+function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1, Nmax::Int = 2^12, Kmax::Int = 2^9, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, levin_max_depth::Int = 8)
+    method = lowercase(String(method))
     if method == "auto"
         # For now, choose "isem_trapezoidal"
         method = "isem_trapezoidal"
@@ -1339,13 +1346,13 @@ function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a,
     if method == "isem_trapezoidal"
         output = ConvolutionIntegrals.convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N=N, K=K)
     elseif method == "isem_levin"
-        output = ConvolutionIntegrals.convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k; N=N, K=K)
+        output = ConvolutionIntegrals.convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k; N=N, K=K, Nmax=Nmax, Kmax=Kmax, tol=tol, sample_tol=sample_tol, max_flux=max_flux, mode_abs_floor=mode_abs_floor, zero_low_flux=zero_low_flux, threaded_sampling=threaded_sampling, adaptive_max_depth=levin_max_depth)
     elseif method == "trapezoidal"
         output = ConvolutionIntegrals.convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N=N, K=K)
     elseif method == "levin"
         output = ConvolutionIntegrals.convolution_integral_levin(a, p, e, x, s, l, m, n, k; N=N, K=K)
     else
-        error("Currently only support method = \"isem_trapezoidal\" or \"isem_levin\" or \"trapezoidal\" or \"levin\"")
+        error("Currently supported methods are \"auto\", \"isem_trapezoidal\", \"isem_levin\", \"trapezoidal\", and \"levin\".")
     end
 
     Y_mode = _pointparticle_output_mode(output["YSolution"], s, l, m, a, output["omega"])
@@ -1391,12 +1398,14 @@ The orbit is specified by `p` the semi-latus rectum, `e` the eccentricity and `x
 
 In addition, we compute also the energy, angular momentum and Carter constant flux at infinity (for s = - 2) and the horizon (for s = + 2). Note that these values are formalism-independent.
 
-The numerical method to compute the convolution integral is specified by `method` (default: `auto`), which can either be `trapezoidal` or `levin`.
+The numerical method to compute the convolution integral is specified by `method` (default: `auto`).
+Use `method = "isem_trapezoidal"` for the ISEM trapezoidal path and `method = "isem_levin"` for the ISEM Levin path.
+Legacy non-ISEM paths remain available as `method = "trapezoidal"` and `method = "levin"`.
 We sample the trajectory over a grid of size N x K, where N and K are the number of Chebyshev nodes in the radial and the polar direction, respectively.
 Note that they must be powers of 2.
 """
-function GSN_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1)
-    Teukolsky_mode = Teukolsky_pointparticle_mode(s, l, m, n, k, a, p, e, x; method=method, N=N, K=K)
+function GSN_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1, Nmax::Int = 2^12, Kmax::Int = 2^9, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, levin_max_depth::Int = 8)
+    Teukolsky_mode = Teukolsky_pointparticle_mode(s, l, m, n, k, a, p, e, x; method=method, N=N, K=K, Nmax=Nmax, Kmax=Kmax, tol=tol, sample_tol=sample_tol, max_flux=max_flux, mode_abs_floor=mode_abs_floor, zero_low_flux=zero_low_flux, threaded_sampling=threaded_sampling, levin_max_depth=levin_max_depth)
     if s == 2
         T_to_SN = ConversionFactors.Btrans(s, m, a, Teukolsky_mode.mode.omega, Teukolsky_mode.mode.lambda)
     elseif s == -2

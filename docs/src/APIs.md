@@ -172,7 +172,7 @@ Computes the corresponding inhomogeneous GSN mode. Fluxes are formalism-independ
 ### `Teukolsky_pointparticle_flux`
 
 ```julia
-flux = Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 50)
+flux = Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 20)
 ```
 
 Computes total point-particle fluxes by selecting the appropriate mode-summation strategy from the orbit type:
@@ -193,20 +193,22 @@ Important keywords:
 | `tol` | `1e-8` | global shell truncation tolerance |
 | `lmax` | `30` | maximum $\ell$ index |
 | `nmax` | `500` | maximum radial shell index |
-| `kmax` | `50` | maximum polar shell index |
+| `kmax` | `20` | maximum polar shell index |
 | `minimum_consecutive` | `2` | number of consecutive small shells required for truncation |
 | `N`, `N0` | `64` | initial radial grid interval count for adaptive sampling |
 | `K`, `K0` | `16` | initial polar grid interval count for adaptive sampling |
 | `Nmax` | `2^14` | maximum radial grid interval count |
 | `Kmax` | `2^12` | maximum polar grid interval count |
 | `sample_tol` | `1e-3` | adaptive single-mode sampling tolerance |
-| `record` | `0` | when set to `1`, records mode details to HDF5 where supported |
+| `record` | `false` | when set to `true`, records mode details to HDF5 where supported |
 | `record_path` | `nothing` | optional HDF5 output path |
 | `fast` | `true` | use cached/presampled fast summation path where available |
 
 If the supplied orbital parameters do not define a bound orbit according to `KerrGeodesics`, the function emits a warning and returns `nothing`.
 
 The public tolerance keyword is `tol`. The returned object displays this value as `tolerance`.
+
+For high-index tail modes, eccentric and generic summations can use adaptive Levin quadrature instead of uniformly increasing a trapezoidal grid. The adaptive rule refines radial phase intervals only where the oscillatory integral has not stabilized. In generic two-dimensional convolutions, this radial adaptive Levin rule is paired with fixed Clenshaw-Curtis sampling in the polar direction, so the smooth polar dependence is resolved with a compact cosine-spaced grid while radial oscillations receive targeted refinement.
 
 The return type is `TeukolskyPointParticleFlux`:
 
@@ -236,7 +238,7 @@ flux.horizon_energy_flux
 
 ## HDF5 Mode Records
 
-When `record = 1` is used in the mode-summation interface, mode details are written to an HDF5 file. Records are stored hierarchically by shell indices and mode indices, with datasets for amplitudes, fluxes, and grid sizes. Complex quantities are stored by real and imaginary parts for portable HDF5 access.
+When `record = true` is used in the mode-summation interface, mode details are written to an HDF5 file. Records are stored hierarchically by shell indices and mode indices, with datasets for amplitudes, fluxes, and grid sizes. Complex quantities are stored by real and imaginary parts for portable HDF5 access.
 
 Use `HDF5.jl` to inspect the file:
 

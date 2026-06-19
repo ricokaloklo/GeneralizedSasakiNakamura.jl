@@ -1,11 +1,10 @@
 module GridSampling
 
-using ..Coordinates: r_from_rstar, rstar_from_r
-using ..GeneralizedSasakiNakamura: IN, UP, Mode
+using ..Coordinates
 using ..ConversionFactors
-using ..ISEM: Y_radial
-using ..AsymptoticExpansionCoefficientsY: Ypp_outgoing_inf_m2, Ypp_ingoing_inf_m2, Ypp_outgoing_hor_p2, Ypp_ingoing_hor_p2
-using ..InitialConditionsY: Y_outgoing_inf_m2, Yp_outgoing_inf_m2, Y_ingoing_inf_m2, Yp_ingoing_inf_m2, Y_outgoing_hor_p2, Yp_outgoing_hor_p2, Y_ingoing_hor_p2, Yp_ingoing_hor_p2
+using ..ISEM
+using ..AsymptoticExpansionCoefficientsY
+using ..InitialConditionsY
 
 export kerr_geo_generic_sample, kerr_geo_eccentric_sample, kerr_geo_inclined_sample
 export kerr_geo_inclined_sample_dense, subsample_inclined_sample, refine_inclined_swsh_sample
@@ -15,6 +14,7 @@ export y_sample_m2_isem, y_sample_p2_isem
 export integrand_generic_sample_m2, integrand_generic_sample_p2, integrand_eccentric_sample_m2, integrand_eccentric_sample_p2, integrand_inclined_sample_m2, integrand_inclined_sample_p2
 export kerr_geo_generic_sample_cheby, kerr_geo_eccentric_sample_cheby, kerr_geo_inclined_sample_cheby
 export integrand_generic_sample_cheby_m2, integrand_generic_sample_cheby_p2, integrand_eccentric_sample_cheby_m2, integrand_eccentric_sample_cheby_p2, integrand_inclined_sample_cheby_m2, integrand_inclined_sample_cheby_p2
+export kerr_geo_eccentric_segment_sample_cheby, eccentric_segment_geometry_cache, eccentric_segment_phase_basis_cache, eccentric_segment_sample_bundle_cheby, integrand_eccentric_factored_segment_cheby_m2
 export carter_ingredients_sample
 
 function kerr_geo_generic_sample(KG::Dict, N_sample::Int64, K_sample::Int64)
@@ -92,6 +92,7 @@ function kerr_geo_generic_sample(KG::Dict, N_sample::Int64, K_sample::Int64)
         "E" => KG["Energy"],
         "Lz" => KG["AngularMomentum"],
         "Γ" => Γ,
+        "Frequencies" => Frequencies,
         "CrossFunction" => KG["CrossFunction"],
         "initialPhases" => KG["InitialPhases"]
     )
@@ -197,6 +198,7 @@ function kerr_geo_generic_sample_cheby(KG::Dict, N_sample::Int64, K_sample::Int6
         "E" => KG["Energy"],
         "Lz" => KG["AngularMomentum"],
         "Γ" => Γ,
+        "Frequencies" => Frequencies,
         "CrossFunction" => KG["CrossFunction"],
         "initialPhases" => KG["InitialPhases"]
     )
@@ -263,6 +265,7 @@ function kerr_geo_eccentric_sample_dense(KG::Dict, N_sample::Int64)
     _, r, _, _ = KG["Trajectory"]
     _, ur, _, _ = KG["FourVelocity"]
     Δtr, _, Δφr, _ = KG["CrossFunction"]
+    DerivativesCrossFunction = KG["DerivativesCrossFunction"]
     _, qr0, _, _ = KG["InitialPhases"]
     Frequencies = KG["Frequencies"]
     ϒr = Frequencies["ϒr"]
@@ -282,6 +285,7 @@ function kerr_geo_eccentric_sample_dense(KG::Dict, N_sample::Int64)
         "a" => a,
         "p" => KG["p"],
         "e" => KG["e"],
+        "qr" => qr_full,
         "r" => rq_vals,
         "rs" => rs_vals,
         "θ" => π/2,
@@ -298,6 +302,7 @@ function kerr_geo_eccentric_sample_dense(KG::Dict, N_sample::Int64)
         "Trajectory" => KG["Trajectory"],
         "FourVelocity" => KG["FourVelocity"],
         "CrossFunction" => (Δtr, Δφr),
+        "DerivativesCrossFunction" => DerivativesCrossFunction,
         "InitialPhases" => KG["InitialPhases"],
         "initialPhases" => KG["InitialPhases"]
     )
@@ -313,7 +318,8 @@ function subsample_eccentric_sample(KG_sample::Dict, N_sample::Int64)
     step = div(full_intervals, target_intervals)
     idx = 1:step:full_points
     sample = Dict{Any, Any}()
-    for key in ("r", "rs", "Δtr", "Δφr", "ur_fwd", "ur_rev")
+    for key in ("qr", "r", "rs", "Δtr", "Δφr", "ur_fwd", "ur_rev")
+        haskey(KG_sample, key) || continue
         sample[key] = KG_sample[key][idx]
     end
     sample["θ"] = KG_sample["θ"]
@@ -329,6 +335,7 @@ function subsample_eccentric_sample(KG_sample::Dict, N_sample::Int64)
     sample["Trajectory"] = KG_sample["Trajectory"]
     sample["FourVelocity"] = KG_sample["FourVelocity"]
     sample["CrossFunction"] = KG_sample["CrossFunction"]
+    sample["DerivativesCrossFunction"] = KG_sample["DerivativesCrossFunction"]
     sample["InitialPhases"] = KG_sample["InitialPhases"]
     sample["initialPhases"] = KG_sample["InitialPhases"]
     return sample
@@ -384,6 +391,7 @@ function kerr_geo_eccentric_sample_cheby(KG::Dict, N_sample::Int64)
 
     # === Return results dictionary ===
     return Dict(
+        "qr" => qr_full,
         "r" => rq_vals,
         "rs" => rs_vals,
         "θ" => π/2,  # θ fixed at equatorial plane
@@ -475,6 +483,7 @@ function kerr_geo_inclined_sample_dense(KG::Dict, x::Real, K_interval::Int64)
     _, _, θ, _ = KG["Trajectory"]
     _, _, uθ, _ = KG["FourVelocity"]
     _, Δtθ, _, Δφθ = KG["CrossFunction"]
+    DerivativesCrossFunction = KG["DerivativesCrossFunction"]
     _, _, qθ0, _ = KG["InitialPhases"]
     Frequencies = KG["Frequencies"]
     ϒθ = Frequencies["ϒθ"]
@@ -506,6 +515,7 @@ function kerr_geo_inclined_sample_dense(KG::Dict, x::Real, K_interval::Int64)
         "Trajectory" => KG["Trajectory"],
         "FourVelocity" => KG["FourVelocity"],
         "CrossFunction" => KG["CrossFunction"],
+        "DerivativesCrossFunction" => DerivativesCrossFunction,
         "InitialPhases" => KG["InitialPhases"],
     )
 end
@@ -523,7 +533,7 @@ function subsample_inclined_sample(KG_sample::Dict, K_interval::Int64)
     for key in ("θ", "Δtθ", "Δφθ", "uθ_fwd", "uθ_rev")
         sample[key] = view(KG_sample[key], idx)
     end
-    for key in ("a", "p", "x", "r", "rs", "E", "Lz", "Γ", "Frequencies", "Trajectory", "FourVelocity", "CrossFunction", "InitialPhases")
+    for key in ("a", "p", "x", "r", "rs", "E", "Lz", "Γ", "Frequencies", "Trajectory", "FourVelocity", "CrossFunction", "DerivativesCrossFunction", "InitialPhases")
         sample[key] = KG_sample[key]
     end
     sample["K_interval"] = K_interval
@@ -565,6 +575,172 @@ function refine_inclined_swsh_sample(SH, prev_SHsamp::Dict, next_sample::Dict)
         end
     end
     return refined
+end
+
+function _cheby_segment_nodes(n::Int, lo::Float64, hi::Float64)
+    n >= 2 || throw(ArgumentError("Chebyshev segment sampling needs at least two points"))
+    return [(hi - lo) * (cos(k * π / (n - 1)) + 1.0) / 2.0 + lo for k in 0:n-1]
+end
+
+function kerr_geo_eccentric_segment_sample_cheby(KG::Dict, qlo::Real, qhi::Real, N_sample::Int64)
+    N_sample >= 2 || throw(ArgumentError("N_sample must be at least 2"))
+    qlo = Float64(qlo)
+    qhi = Float64(qhi)
+    a = KG["a"]
+    _, r, _, _ = KG["Trajectory"]
+    _, ur, _, _ = KG["FourVelocity"]
+    Δtr, _, Δφr, _ = KG["CrossFunction"]
+    dtr, _, dφr, _ = KG["DerivativesCrossFunction"]
+    _, qr0, _, _ = KG["InitialPhases"]
+    Frequencies = KG["Frequencies"]
+    ϒr = Frequencies["ϒr"]
+    Γ = Frequencies["ϒt"]
+
+    rq(qr) = r((qr - qr0) / ϒr)
+    urq(qr) = (rq(qr)^2 + a^2 * cos(π / 2)^2) * ur((qr - qr0) / ϒr)
+
+    qr_vals = _cheby_segment_nodes(N_sample, qlo, qhi)
+    r_vals = [rq(q) for q in qr_vals]
+    ur_fwd = [urq(q) for q in qr_vals]
+    sample = Dict{String, Any}(
+        "qr" => qr_vals,
+        "r" => r_vals,
+        "rs" => rstar_from_r.(a, r_vals),
+        "θ" => π / 2,
+        "Δtr" => [Δtr(q) for q in qr_vals],
+        "Δφr" => [Δφr(q) for q in qr_vals],
+        "dtr" => [dtr(q) for q in qr_vals],
+        "dφr" => [dφr(q) for q in qr_vals],
+        "ur_fwd" => ur_fwd,
+        "ur_rev" => -ur_fwd,
+        "N_sample" => N_sample,
+        "K_sample" => 0,
+        "a" => a,
+        "p" => get(KG, "p", NaN),
+        "e" => get(KG, "e", NaN),
+        "x" => get(KG, "x", 1.0),
+        "E" => KG["Energy"],
+        "Lz" => KG["AngularMomentum"],
+        "Γ" => Γ,
+        "Frequencies" => Frequencies,
+        "Trajectory" => KG["Trajectory"],
+        "FourVelocity" => KG["FourVelocity"],
+        "CrossFunction" => (Δtr, Δφr),
+        "DerivativesCrossFunction" => (dtr, dφr),
+        "InitialPhases" => KG["InitialPhases"],
+        "initialPhases" => KG["InitialPhases"],
+    )
+    return sample
+end
+
+function eccentric_segment_geometry_cache(KG_samp::Dict)
+    r = Float64.(KG_samp["r"])
+    a = Float64(KG_samp["a"])
+    E = Float64(KG_samp["E"])
+    Lz = Float64(KG_samp["Lz"])
+    r2 = r .^ 2
+    Δ = r2 .- 2.0 .* r .+ a^2
+    ρ = -1.0 ./ r
+    numerator_N = E .* (r2 .+ a^2) .- a .* Lz
+    return Dict{String, Any}(
+        "r" => r,
+        "r2" => r2,
+        "rho" => ρ,
+        "inv_rho" => -r,
+        "sqrt_r2a2" => sqrt.(r2 .+ a^2),
+        "Delta" => Δ,
+        "numerator_N" => numerator_N,
+        "Np" => (numerator_N .+ KG_samp["ur_fwd"]) ./ Δ,
+        "Nm" => (numerator_N .+ KG_samp["ur_rev"]) ./ Δ,
+        "Mbar_base" => 1im * (a * E - Lz),
+    )
+end
+
+function eccentric_segment_phase_basis_cache(KG_samp::Dict)
+    a = Float64(KG_samp["a"])
+    Frequencies = KG_samp["Frequencies"]
+    Ωφ_over_Γ = Float64(Frequencies["ϒϕ"] / Frequencies["ϒt"])
+    Ωr_over_Γ = Float64(Frequencies["ϒr"] / Frequencies["ϒt"])
+    κ = sqrt(1.0 - a^2)
+    rp = 1.0 + κ
+    rm = 1.0 - κ
+    r = Float64.(KG_samp["r"])
+    log_term = log.((r .- rp) ./ (r .- rm))
+    rs = Float64.(KG_samp["rs"])
+    Δtr = Float64.(KG_samp["Δtr"])
+    Δφr = Float64.(KG_samp["Δφr"])
+    qr = Float64.(KG_samp["qr"])
+    return Dict{String, Any}(
+        "log_term" => log_term,
+        "external_m" => Ωφ_over_Γ .* Δtr .- Δφr,
+        "external_n" => Ωr_over_Γ .* Δtr .+ qr,
+        "internal_m_m2" => Ωφ_over_Γ .* rs .- (a / (2.0κ)) .* log_term,
+        "internal_n_m2" => Ωr_over_Γ .* rs,
+        "internal_m_p2" => .-Ωφ_over_Γ .* rs .+ (a / (2.0κ)) .* log_term,
+        "internal_n_p2" => .-Ωr_over_Γ .* rs,
+    )
+end
+
+function eccentric_segment_sample_bundle_cheby(KG::Dict, qlo::Real, qhi::Real, N_sample::Int64)
+    KG_samp = kerr_geo_eccentric_segment_sample_cheby(KG, qlo, qhi, N_sample)
+    return Dict{String, Any}(
+        "sample" => KG_samp,
+        "geometry" => eccentric_segment_geometry_cache(KG_samp),
+        "phase_basis" => eccentric_segment_phase_basis_cache(KG_samp),
+    )
+end
+
+function integrand_eccentric_factored_segment_cheby_m2(KG_samp::Dict, geometry::Dict, phase_basis::Dict, Y_samp::Dict, SH, m::Int, n::Int, a, ω)
+    r = geometry["r"]
+    ρ = geometry["rho"]
+    Y = Y_samp["Y"]
+    Yp = Y_samp["Yp"]
+    X = Y_samp["X"]
+    Binc = Y_samp["Binc"]
+    S0, S1, S2 = SH
+
+    L1 = -m + a * ω
+    L2 = L1
+    L2p = -2.0
+    L2S = S1 + L2 * S0
+    L1Sp = S2 + L1 * S1
+    L1L2S = L1Sp + L2p * S0 + L2 * S1 + L1 * L2 * S0
+    L1pL2pS = geometry["inv_rho"] .* L1L2S .+ 3im * a * L1 * S0 .+ 2im * a * S1 .- 1im * a * L2 * S0
+
+    internal_phase_values = m .* phase_basis["internal_m_m2"] .+ n .* phase_basis["internal_n_m2"]
+    internal_phase_factor = exp.(1im .* internal_phase_values)
+    external_phase_values = m .* phase_basis["external_m"] .+ n .* phase_basis["external_n"]
+
+    Wnn_smooth = ρ .* L1pL2pS .* geometry["r2"] .* Y ./ 2.0
+
+    term_A = L2S
+    term_B = 2 .* Y .+ r .* Yp
+    term_C = L2S .* (2 .* ρ) .* r .* Y
+    Wnmbar_smooth = .-r .* (term_A .* term_B .+ term_C)
+
+    term_D = X ./ (2 .* geometry["sqrt_r2a2"])
+    term_E_smooth = Y .+ 2 .* r .* Yp
+    term_F_smooth = ρ .* r .* (2 .* Y .+ r .* Yp)
+    Wmbarmbar_smooth = S0 .* (term_D ./ internal_phase_factor .+ term_E_smooth .+ term_F_smooth)
+
+    Np = geometry["Np"]
+    Nm = geometry["Nm"]
+    Mbar = geometry["Mbar_base"]
+    Jp_smooth = (Wnn_smooth .* (Np .^ 2) .+ Wnmbar_smooth .* Np .* Mbar .+ Wmbarmbar_smooth .* (Mbar ^ 2)) ./ (2.0pi)
+    Jm_smooth = (Wnn_smooth .* (Nm .^ 2) .+ Wnmbar_smooth .* Nm .* Mbar .+ Wmbarmbar_smooth .* (Mbar ^ 2)) ./ (2.0pi)
+
+    qt0, qr0, _, qφ0 = KG_samp["InitialPhases"]
+    Δtr_func, Δφr_func = KG_samp["CrossFunction"]
+    Xi = m * (Δφr_func(qr0) - qφ0) - ω * (Δtr_func(qr0) - qt0) - n * qr0
+    prefactor = 4im * pi * ω * exp(1im * Xi) / (KG_samp["Γ"] * Binc)
+
+    return (
+        smooth_p = ComplexF64.(Jp_smooth),
+        smooth_m = ComplexF64.(Jm_smooth),
+        phase_p = ComplexF64.(external_phase_values .+ internal_phase_values),
+        phase_m = ComplexF64.(.-external_phase_values .+ internal_phase_values),
+        prefactor = ComplexF64(prefactor),
+    )
 end
 
 function kerr_geo_inclined_sample_cheby(KG::Dict, K_sample::Int64)
@@ -3207,6 +3383,7 @@ function kerr_geo_generic_sample_dense(KG::Dict, N_interval::Int64, K_interval::
     _, r, θ, _ = KG["Trajectory"]
     _, ur, uθ, _ = KG["FourVelocity"]
     Δtr, Δtθ, Δφr, Δφθ = KG["CrossFunction"]
+    DerivativesCrossFunction = KG["DerivativesCrossFunction"]
     qt0, qr0, qθ0, qφ0 = KG["InitialPhases"]
     Frequencies = KG["Frequencies"]
     ϒr = Frequencies["ϒr"]
@@ -3256,6 +3433,7 @@ function kerr_geo_generic_sample_dense(KG::Dict, N_interval::Int64, K_interval::
         "Trajectory" => KG["Trajectory"],
         "FourVelocity" => KG["FourVelocity"],
         "CrossFunction" => KG["CrossFunction"],
+        "DerivativesCrossFunction" => DerivativesCrossFunction,
         "InitialPhases" => KG["InitialPhases"],
         "initialPhases" => KG["InitialPhases"],
     )
@@ -3285,7 +3463,7 @@ function subsample_generic_sample(KG_sample::Dict, N_interval::Int64, K_interval
     for key in ("θ", "Δtθ", "Δφθ", "uθ_fwd", "uθ_rev")
         sample[key] = KG_sample[key][idxK]
     end
-    for key in ("a", "p", "E", "Lz", "Γ", "Frequencies", "Trajectory", "FourVelocity", "CrossFunction", "InitialPhases", "initialPhases")
+    for key in ("a", "p", "E", "Lz", "Γ", "Frequencies", "Trajectory", "FourVelocity", "CrossFunction", "DerivativesCrossFunction", "InitialPhases", "initialPhases")
         sample[key] = KG_sample[key]
     end
     sample["N_interval"] = N_interval

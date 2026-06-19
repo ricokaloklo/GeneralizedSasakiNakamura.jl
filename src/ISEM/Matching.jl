@@ -20,9 +20,9 @@ _MATCHING_WARNING_TOL = 1e-8
 _MAX_N_MATCHING_ATTEMPTS = 20
 _MIN_MATCHING_N = 10
 
-@inline _is_omega_complex(omega) = !iszero(imag(complex(omega)))
+_is_omega_complex(omega) = !iszero(imag(complex(omega)))
 
-@inline function _warn_matching_mismatch(context, mismatch, split, N, requested_tol)
+function _warn_matching_mismatch(context, mismatch, split, N, requested_tol)
     mismatch <= _MATCHING_WARNING_TOL && return nothing
     @warn "ISEM adaptive matching mismatch above tolerance" context=context mismatch=mismatch split=split N=N warning_tol=_MATCHING_WARNING_TOL requested_tol=requested_tol
     return nothing
@@ -63,7 +63,7 @@ function _matching_N_candidates(N; max_attempts = _MAX_N_MATCHING_ATTEMPTS)
     return candidates
 end
 
-@inline function _components_with_N_metadata(comp, N_used, N_candidates)
+function _components_with_N_metadata(comp, N_used, N_candidates)
     return merge(comp, (N = N_used, N_candidates = N_candidates))
 end
 
@@ -96,12 +96,12 @@ function _adaptive_N_solution(context, solve_at_N, N, components; mismatch_tol =
     return best_result[1], best_result[2]
 end
 
-@inline function _normalize_solution(eval_P, x, norm)
+function _normalize_solution(eval_P, x, norm)
     P, dP, d2P, error = eval_P(x)
     return (P / norm, dP / norm, d2P / norm, error)
 end
 
-@inline function _make_piecewise_solution(split, lower_eval, upper_eval, norm)
+function _make_piecewise_solution(split, lower_eval, upper_eval, norm)
     function _P(x)
         x_selector = real(x)
         if x_selector < split
@@ -113,7 +113,7 @@ end
     return _P
 end
 
-@inline _is_horizon_superradiance_threshold(s, epsilon, tau) = abs(epsilon + tau) < 1e-12
+_is_horizon_superradiance_threshold(s, epsilon, tau) = abs(epsilon + tau) < 1e-12
 
 function _adaptive_piecewise_solution(split, lower_eval, upper_eval, norm, split_min, split_max; mismatch_tol = 1e-12, maxiter = 16, tol = _TOLERANCE)
     lo = min(split_min, split_max)

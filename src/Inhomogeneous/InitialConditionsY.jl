@@ -3,7 +3,7 @@ module InitialConditionsY
 using SpecialFunctions
 using HypergeometricFunctions
 
-using ..Coordinates: r_from_rstar
+using ..Coordinates
 using ..AsymptoticExpansionCoefficientsY
 
 export Y_initial_values_inf_m2, Y_initial_values_hor_m2

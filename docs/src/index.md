@@ -14,6 +14,8 @@ Starting from v0.8.0, the code is also capable of computing the gravitational wa
 
 Starting from v0.9.0, the package includes the ISEM solver, short for _iterative series expansion matching_. ISEM is now used by the default `method = "auto"` path where available and accelerates the homogeneous radial functions, single-mode point-particle amplitudes, and total-flux mode summations. The release also adds a high-level total-flux interface, [`Teukolsky_pointparticle_flux`](@ref), which automatically selects the circular, eccentric, inclined, or generic mode-summation strategy.
 
+For high-index tail modes in eccentric and generic flux summations, the ISEM path can use adaptive Levin quadrature instead of globally densifying a trapezoidal grid. The radial phase interval is refined only where the oscillatory integral has not stabilized. In generic two-dimensional convolutions, this radial adaptive Levin rule is combined with a fixed Clenshaw-Curtis rule in the polar direction, which resolves the smooth polar dependence with a compact cosine-spaced grid while keeping the expensive adaptivity in the radial direction.
+
 ## Installation
 To install the package using the Julia package manager, simply type the following in the Julia REPL:
 ```julia
@@ -191,6 +193,8 @@ flux.horizon_energy_flux
 ```
 
 The function automatically dispatches to circular, eccentric, inclined, or generic mode summation according to the supplied orbital parameters.
+
+In the high-`n` tail, eccentric and generic summations can switch from uniform-grid trapezoidal sampling to adaptive Levin quadrature. For generic two-dimensional convolutions, the default accelerated tail path uses adaptive Levin in the radial direction and Clenshaw-Curtis sampling in the polar direction, reducing the need for a uniformly dense two-dimensional grid.
 
 After a generic-orbit warmup call,
 ```julia
