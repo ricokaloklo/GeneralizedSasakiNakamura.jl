@@ -320,12 +320,18 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
     ci_kwargs = fast ? (Nmax = Nmax, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, cache = mode_cache) : (Nmax = Nmax, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = false)
     tail_levin_infinity_active = Ref(false)
     tail_levin_horizon_active = Ref(false)
+    tail_levin_infinity_start_n = Ref{Union{Nothing, Int}}(nothing)
+    tail_levin_horizon_start_n = Ref{Union{Nothing, Int}}(nothing)
     use_eccentric_tail_levin = (s, n, tail_values) -> begin
         branch_tail_levin = s == -2 ? use_tail_levin_infinity : use_tail_levin_horizon
         branch_tail_levin && fast || return false
         active = s == -2 ? tail_levin_infinity_active : tail_levin_horizon_active
-        if active[] || _use_levin_tail(n, tail_values; nmin = levin_nmin, tol = tol)
+        start_n = s == -2 ? tail_levin_infinity_start_n : tail_levin_horizon_start_n
+        if active[]
+            return true
+        elseif _use_levin_tail(n, tail_values; nmin = levin_nmin, tol = tol)
             active[] = true
+            start_n[] = n
             return true
         end
         return false
@@ -682,6 +688,11 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         record_h5["meta/horizon_carter_constant_flux"] = total_horizon_carter
         record_h5["meta/n_reached_inf"] = something(n_reached_inf, -1)
         record_h5["meta/n_reached_hor"] = something(n_reached_hor, -1)
+        record_h5["meta/tail_levin_infinity_enabled"] = use_tail_levin_infinity && fast
+        record_h5["meta/tail_levin_horizon_enabled"] = use_tail_levin_horizon && fast
+        record_h5["meta/tail_levin_start_inf"] = something(tail_levin_infinity_start_n[], -1)
+        record_h5["meta/tail_levin_start_hor"] = something(tail_levin_horizon_start_n[], -1)
+        record_h5["meta/tail_levin_nmin"] = levin_nmin
         record_h5["meta/total_modes"] = total_modes
         record_h5["meta/infinity_energy_flux_list"] = Energy_flux_inf
         record_h5["meta/horizon_energy_flux_list"] = Energy_flux_hor
@@ -703,6 +714,12 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         N_max = Nmax,
         n_reached_inf = n_reached_inf,
         n_reached_hor = n_reached_hor,
+        tail_levin_infinity_enabled = use_tail_levin_infinity && fast,
+        tail_levin_horizon_enabled = use_tail_levin_horizon && fast,
+        tail_levin_start_inf = tail_levin_infinity_start_n[],
+        tail_levin_start_hor = tail_levin_horizon_start_n[],
+        tail_levin_nmin = levin_nmin,
+        tail_levin_max_depth = levin_max_depth,
         infinity_energy_flux_list = Energy_flux_inf,
         horizon_energy_flux_list = Energy_flux_hor,
         record_file = record ? record_path : nothing,
@@ -1278,12 +1295,18 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
         current_shell_list = Ref{Vector{Float64}}(Float64[])
         tail_levin_infinity_active = Ref(false)
         tail_levin_horizon_active = Ref(false)
+        tail_levin_infinity_start_n = Ref{Union{Nothing, Int}}(nothing)
+        tail_levin_horizon_start_n = Ref{Union{Nothing, Int}}(nothing)
         use_generic_tail_levin = (s, n) -> begin
             branch_tail_levin = s == -2 ? use_tail_levin_infinity : use_tail_levin_horizon
             branch_tail_levin && fast || return false
             active = s == -2 ? tail_levin_infinity_active : tail_levin_horizon_active
-            if active[] || _use_levin_tail(n, current_shell_list[]; nmin = levin_nmin, tol = tol)
+            start_n = s == -2 ? tail_levin_infinity_start_n : tail_levin_horizon_start_n
+            if active[]
+                return true
+            elseif _use_levin_tail(n, current_shell_list[]; nmin = levin_nmin, tol = tol)
                 active[] = true
+                start_n[] = n
                 return true
             end
             return false
@@ -1854,6 +1877,11 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
             record_h5["meta/horizon_carter_constant_flux"] = hor.carter_constant_flux
             record_h5["meta/n_reached_inf"] = something(inf.n_reached, -1)
             record_h5["meta/n_reached_hor"] = something(hor.n_reached, -1)
+            record_h5["meta/tail_levin_infinity_enabled"] = use_tail_levin_infinity && fast
+            record_h5["meta/tail_levin_horizon_enabled"] = use_tail_levin_horizon && fast
+            record_h5["meta/tail_levin_start_inf"] = something(tail_levin_infinity_start_n[], -1)
+            record_h5["meta/tail_levin_start_hor"] = something(tail_levin_horizon_start_n[], -1)
+            record_h5["meta/tail_levin_nmin"] = levin_nmin
             record_h5["meta/total_modes"] = total_modes
             record_h5["meta/infinity_energy_flux_list"] = inf.shell_list
             record_h5["meta/horizon_energy_flux_list"] = hor.shell_list
@@ -1878,6 +1906,12 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
             K_max = Kmax,
             n_reached_inf = inf.n_reached,
             n_reached_hor = hor.n_reached,
+            tail_levin_infinity_enabled = use_tail_levin_infinity && fast,
+            tail_levin_horizon_enabled = use_tail_levin_horizon && fast,
+            tail_levin_start_inf = tail_levin_infinity_start_n[],
+            tail_levin_start_hor = tail_levin_horizon_start_n[],
+            tail_levin_nmin = levin_nmin,
+            tail_levin_max_depth = levin_max_depth,
             infinity_energy_flux_list = inf.shell_list,
             horizon_energy_flux_list = hor.shell_list,
             record_file = record ? record_path : nothing,

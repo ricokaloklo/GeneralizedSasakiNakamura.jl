@@ -1247,18 +1247,70 @@ function _teukolsky_flux_bound_orbit(a, p, e, x)
     end
 end
 
+function _flux_tail_levin_branch_strategy(label::AbstractString, enabled, start_n)
+    if enabled === true
+        if start_n === nothing
+            return "$label: ISEM adaptive trapezoidal for all computed n; tail ISEM adaptive Levin enabled but not triggered"
+        end
+        return "$label: ISEM adaptive trapezoidal for n < $start_n; tail ISEM adaptive Levin for n >= $start_n"
+    end
+    return "$label: ISEM adaptive trapezoidal for all n; tail ISEM adaptive Levin inactive"
+end
+
+function _teukolsky_flux_convolution_integral_strategy(result, orbit_type::Symbol)
+    if orbit_type == :circular || orbit_type == :inclined
+        return "ISEM adaptive trapezoidal for all modes"
+    end
+    inf = _flux_tail_levin_branch_strategy(
+        "infinity",
+        _flux_get(result, :tail_levin_infinity_enabled),
+        _flux_get(result, :tail_levin_start_inf),
+    )
+    hor = _flux_tail_levin_branch_strategy(
+        "horizon",
+        _flux_get(result, :tail_levin_horizon_enabled),
+        _flux_get(result, :tail_levin_start_hor),
+    )
+    return "$inf; $hor"
+end
+
+function _teukolsky_flux_convolution_integral_info(result, orbit_type::Symbol)
+    strategy = _teukolsky_flux_convolution_integral_strategy(result, orbit_type)
+    if orbit_type == :circular || orbit_type == :inclined
+        return (strategy = strategy,)
+    end
+    return (
+        strategy = strategy,
+        infinity = (
+            tail_levin_enabled = _flux_get(result, :tail_levin_infinity_enabled),
+            tail_levin_start_n = _flux_get(result, :tail_levin_start_inf),
+        ),
+        horizon = (
+            tail_levin_enabled = _flux_get(result, :tail_levin_horizon_enabled),
+            tail_levin_start_n = _flux_get(result, :tail_levin_start_hor),
+        ),
+        tail_levin_nmin = _flux_get(result, :tail_levin_nmin),
+        tail_levin_max_depth = _flux_get(result, :tail_levin_max_depth),
+    )
+end
+
 function _teukolsky_flux_reached(result, orbit_type::Symbol)
     if orbit_type == :circular
-        return (l_reached = _flux_get(result, :l_reached),)
+        return (
+            l_reached = _flux_get(result, :l_reached),
+            convolution_integral = _teukolsky_flux_convolution_integral_info(result, orbit_type),
+        )
     elseif orbit_type == :inclined
         return (
             k_reached_inf = _flux_get(result, :k_reached_inf),
             k_reached_hor = _flux_get(result, :k_reached_hor),
+            convolution_integral = _teukolsky_flux_convolution_integral_info(result, orbit_type),
         )
     else
         return (
             n_reached_inf = _flux_get(result, :n_reached_inf),
             n_reached_hor = _flux_get(result, :n_reached_hor),
+            convolution_integral = _teukolsky_flux_convolution_integral_info(result, orbit_type),
         )
     end
 end
