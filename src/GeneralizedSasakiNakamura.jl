@@ -1154,6 +1154,73 @@ struct TeukolskyPointParticleFlux
     result
 end
 
+function _flux_last_shell_energy(result, key::Symbol)
+    shell_list = _flux_get(result, key)
+    if shell_list === nothing || isempty(shell_list)
+        return nothing
+    end
+    return shell_list[end]
+end
+
+function _flux_reached_print_value(flux::TeukolskyPointParticleFlux, key::Symbol, value)
+    value !== nothing && return value
+    nmax = _flux_get(flux.result, :n_max)
+    nmax === nothing && return value
+
+    shell_key = if key == :n_reached_inf
+        :infinity_energy_flux_list
+    elseif key == :n_reached_hor
+        :horizon_energy_flux_list
+    else
+        return value
+    end
+
+    last_shell_energy = _flux_last_shell_energy(flux.result, shell_key)
+    if last_shell_energy === nothing
+        return "$nmax (hit nmax = $nmax)"
+    end
+    return "$nmax (hit nmax = $nmax; last shell energy = $last_shell_energy)"
+end
+
+function _flux_hit_nmax_relative_energy(flux::TeukolskyPointParticleFlux, reached_key::Symbol, shell_key::Symbol, total_energy)
+    haskey(flux.reached, reached_key) || return nothing
+    flux.reached[reached_key] === nothing || return nothing
+    nmax = _flux_get(flux.result, :n_max)
+    nmax === nothing && return nothing
+
+    last_shell_energy = _flux_last_shell_energy(flux.result, shell_key)
+    last_shell_energy === nothing && return nothing
+    denom = max(abs(total_energy), eps(Float64))
+    return abs(last_shell_energy) / denom
+end
+
+function _flux_tolerance_print_value(flux::TeukolskyPointParticleFlux)
+    nmax = _flux_get(flux.result, :n_max)
+    nmax === nothing && return flux.tolerance
+
+    parts = String[]
+    rel_inf = _flux_hit_nmax_relative_energy(
+        flux,
+        :n_reached_inf,
+        :infinity_energy_flux_list,
+        flux.infinity_energy_flux,
+    )
+    rel_hor = _flux_hit_nmax_relative_energy(
+        flux,
+        :n_reached_hor,
+        :horizon_energy_flux_list,
+        flux.horizon_energy_flux,
+    )
+
+    rel_inf !== nothing && push!(parts, "infinity: $rel_inf")
+    rel_hor !== nothing && push!(parts, "horizon: $rel_hor")
+    isempty(parts) && return flux.tolerance
+
+    suggested_nmax = max(nmax + 1, ceil(Int, 1.6 * nmax))
+    ratios = join(parts, "; ")
+    return "$(flux.tolerance) (hit nmax; last-shell relative energy = $ratios; increase nmax manually, e.g. nmax = $suggested_nmax)"
+end
+
 function Base.show(io::IO, ::MIME"text/plain", teuk_mode::TeukolskyPointParticleMode)
     s = teuk_mode.mode.s
     
@@ -1209,9 +1276,9 @@ function Base.show(io::IO, ::MIME"text/plain", flux::TeukolskyPointParticleFlux)
     println(io, "    horizon_carter_constant_flux = $(flux.horizon_carter_constant_flux),")
     println(io, "    total_modes = $(flux.total_modes),")
     for key in keys(flux.reached)
-        println(io, "    $key = $(flux.reached[key]),")
+        println(io, "    $key = $(_flux_reached_print_value(flux, key, flux.reached[key])),")
     end
-    println(io, "    tolerance = $(flux.tolerance),")
+    println(io, "    tolerance = $(_flux_tolerance_print_value(flux)),")
     println(io, "    cost = $(flux.cost) seconds,")
     print(io, ")")
 end

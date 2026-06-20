@@ -207,25 +207,48 @@ julia> mode_info.amplitude
 ```
 which is the value for $Z^{\mathrm{H}}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near the horizon for that particular frequency.
 
-Total fluxes can be computed with the orbit-aware high-level interface. A generic-orbit total-flux run can be substantially slower than a single-mode calculation because it performs a full mode summation.
+Total fluxes can be computed with the orbit-aware high-level interface. A generic-orbit total-flux run can be substantially slower than an eccentric equatorial run because it performs two-dimensional convolution integrals.
 ```julia
-julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.5, 0.8; tol=1e-8)
+julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.7, 1.0; tol=1e-8)
 TeukolskyPointParticleFlux(
-    orbital_parameters(a = 0.9, p = 6.0, e = 0.5, x = 0.8),
-    orbit_type = generic,
-    infinity_energy_flux = 0.0008574853907334083,
-    infinity_angular_momentum_flux = 0.007923702251676327,
-    infinity_carter_constant_flux = 0.016863188510667797,
-    horizon_energy_flux = -8.85672969880499e-6,
-    horizon_angular_momentum_flux = -0.0001261648557146267,
-    horizon_carter_constant_flux = 0.00011196574351492719,
-    total_modes = 185914,
-    n_reached_inf = 51,
-    n_reached_hor = 29,
+    orbital_parameters(a = 0.9, p = 6.0, e = 0.7, x = 1.0),
+    orbit_type = eccentric,
+    infinity_energy_flux = 0.0007457786958668483,
+    infinity_angular_momentum_flux = 0.0067595174071041625,
+    infinity_carter_constant_flux = 0.0,
+    horizon_energy_flux = -8.777498364622886e-6,
+    horizon_angular_momentum_flux = -7.361786624130783e-5,
+    horizon_carter_constant_flux = 0.0,
+    total_modes = 40920,
+    n_reached_inf = 124,
+    n_reached_hor = 57,
+    convolution_integral = (...),
     tolerance = 1.0e-8,
-    cost = 191.83913803100586 seconds,
+    cost = 85.36857891082764 seconds,
 )
 ```
+This high-eccentricity equatorial run averaged about `2.086 ms` per computed mode.
+
+```julia
+julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.7, 0.5; tol=1e-8)
+TeukolskyPointParticleFlux(
+    orbital_parameters(a = 0.9, p = 6.0, e = 0.7, x = 0.5),
+    orbit_type = generic,
+    infinity_energy_flux = 0.0022058822370784725,
+    infinity_angular_momentum_flux = 0.011244954098337357,
+    infinity_carter_constant_flux = 0.07377508186421304,
+    horizon_energy_flux = -9.201325183089276e-6,
+    horizon_angular_momentum_flux = -0.0003627153056315165,
+    horizon_carter_constant_flux = 0.0009653061239027219,
+    total_modes = 638100,
+    n_reached_inf = 225,
+    n_reached_hor = 95,
+    convolution_integral = (...),
+    tolerance = 1.0e-8,
+    cost = 6040.767363071442 seconds,
+)
+```
+This high-eccentricity generic run averaged about `9.467 ms` per computed mode.
 
 The function automatically dispatches to circular, eccentric, inclined, or generic mode summation according to the supplied orbital parameters.
 
