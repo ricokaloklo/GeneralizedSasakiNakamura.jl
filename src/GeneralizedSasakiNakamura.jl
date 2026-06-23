@@ -320,6 +320,104 @@ function _auto_try_isem_then_legacy(context, isem_build, riccati_build, linear_b
     end
 end
 
+function _radial_compare_values!(vals::Vector, f)
+    for name in (:transmission_amplitude, :incidence_amplitude, :reflection_amplitude)
+        value = getfield(f, name)
+        value === missing || push!(vals, value)
+    end
+    return vals
+end
+
+function _radial_relative_difference(a, b)
+    av = _radial_compare_values!(Any[], a)
+    bv = _radial_compare_values!(Any[], b)
+    n = min(length(av), length(bv))
+    n == 0 && return Inf
+    diffs = Float64[]
+    for i in 1:n
+        ai = av[i]
+        bi = bv[i]
+        (ai === missing || bi === missing) && continue
+        denom = max(abs(ai), abs(bi), 1e-300)
+        push!(diffs, abs(ai - bi) / denom)
+    end
+    return isempty(diffs) ? Inf : maximum(diffs)
+end
+
+function _try_high_spin_isem_sanity_then_legacy(
+    context,
+    selector_build,
+    low_n_build,
+    mid_n_build,
+    riccati_build,
+    linear_build;
+    sanity_tol = 1e-8,
+)
+    function try_build_with_warning_flag(build)
+        saw_warn = Ref(false)
+        logger = EarlyFilteredLogger(
+            log -> begin
+                if log.level == Logging.Warn
+                    saw_warn[] = true
+                end
+                return log.level >= Logging.Error
+            end,
+            current_logger(),
+        )
+        sol = with_logger(logger) do
+            build()
+        end
+        return sol, saw_warn[]
+    end
+
+    selector_sol, selector_warn = try
+        try_build_with_warning_flag(selector_build)
+    catch err
+        @info "method = \"auto\" high-spin ISEM selector build failed and switched to legacy auto (Riccati, then linear)." context=context error=sprint(showerror, err)
+        return _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+    if selector_warn
+        @info "method = \"auto\" high-spin ISEM selector build warned and switched to legacy auto (Riccati, then linear)." context=context
+        return _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+
+    low_sol, low_warn = try
+        try_build_with_warning_flag(low_n_build)
+    catch err
+        @info "method = \"auto\" high-spin low-N ISEM sanity build failed and switched to legacy auto (Riccati, then linear)." context=context error=sprint(showerror, err)
+        return _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+    if low_warn
+        @debug "method = \"auto\" high-spin low-N ISEM sanity build warned and switched to legacy auto (Riccati, then linear)." context=context low_N=12
+        return _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+
+    selector_low_diff = _radial_relative_difference(selector_sol, low_sol)
+    if selector_low_diff <= sanity_tol
+        return selector_sol
+    end
+
+    mid_sol, mid_warn = try
+        try_build_with_warning_flag(mid_n_build)
+    catch err
+        @info "method = \"auto\" high-spin mid-N ISEM sanity build failed and switched to legacy auto (Riccati, then linear)." context=context selector_low_diff=selector_low_diff error=sprint(showerror, err)
+        return _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+    if mid_warn
+        @debug "method = \"auto\" high-spin mid-N ISEM sanity build warned and switched to legacy auto (Riccati, then linear)." context=context selector_low_diff=selector_low_diff mid_N=20
+        return _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+
+    low_mid_diff = _radial_relative_difference(low_sol, mid_sol)
+    if low_mid_diff <= sanity_tol
+        @debug "method = \"auto\" high-spin ISEM selector/low-N sanity check selected low-N result." context=context selector_low_diff=selector_low_diff low_mid_diff=low_mid_diff low_N=12 mid_N=20
+        return low_sol
+    end
+
+    @debug "method = \"auto\" high-spin ISEM sanity check failed and switched to legacy auto (Riccati, then linear)." context=context selector_low_diff=selector_low_diff low_mid_diff=low_mid_diff low_N=12 mid_N=20
+    return _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
+end
+
 @doc raw"""
     GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE,  ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=Solutions._DEFAULTTOLERANCE, rsmp=nothing)
 
@@ -368,12 +466,20 @@ function GSN_radial(
         return _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     elseif _is_auto_method(method)
         context = (function_name = "GSN_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
-        return _auto_try_isem_then_legacy(
-            context,
-            () -> _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min),
-            () -> GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
-            () -> GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
-        )
+        selector_build = () -> _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
+        riccati_build = () -> GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+        linear_build = () -> GSN_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+        if N === nothing && isreal(a) && abs(a) > 0.95
+            return _try_high_spin_isem_sanity_then_legacy(
+                context,
+                selector_build,
+                () -> _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=12, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min),
+                () -> _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=20, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min),
+                riccati_build,
+                linear_build,
+            )
+        end
+        return _auto_try_isem_then_legacy(context, selector_build, riccati_build, linear_build)
     elseif method == "ISEM"
         return _gsn_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor, use_gsn_asymptotic_patches=use_gsn_asymptotic_patches, gsn_horizon_delta_r_max=gsn_horizon_delta_r_max, gsn_infinity_phase_min=gsn_infinity_phase_min)
     else
@@ -935,12 +1041,20 @@ function Teukolsky_radial(
         return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     elseif _is_auto_method(method)
         context = (function_name = "Teukolsky_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
-        return _auto_try_isem_then_legacy(
-            context,
-            () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
-            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
-            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp),
-        )
+        selector_build = () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        riccati_build = () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="Riccati", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+        linear_build = () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order=horizon_expansion_order, infinity_expansion_order=infinity_expansion_order, method="linear", data_type=data_type, ODE_algorithm=ODE_algorithm, tolerance=tolerance, rsmp=rsmp)
+        if N === nothing && isreal(a) && abs(a) > 0.95
+            return _try_high_spin_isem_sanity_then_legacy(
+                context,
+                selector_build,
+                () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=12, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+                () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=20, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+                riccati_build,
+                linear_build,
+            )
+        end
+        return _auto_try_isem_then_legacy(context, selector_build, riccati_build, linear_build)
     elseif method == "ISEM"
         return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tolerance, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     end
@@ -1005,12 +1119,20 @@ function Teukolsky_radial(
         return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     elseif !_is_static_frequency(omega) && _is_auto_method(method)
         context = (function_name = "Teukolsky_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
-        return _auto_try_isem_then_legacy(
-            context,
-            () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
-            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method="Riccati", tolerance = tol === nothing ? Solutions._DEFAULTTOLERANCE : tol),
-            () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method="linear", tolerance = tol === nothing ? Solutions._DEFAULTTOLERANCE : tol),
-        )
+        selector_build = () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
+        riccati_build = () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method="Riccati", tolerance = tol === nothing ? Solutions._DEFAULTTOLERANCE : tol)
+        linear_build = () -> Teukolsky_radial(s, l, m, a, omega, boundary_condition, _DEFAULT_rsin, _DEFAULT_rsout; method="linear", tolerance = tol === nothing ? Solutions._DEFAULTTOLERANCE : tol)
+        if N === nothing && isreal(a) && abs(a) > 0.95
+            return _try_high_spin_isem_sanity_then_legacy(
+                context,
+                selector_build,
+                () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=12, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+                () -> _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=20, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+                riccati_build,
+                linear_build,
+            )
+        end
+        return _auto_try_isem_then_legacy(context, selector_build, riccati_build, linear_build)
     elseif !_is_static_frequency(omega) && method == "ISEM"
         return _teukolsky_from_isem(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
     elseif !_is_static_frequency(omega)
@@ -1149,6 +1271,7 @@ struct TeukolskyPointParticleFlux
     horizon_carter_constant_flux
     total_modes::Int
     tolerance
+    truncation_floor
     reached::NamedTuple
     cost
     result
@@ -1221,6 +1344,8 @@ function _flux_tolerance_print_value(flux::TeukolskyPointParticleFlux)
     return "$(flux.tolerance) (hit nmax; last-shell relative energy = $ratios; increase nmax manually, e.g. nmax = $suggested_nmax)"
 end
 
+_flux_truncation_floor_print_value(flux::TeukolskyPointParticleFlux) = flux.truncation_floor
+
 function Base.show(io::IO, ::MIME"text/plain", teuk_mode::TeukolskyPointParticleMode)
     s = teuk_mode.mode.s
     
@@ -1275,10 +1400,25 @@ function Base.show(io::IO, ::MIME"text/plain", flux::TeukolskyPointParticleFlux)
     println(io, "    horizon_angular_momentum_flux = $(flux.horizon_angular_momentum_flux),")
     println(io, "    horizon_carter_constant_flux = $(flux.horizon_carter_constant_flux),")
     println(io, "    total_modes = $(flux.total_modes),")
-    for key in keys(flux.reached)
-        println(io, "    $key = $(_flux_reached_print_value(flux, key, flux.reached[key])),")
+    if haskey(flux.reached, :n_reached_inf) && haskey(flux.reached, :n_reached_hor)
+        inf_reached = _flux_reached_print_value(flux, :n_reached_inf, flux.reached[:n_reached_inf])
+        hor_reached = _flux_reached_print_value(flux, :n_reached_hor, flux.reached[:n_reached_hor])
+        println(io, "    n_reached = (infinity = $inf_reached, horizon = $hor_reached),")
+        if haskey(flux.reached, :convolution_integral)
+            println(io, "    convolution_integral = $(flux.reached[:convolution_integral]),")
+        end
+    elseif haskey(flux.reached, :l_reached_inf) && haskey(flux.reached, :l_reached_hor)
+        println(io, "    l_reached = (infinity = $(flux.reached[:l_reached_inf]), horizon = $(flux.reached[:l_reached_hor])),")
+        if haskey(flux.reached, :convolution_integral)
+            println(io, "    convolution_integral = $(flux.reached[:convolution_integral]),")
+        end
+    else
+        for key in keys(flux.reached)
+            println(io, "    $key = $(_flux_reached_print_value(flux, key, flux.reached[key])),")
+        end
     end
     println(io, "    tolerance = $(_flux_tolerance_print_value(flux)),")
+    println(io, "    truncation_floor = $(_flux_truncation_floor_print_value(flux)),")
     println(io, "    cost = $(flux.cost) seconds,")
     print(io, ")")
 end
@@ -1324,9 +1464,32 @@ function _flux_tail_levin_branch_strategy(label::AbstractString, enabled, start_
     return "$label: ISEM adaptive trapezoidal for all n; tail ISEM adaptive Levin inactive"
 end
 
+function _flux_tail_levin_strategy(enabled, start_n)
+    if enabled === true
+        if start_n === nothing
+            return "ISEM adaptive trapezoidal for all computed n; tail ISEM adaptive Levin enabled but not triggered"
+        end
+        return "ISEM adaptive trapezoidal for n < $start_n; tail ISEM adaptive Levin for n >= $start_n"
+    end
+    return "ISEM adaptive trapezoidal for all n; tail ISEM adaptive Levin inactive"
+end
+
+function _flux_tail_levin_same(result)
+    return _flux_get(result, :tail_levin_infinity_enabled) == _flux_get(result, :tail_levin_horizon_enabled) &&
+        _flux_get(result, :tail_levin_start_inf) == _flux_get(result, :tail_levin_start_hor)
+end
+
 function _teukolsky_flux_convolution_integral_strategy(result, orbit_type::Symbol)
-    if orbit_type == :circular || orbit_type == :inclined
+    if orbit_type == :circular
+        return "no convolution integral is needed"
+    elseif orbit_type == :inclined
         return "ISEM adaptive trapezoidal for all modes"
+    end
+    if _flux_tail_levin_same(result)
+        return _flux_tail_levin_strategy(
+            _flux_get(result, :tail_levin_infinity_enabled),
+            _flux_get(result, :tail_levin_start_inf),
+        )
     end
     inf = _flux_tail_levin_branch_strategy(
         "infinity",
@@ -1345,6 +1508,13 @@ function _teukolsky_flux_convolution_integral_info(result, orbit_type::Symbol)
     strategy = _teukolsky_flux_convolution_integral_strategy(result, orbit_type)
     if orbit_type == :circular || orbit_type == :inclined
         return (strategy = strategy,)
+    end
+    if _flux_tail_levin_same(result)
+        return (
+            strategy = strategy,
+            tail_levin_nmin = _flux_get(result, :tail_levin_nmin),
+            tail_levin_max_depth = _flux_get(result, :tail_levin_max_depth),
+        )
     end
     return (
         strategy = strategy,
@@ -1365,6 +1535,8 @@ function _teukolsky_flux_reached(result, orbit_type::Symbol)
     if orbit_type == :circular
         return (
             l_reached = _flux_get(result, :l_reached),
+            l_reached_inf = _flux_get(result, :l_reached_inf),
+            l_reached_hor = _flux_get(result, :l_reached_hor),
             convolution_integral = _teukolsky_flux_convolution_integral_info(result, orbit_type),
         )
     elseif orbit_type == :inclined
@@ -1387,7 +1559,7 @@ end
 
 Compute total point-particle fluxes by automatically selecting the mode-summation strategy from the orbit type.
 """
-function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 20, minimum_consecutive = 2, N = 64, N0 = N, K = 16, K0 = K, Nmax = 2^14, Kmax = 2^12, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, mode_abs_floor = 1e-16, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, tail_levin = nothing, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = 1e-16, levin_max_depth::Int = 8)
+function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 20, minimum_consecutive = 2, N = 64, N0 = N, K = 16, K0 = K, Nmax = 2^14, Kmax = 2^12, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, truncation_floor = 1e-16, mode_abs_floor = truncation_floor, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, tail_levin = nothing, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = mode_abs_floor, levin_max_depth::Int = 8)
     if !_teukolsky_flux_bound_orbit(a, p, e, x)
         @warn "The specified parameters do not correspond to a bound orbit." a p e x
         return nothing
@@ -1420,6 +1592,10 @@ function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 
         result.horizon_carter_constant_flux,
         result.total_modes,
         _flux_get(result, :tolerance, tol),
+        (
+            infinity = _flux_get(result, :infinity_truncation_floor, mode_abs_floor),
+            horizon = _flux_get(result, :horizon_truncation_floor, mode_abs_floor),
+        ),
         _teukolsky_flux_reached(result, orbit_type),
         cost,
         result,
@@ -1440,7 +1616,7 @@ Use `method = "isem_trapezoidal"` for the ISEM trapezoidal path and `method = "i
 Legacy non-ISEM paths remain available as `method = "trapezoidal"` and `method = "levin"`.
 For adaptive ISEM Levin, `levin_max_depth` controls the maximum bisection depth; `Nmax` and `Kmax` are fixed-grid caps used by trapezoidal and non-adaptive paths.
 """
-function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1, Nmax::Int = 2^12, Kmax::Int = 2^9, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, levin_max_depth::Int = 8)
+function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1, Nmax::Int = 2^12, Kmax::Int = 2^9, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, truncation_floor::Float64 = 1e-16, mode_abs_floor::Float64 = truncation_floor, zero_low_flux::Bool = false, threaded_sampling::Bool = false, levin_max_depth::Int = 8)
     method = lowercase(String(method))
     if method == "auto"
         # For now, choose "isem_trapezoidal"
@@ -1463,7 +1639,7 @@ function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a,
     end
 
     if method == "isem_trapezoidal"
-        output = ConvolutionIntegrals.convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N=N, K=K)
+        output = ConvolutionIntegrals.convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N=N, K=K, Nmax=Nmax, Kmax=Kmax, tol=tol, sample_tol=sample_tol, max_flux=max_flux, mode_abs_floor=mode_abs_floor, zero_low_flux=zero_low_flux, threaded_sampling=threaded_sampling)
     elseif method == "isem_levin"
         output = ConvolutionIntegrals.convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k; N=N, K=K, Nmax=Nmax, Kmax=Kmax, tol=tol, sample_tol=sample_tol, max_flux=max_flux, mode_abs_floor=mode_abs_floor, zero_low_flux=zero_low_flux, threaded_sampling=threaded_sampling, adaptive_max_depth=levin_max_depth)
     elseif method == "trapezoidal"
@@ -1484,7 +1660,7 @@ function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a,
             output["Trajectory"],
             output["YSolution"],
             output["SWSH"],
-            (method=method, N=N, K=K)
+            (method=method, N=N, K=K, truncation_floor=mode_abs_floor)
         )
 end
 
@@ -1523,8 +1699,8 @@ Legacy non-ISEM paths remain available as `method = "trapezoidal"` and `method =
 We sample the trajectory over a grid of size N x K, where N and K are the number of Chebyshev nodes in the radial and the polar direction, respectively.
 Note that they must be powers of 2.
 """
-function GSN_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1, Nmax::Int = 2^12, Kmax::Int = 2^9, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, levin_max_depth::Int = 8)
-    Teukolsky_mode = Teukolsky_pointparticle_mode(s, l, m, n, k, a, p, e, x; method=method, N=N, K=K, Nmax=Nmax, Kmax=Kmax, tol=tol, sample_tol=sample_tol, max_flux=max_flux, mode_abs_floor=mode_abs_floor, zero_low_flux=zero_low_flux, threaded_sampling=threaded_sampling, levin_max_depth=levin_max_depth)
+function GSN_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", N::Int=-1, K::Int=-1, Nmax::Int = 2^12, Kmax::Int = 2^9, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, truncation_floor::Float64 = 1e-16, mode_abs_floor::Float64 = truncation_floor, zero_low_flux::Bool = false, threaded_sampling::Bool = false, levin_max_depth::Int = 8)
+    Teukolsky_mode = Teukolsky_pointparticle_mode(s, l, m, n, k, a, p, e, x; method=method, N=N, K=K, Nmax=Nmax, Kmax=Kmax, tol=tol, sample_tol=sample_tol, max_flux=max_flux, truncation_floor=truncation_floor, mode_abs_floor=mode_abs_floor, zero_low_flux=zero_low_flux, threaded_sampling=threaded_sampling, levin_max_depth=levin_max_depth)
     if s == 2
         T_to_SN = ConversionFactors.Btrans(s, m, a, Teukolsky_mode.mode.omega, Teukolsky_mode.mode.lambda)
     elseif s == -2

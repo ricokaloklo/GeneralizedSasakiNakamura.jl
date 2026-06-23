@@ -42,26 +42,16 @@ function _median_sorted(vals::Vector{Float64})
     return isodd(n) ? sorted[mid + 1] : 0.5 * (sorted[mid] + sorted[mid + 1])
 end
 
-function _use_levin_tail(index::Int, shell_values::Vector{Float64}; nmin::Int = 50, tol::Real = 1e-8, trend_window::Int = 8, consecutive::Int = 3)
-    index >= nmin || return false
-    tol > 0 || return false
-    trend_window > 0 || return false
-    consecutive > 0 || return false
-    length(shell_values) >= max(2 * trend_window, consecutive) || return false
-    vals = abs.(shell_values)
-    all(isfinite, vals) || return false
-    total = abs(sum(shell_values))
-    total = max(total, maximum(vals), eps(Float64))
-    threshold = Float64(tol)^(1 / 4) * total
-    recent = vals[end - consecutive + 1:end]
-    all(v -> v <= threshold, recent) || return false
-    w = min(trend_window, length(vals) ÷ 2)
-    prev = vals[end - 2 * w + 1:end - w]
-    curr = vals[end - w + 1:end]
-    return _median_sorted(curr) < _median_sorted(prev)
-end
+_use_levin_tail(index::Int; nmin::Int = 50) = index >= nmin
 
 @inline _mode_cutoff_threshold(base::Float64, mode_abs_floor::Float64) = max(base, mode_abs_floor)
+@inline function _adaptive_branch_mode_floor(total_branch_energy::Float64, tol::Real, base_floor::Real)
+    base = Float64(base_floor)
+    base > 0 || return base
+    scaled = abs(total_branch_energy) * Float64(tol)
+    scaled > 0 || return base
+    return min(base, scaled)
+end
 @inline function _generic_k_shell_threshold(total_branch_energy::Float64, reference_n_shell::Float64, tol::Real, mode_abs_floor::Float64; scale::Real = 1.0)
     total_scale = max(abs(total_branch_energy), eps(Float64))
     shell_scale = max(abs(reference_n_shell), eps(Float64))
@@ -211,33 +201,28 @@ function circular_mode_summation(a, p; tol = 1e-8, lmax = 30, min_consecutive = 
     total_horizon_angular = 0.0
     total_horizon_carter = 0.0
     total_modes = 0
-    l_reached = nothing
-    below_count = 0
+    l_reached_inf = nothing
+    l_reached_hor = nothing
+    mode_cache = Dict{Tuple{Int, Int}, Any}()
+    get_mode(l, m) = get!(mode_cache, (l, m)) do
+        circular_mode_flux(a, p, l, m)
+    end
 
+    below_count = 0
     for l in lmin:lmax
         shell_infinity_energy = 0.0
         shell_infinity_angular = 0.0
         shell_infinity_carter = 0.0
-        shell_horizon_energy = 0.0
-        shell_horizon_angular = 0.0
-        shell_horizon_carter = 0.0
         for m in 1:l
-            mode = circular_mode_flux(a, p, l, m)
+            mode = get_mode(l, m)
             shell_infinity_energy += 2 * mode.infinity.energy_flux
             shell_infinity_angular += 2 * mode.infinity.angular_momentum_flux
             shell_infinity_carter += 2 * mode.infinity.carter_constant_flux
-            shell_horizon_energy += 2 * mode.horizon.energy_flux
-            shell_horizon_angular += 2 * mode.horizon.angular_momentum_flux
-            shell_horizon_carter += 2 * mode.horizon.carter_constant_flux
-            total_modes += 2
         end
-        l_reached = l
+        l_reached_inf = l
         total_infinity_energy += shell_infinity_energy
         total_infinity_angular += shell_infinity_angular
         total_infinity_carter += shell_infinity_carter
-        total_horizon_energy += shell_horizon_energy
-        total_horizon_angular += shell_horizon_angular
-        total_horizon_carter += shell_horizon_carter
 
         threshold = tol * max(abs(total_infinity_energy), eps(Float64))
         below_count = abs(shell_infinity_energy) <= threshold ? below_count + 1 : 0
@@ -245,6 +230,31 @@ function circular_mode_summation(a, p; tol = 1e-8, lmax = 30, min_consecutive = 
             break
         end
     end
+
+    below_count = 0
+    for l in lmin:lmax
+        shell_horizon_energy = 0.0
+        shell_horizon_angular = 0.0
+        shell_horizon_carter = 0.0
+        for m in 1:l
+            mode = get_mode(l, m)
+            shell_horizon_energy += 2 * mode.horizon.energy_flux
+            shell_horizon_angular += 2 * mode.horizon.angular_momentum_flux
+            shell_horizon_carter += 2 * mode.horizon.carter_constant_flux
+        end
+        l_reached_hor = l
+        total_horizon_energy += shell_horizon_energy
+        total_horizon_angular += shell_horizon_angular
+        total_horizon_carter += shell_horizon_carter
+
+        threshold = tol * max(abs(total_horizon_energy), eps(Float64))
+        below_count = abs(shell_horizon_energy) <= threshold ? below_count + 1 : 0
+        if below_count >= min_consecutive
+            break
+        end
+    end
+
+    total_modes = 2 * sum(lmin:max(something(l_reached_inf, lmin - 1), something(l_reached_hor, lmin - 1)))
 
     return (
         infinity_energy_flux = total_infinity_energy,
@@ -258,7 +268,9 @@ function circular_mode_summation(a, p; tol = 1e-8, lmax = 30, min_consecutive = 
         lmin = lmin,
         lmax = lmax,
         min_consecutive = min_consecutive,
-        l_reached = l_reached,
+        l_reached = max(something(l_reached_inf, lmin - 1), something(l_reached_hor, lmin - 1)),
+        l_reached_inf = l_reached_inf,
+        l_reached_hor = l_reached_hor,
     )
 end
 
@@ -317,19 +329,24 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
     if (use_tail_levin_infinity || use_tail_levin_horizon) && fast && nmax >= levin_nmin
         ConvolutionIntegrals.prewarm_eccentric_adaptive_levin_segments!(mode_cache, KG_sample; local_n = adaptive_local_n, max_depth = levin_max_depth)
     end
-    ci_kwargs = fast ? (Nmax = Nmax, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, cache = mode_cache) : (Nmax = Nmax, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = false)
+    branch_mode_floor_inf = Ref(Float64(mode_abs_floor))
+    branch_mode_floor_hor = Ref(Float64(mode_abs_floor))
+    levin_floor_tracks_mode_floor = levin_mode_abs_floor == mode_abs_floor
+    branch_mode_floor = s -> s == -2 ? branch_mode_floor_inf[] : branch_mode_floor_hor[]
+    branch_levin_floor = s -> levin_floor_tracks_mode_floor ? branch_mode_floor(s) : Float64(levin_mode_abs_floor)
+    ci_kwargs = fast ? (Nmax = Nmax, mode_abs_floor = Float64(mode_abs_floor), zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, cache = mode_cache) : (Nmax = Nmax, mode_abs_floor = Float64(mode_abs_floor), zero_low_flux = zero_low_flux, threaded_sampling = false)
     tail_levin_infinity_active = Ref(false)
     tail_levin_horizon_active = Ref(false)
     tail_levin_infinity_start_n = Ref{Union{Nothing, Int}}(nothing)
     tail_levin_horizon_start_n = Ref{Union{Nothing, Int}}(nothing)
-    use_eccentric_tail_levin = (s, n, tail_values) -> begin
+    use_eccentric_tail_levin = (s, n) -> begin
         branch_tail_levin = s == -2 ? use_tail_levin_infinity : use_tail_levin_horizon
         branch_tail_levin && fast || return false
         active = s == -2 ? tail_levin_infinity_active : tail_levin_horizon_active
         start_n = s == -2 ? tail_levin_infinity_start_n : tail_levin_horizon_start_n
         if active[]
             return true
-        elseif _use_levin_tail(n, tail_values; nmin = levin_nmin, tol = tol)
+        elseif _use_levin_tail(n; nmin = levin_nmin)
             active[] = true
             start_n[] = n
             return true
@@ -337,11 +354,16 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         return false
     end
     ecc_eval = (s, l, m, n, max_flux, tail_values) -> begin
-        use_levin = use_eccentric_tail_levin(s, n, tail_values)
+        use_levin = use_eccentric_tail_levin(s, n)
+        floor = branch_mode_floor(s)
         if use_levin
-            ConvolutionIntegrals.convolution_integral_eccentric_adaptive_levin_isem(KG_sample, s, l, m, n; local_n = adaptive_local_n, max_depth = levin_max_depth, tol = tol, mode_abs_floor = _tail_levin_mode_floor(mode_abs_floor, levin_mode_abs_floor), zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, cache = mode_cache)
+            ConvolutionIntegrals.convolution_integral_eccentric_adaptive_levin_isem(KG_sample, s, l, m, n; local_n = adaptive_local_n, max_depth = levin_max_depth, tol = tol, mode_abs_floor = _tail_levin_mode_floor(floor, branch_levin_floor(s)), zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, cache = mode_cache)
         else
-            ConvolutionIntegrals.convolution_integral_eccentric_trapezoidal_isem(KG_sample, s, l, m, n, N; tol = tol, sample_tol = sample_tol, max_flux = max_flux, ci_kwargs...)
+            if fast
+                ConvolutionIntegrals.convolution_integral_eccentric_trapezoidal_isem(KG_sample, s, l, m, n, N; tol = tol, sample_tol = sample_tol, max_flux = max_flux, Nmax = Nmax, mode_abs_floor = floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, cache = mode_cache)
+            else
+                ConvolutionIntegrals.convolution_integral_eccentric_trapezoidal_isem(KG_sample, s, l, m, n, N; tol = tol, sample_tol = sample_tol, max_flux = max_flux, Nmax = Nmax, mode_abs_floor = floor, zero_low_flux = zero_low_flux, threaded_sampling = false)
+            end
         end
     end
 
@@ -374,7 +396,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
             shell_m_infinity_angular += 2 * mode["AngularMomentumFlux"]
             shell_m_infinity_carter += 2 * mode["CarterConstantFlux"]
             total_modes += 2
-            layer_threshold = tol * max(abs(shell_m_infinity_energy), eps(Float64))
+            layer_threshold = _mode_cutoff_threshold(tol * abs(shell_m_infinity_energy), mode_abs_floor)
             below_count_l = abs(mode["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
             if below_count_l >= minimum_consecutive
                 break
@@ -385,7 +407,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         shell_n_infinity_angular += shell_m_infinity_angular
         shell_n_infinity_carter += shell_m_infinity_carter
 
-        layer_threshold = tol * max(abs(shell_n_infinity_energy), eps(Float64))
+        layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_infinity_energy), mode_abs_floor)
         below_count_m = abs(shell_m_infinity_energy) <= layer_threshold ? below_count_m + 1 : 0
         if below_count_m >= minimum_consecutive
             shell_n_infinity_energy_last = shell_n_infinity_energy
@@ -408,7 +430,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
             shell_m_horizon_angular += 2 * mode["AngularMomentumFlux"]
             shell_m_horizon_carter += 2 * mode["CarterConstantFlux"]
             total_modes += 2
-            layer_threshold = tol * max(abs(shell_m_horizon_energy), eps(Float64))
+            layer_threshold = _mode_cutoff_threshold(tol * abs(shell_m_horizon_energy), mode_abs_floor)
             below_count_l = abs(mode["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
             if below_count_l >= minimum_consecutive
                 break
@@ -419,7 +441,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         shell_n_horizon_angular += shell_m_horizon_angular
         shell_n_horizon_carter += shell_m_horizon_carter
 
-        layer_threshold = tol * max(abs(shell_n_horizon_energy), eps(Float64))
+        layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_horizon_energy), mode_abs_floor)
         below_count_m = abs(shell_m_horizon_energy) <= layer_threshold ? below_count_m + 1 : 0
         if below_count_m >= minimum_consecutive
             shell_n_horizon_energy_last = shell_n_horizon_energy
@@ -437,6 +459,8 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
     total_horizon_energy += shell_n_horizon_energy
     total_horizon_angular += shell_n_horizon_angular
     total_horizon_carter += shell_n_horizon_carter
+    branch_mode_floor_inf[] = _adaptive_branch_mode_floor(total_infinity_energy, tol, mode_abs_floor)
+    branch_mode_floor_hor[] = _adaptive_branch_mode_floor(total_horizon_energy, tol, mode_abs_floor)
 
     for n in 1:nmax
         E_estimate_inf = _fit_shell_estimate(model, n_list_inf, Energy_flux_inf, n, p0, max(abs(shell_n_infinity_energy_last), eps(Float64)))
@@ -457,7 +481,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
             shell_m_infinity_angular += 2 * mode["AngularMomentumFlux"]
             shell_m_infinity_carter += 2 * mode["CarterConstantFlux"]
             total_modes += 2
-            layer_threshold = tol * max(abs(shell_m_infinity_energy), eps(Float64))
+            layer_threshold = _mode_cutoff_threshold(tol * abs(shell_m_infinity_energy), branch_mode_floor_inf[])
             below_count_l = abs(mode["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
             if below_count_l >= minimum_consecutive
                 break
@@ -488,7 +512,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
                     Max_flux = abs(mode["EnergyFlux"])
                     Max_m = m
                 end
-                layer_threshold = max(tol * abs(shell_n_infinity_energy_last), eps(Float64))
+                layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_infinity_energy_last), branch_mode_floor_inf[])
                 below_count_l = abs(mode["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
                 if below_count_l >= minimum_consecutive
                     break
@@ -499,7 +523,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
             shell_n_infinity_angular += shell_m_infinity_angular
             shell_n_infinity_carter += shell_m_infinity_carter
 
-            layer_threshold = max(tol * abs(shell_n_infinity_energy_last), eps(Float64))
+            layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_infinity_energy_last), branch_mode_floor_inf[])
             below_count_m = (abs(shell_m_infinity_energy) <= layer_threshold) && (shell_n_infinity_energy > min(0.1, exp(1 - 1 / e)) * shell_n_infinity_energy_last) ? below_count_m + 1 : 0
             if below_count_m >= minimum_consecutive
                 break
@@ -521,7 +545,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
                 shell_m_infinity_angular += 2 * mode["AngularMomentumFlux"]
                 shell_m_infinity_carter += 2 * mode["CarterConstantFlux"]
                 total_modes += 2
-                layer_threshold = max(tol * abs(shell_n_infinity_energy_last), eps(Float64))
+                layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_infinity_energy_last), branch_mode_floor_inf[])
                 below_count_l = abs(mode["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
                 if below_count_l >= minimum_consecutive
                     break
@@ -532,7 +556,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
             shell_n_infinity_angular += shell_m_infinity_angular
             shell_n_infinity_carter += shell_m_infinity_carter
 
-            layer_threshold = max(tol * abs(shell_n_infinity_energy_last), eps(Float64))
+            layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_infinity_energy_last), branch_mode_floor_inf[])
             below_count_m = (abs(shell_m_infinity_energy) <= layer_threshold) && (abs(m) >= Max_m) ? below_count_m + 1 : 0
             if below_count_m >= minimum_consecutive
                 shell_n_infinity_energy_last = shell_n_infinity_energy
@@ -545,7 +569,8 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         total_infinity_energy += shell_n_infinity_energy
         total_infinity_angular += shell_n_infinity_angular
         total_infinity_carter += shell_n_infinity_carter
-        n_threshold = max(tol * abs(total_infinity_energy), eps(Float64))
+        branch_mode_floor_inf[] = _adaptive_branch_mode_floor(total_infinity_energy, tol, mode_abs_floor)
+        n_threshold = _mode_cutoff_threshold(tol * abs(total_infinity_energy), branch_mode_floor_inf[])
         below_count_n = abs(shell_n_infinity_energy) <= n_threshold ? below_count_n + 1 : 0
         if mode_cache isa ConvolutionIntegrals.EccentricFluxCache
             empty!(mode_cache.phase_vectors)
@@ -558,6 +583,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         end
     end
 
+    below_count_n = 0
     for n in 1:nmax
         E_estimate_hor = _fit_shell_estimate(model, n_list_hor, Energy_flux_hor, n, p0, max(abs(shell_n_horizon_energy_last), eps(Float64)))
         shell_n_horizon_energy = 0.0
@@ -577,7 +603,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
             shell_m_horizon_angular += 2 * mode["AngularMomentumFlux"]
             shell_m_horizon_carter += 2 * mode["CarterConstantFlux"]
             total_modes += 2
-            layer_threshold = tol * max(abs(shell_m_horizon_energy), eps(Float64))
+            layer_threshold = _mode_cutoff_threshold(tol * abs(shell_m_horizon_energy), branch_mode_floor_hor[])
             below_count_l = abs(mode["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
             if below_count_l >= minimum_consecutive
                 break
@@ -608,7 +634,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
                     Max_flux = abs(mode["EnergyFlux"])
                     Max_m = m
                 end
-                layer_threshold = max(tol * abs(shell_n_horizon_energy_last), eps(Float64))
+                layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_horizon_energy_last), branch_mode_floor_hor[])
                 below_count_l = abs(mode["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
                 if below_count_l >= minimum_consecutive
                     break
@@ -619,7 +645,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
             shell_n_horizon_angular += shell_m_horizon_angular
             shell_n_horizon_carter += shell_m_horizon_carter
 
-            layer_threshold = max(tol * abs(shell_n_horizon_energy_last), eps(Float64))
+            layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_horizon_energy_last), branch_mode_floor_hor[])
             below_count_m = (abs(shell_m_horizon_energy) <= layer_threshold) && (shell_n_horizon_energy > min(0.1, exp(1 - 1 / e)) * shell_n_horizon_energy_last) ? below_count_m + 1 : 0
             if below_count_m >= minimum_consecutive
 
@@ -642,7 +668,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
                 shell_m_horizon_angular += 2 * mode["AngularMomentumFlux"]
                 shell_m_horizon_carter += 2 * mode["CarterConstantFlux"]
                 total_modes += 2
-                layer_threshold = max(tol * abs(shell_n_horizon_energy_last), eps(Float64))
+                layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_horizon_energy_last), branch_mode_floor_hor[])
                 below_count_l = abs(mode["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
                 if below_count_l >= minimum_consecutive
                     break
@@ -653,7 +679,7 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
             shell_n_horizon_angular += shell_m_horizon_angular
             shell_n_horizon_carter += shell_m_horizon_carter
 
-            layer_threshold = max(tol * abs(shell_n_horizon_energy_last), eps(Float64))
+            layer_threshold = _mode_cutoff_threshold(tol * abs(shell_n_horizon_energy_last), branch_mode_floor_hor[])
             below_count_m = (abs(shell_m_horizon_energy) <= layer_threshold) && (abs(m) >= Max_m) ? below_count_m + 1 : 0
             if below_count_m >= minimum_consecutive
                 shell_n_horizon_energy_last = shell_n_horizon_energy
@@ -666,7 +692,8 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         total_horizon_energy += shell_n_horizon_energy
         total_horizon_angular += shell_n_horizon_angular
         total_horizon_carter += shell_n_horizon_carter
-        n_threshold = max(tol * abs(total_horizon_energy), eps(Float64))
+        branch_mode_floor_hor[] = _adaptive_branch_mode_floor(total_horizon_energy, tol, mode_abs_floor)
+        n_threshold = _mode_cutoff_threshold(tol * abs(total_horizon_energy), branch_mode_floor_hor[])
         below_count_n = abs(shell_n_horizon_energy) <= n_threshold ? below_count_n + 1 : 0
         if mode_cache isa ConvolutionIntegrals.EccentricFluxCache
             empty!(mode_cache.phase_vectors)
@@ -693,6 +720,8 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         record_h5["meta/tail_levin_start_inf"] = something(tail_levin_infinity_start_n[], -1)
         record_h5["meta/tail_levin_start_hor"] = something(tail_levin_horizon_start_n[], -1)
         record_h5["meta/tail_levin_nmin"] = levin_nmin
+        record_h5["meta/infinity_truncation_floor"] = branch_mode_floor_inf[]
+        record_h5["meta/horizon_truncation_floor"] = branch_mode_floor_hor[]
         record_h5["meta/total_modes"] = total_modes
         record_h5["meta/infinity_energy_flux_list"] = Energy_flux_inf
         record_h5["meta/horizon_energy_flux_list"] = Energy_flux_hor
@@ -720,6 +749,8 @@ function eccentric_mode_summation(a, p, e; N = 64, N0 = N, Nmax = 2^14, tol = 1e
         tail_levin_start_hor = tail_levin_horizon_start_n[],
         tail_levin_nmin = levin_nmin,
         tail_levin_max_depth = levin_max_depth,
+        infinity_truncation_floor = branch_mode_floor_inf[],
+        horizon_truncation_floor = branch_mode_floor_hor[],
         infinity_energy_flux_list = Energy_flux_inf,
         horizon_energy_flux_list = Energy_flux_hor,
         record_file = record ? record_path : nothing,
@@ -896,7 +927,7 @@ function inclined_mode_summation(a, p, x; K = 16, K0 = K, Kmax = 2^12, tol = 1e-
                 shell_m_infinity_angular += 2 * mode_inf["AngularMomentumFlux"]
                 shell_m_infinity_carter += 2 * mode_inf["CarterConstantFlux"]
                 total_modes += 2
-                layer_threshold = tol * max(abs(shell_m_infinity_energy), eps(Float64))
+                layer_threshold = _mode_cutoff_threshold(tol * abs(shell_m_infinity_energy), mode_abs_floor)
                 below_count_l = abs(mode_inf["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
                 if below_count_l >= minimum_consecutive
                     break
@@ -915,7 +946,7 @@ function inclined_mode_summation(a, p, x; K = 16, K0 = K, Kmax = 2^12, tol = 1e-
                 shell_m_horizon_angular += 2 * mode_hor["AngularMomentumFlux"]
                 shell_m_horizon_carter += 2 * mode_hor["CarterConstantFlux"]
                 total_modes += 2
-                layer_threshold = tol * max(abs(shell_m_horizon_energy), eps(Float64))
+                layer_threshold = _mode_cutoff_threshold(tol * abs(shell_m_horizon_energy), mode_abs_floor)
                 below_count_l = abs(mode_hor["EnergyFlux"]) <= layer_threshold ? below_count_l + 1 : 0
                 if below_count_l >= minimum_consecutive
                     break
@@ -1293,6 +1324,11 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
         end
 
         current_shell_list = Ref{Vector{Float64}}(Float64[])
+        branch_mode_floor_inf = Ref(Float64(mode_abs_floor))
+        branch_mode_floor_hor = Ref(Float64(mode_abs_floor))
+        levin_floor_tracks_mode_floor = levin_mode_abs_floor == mode_abs_floor
+        branch_mode_floor = s -> s == -2 ? branch_mode_floor_inf[] : branch_mode_floor_hor[]
+        branch_levin_floor = s -> levin_floor_tracks_mode_floor ? branch_mode_floor(s) : Float64(levin_mode_abs_floor)
         tail_levin_infinity_active = Ref(false)
         tail_levin_horizon_active = Ref(false)
         tail_levin_infinity_start_n = Ref{Union{Nothing, Int}}(nothing)
@@ -1304,7 +1340,7 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
             start_n = s == -2 ? tail_levin_infinity_start_n : tail_levin_horizon_start_n
             if active[]
                 return true
-            elseif _use_levin_tail(n, current_shell_list[]; nmin = levin_nmin, tol = tol)
+            elseif _use_levin_tail(n; nmin = levin_nmin)
                 active[] = true
                 start_n[] = n
                 return true
@@ -1314,16 +1350,17 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
         eval_mode = (s, l, m, n, k, max_flux, use_levin=false) -> begin
             auto_levin = use_generic_tail_levin(s, n)
             use_levin = use_levin || auto_levin
+            floor = branch_mode_floor(s)
             mode = if fast
                 if use_levin
                     levin_flux_scale = max(abs(sum(current_shell_list[])), abs(max_flux), eps(Float64))
-                    levin_floor = _tail_levin_mode_floor(mode_abs_floor, levin_mode_abs_floor)
+                    levin_floor = _tail_levin_mode_floor(floor, branch_levin_floor(s))
                     ConvolutionIntegrals.generic_mode_flux_from_master_cached_adaptive_levin!(mode_cache[], KG_master, s, l, m, n, k; sample_tol = sample_tol, tol = tol, max_flux = levin_flux_scale, mode_abs_floor = levin_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, confirm_low_flux = true, max_depth = levin_max_depth)
                 else
-                    ConvolutionIntegrals.generic_mode_flux_from_master_cached!(mode_cache[], KG_master, s, l, m, n, k; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, sample_tol = sample_tol, tol = tol, max_flux = max_flux, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
+                    ConvolutionIntegrals.generic_mode_flux_from_master_cached!(mode_cache[], KG_master, s, l, m, n, k; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, sample_tol = sample_tol, tol = tol, max_flux = max_flux, mode_abs_floor = floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
                 end
             else
-                ConvolutionIntegrals.generic_mode_flux_from_master(KG_master, s, l, m, n, k; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, sample_tol = sample_tol, tol = tol, max_flux = max_flux, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = false)
+                ConvolutionIntegrals.generic_mode_flux_from_master(KG_master, s, l, m, n, k; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, sample_tol = sample_tol, tol = tol, max_flux = max_flux, mode_abs_floor = floor, zero_low_flux = zero_low_flux, threaded_sampling = false)
             end
             mode
         end
@@ -1523,6 +1560,11 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
             total_energy += shell_n
             total_angular += shell_n_angular
             total_carter += shell_n_carter
+            if s == -2
+                branch_mode_floor_inf[] = _adaptive_branch_mode_floor(total_energy, tol, mode_abs_floor)
+            else
+                branch_mode_floor_hor[] = _adaptive_branch_mode_floor(total_energy, tol, mode_abs_floor)
+            end
             shell_last = shell_n
             _clear_generic_mode_dependent_caches!(mode_cache[])
 
@@ -1532,10 +1574,11 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
                 shell_n = 0.0
                 shell_n_angular = 0.0
                 shell_n_carter = 0.0
-                threshold = _mode_cutoff_threshold(max(tol * abs(shell_last), eps(Float64)), mode_abs_floor)
+                floor = branch_mode_floor(s)
+                threshold = _mode_cutoff_threshold(tol * abs(shell_last), floor)
                 k_shell_scale = sqrt(max(abs(total_energy), eps(Float64)) * max(abs(shell_last), eps(Float64)))
-                k_shell_threshold = _mode_cutoff_threshold(max(tol * k_shell_scale, eps(Float64)), mode_abs_floor)
-                negative_k_shell_threshold = _mode_cutoff_threshold(max(neg_branch_scale * tol * abs(total_energy), eps(Float64)), mode_abs_floor)
+                k_shell_threshold = _mode_cutoff_threshold(tol * k_shell_scale, floor)
+                negative_k_shell_threshold = _mode_cutoff_threshold(neg_branch_scale * tol * abs(total_energy), floor)
                 tail_cutoff = use_generic_tail_levin(s, n)
 
                 shell_k = 0.0
@@ -1844,7 +1887,12 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
                 total_energy += shell_n
                 total_angular += shell_n_angular
                 total_carter += shell_n_carter
-                n_threshold = _mode_cutoff_threshold(max(tol * abs(total_energy), eps(Float64)), mode_abs_floor)
+                if s == -2
+                    branch_mode_floor_inf[] = _adaptive_branch_mode_floor(total_energy, tol, mode_abs_floor)
+                else
+                    branch_mode_floor_hor[] = _adaptive_branch_mode_floor(total_energy, tol, mode_abs_floor)
+                end
+                n_threshold = _mode_cutoff_threshold(tol * abs(total_energy), branch_mode_floor(s))
                 below_count_n = abs(shell_n) <= n_threshold ? below_count_n + 1 : 0
                 shell_last = shell_n
                 _clear_generic_mode_dependent_caches!(mode_cache[])
@@ -1861,6 +1909,7 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
                 total_modes = total_modes,
                 n_reached = n_reached,
                 shell_list = shell_list,
+                truncation_floor = branch_mode_floor(s),
             )
         end
 
@@ -1882,6 +1931,8 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
             record_h5["meta/tail_levin_start_inf"] = something(tail_levin_infinity_start_n[], -1)
             record_h5["meta/tail_levin_start_hor"] = something(tail_levin_horizon_start_n[], -1)
             record_h5["meta/tail_levin_nmin"] = levin_nmin
+            record_h5["meta/infinity_truncation_floor"] = inf.truncation_floor
+            record_h5["meta/horizon_truncation_floor"] = hor.truncation_floor
             record_h5["meta/total_modes"] = total_modes
             record_h5["meta/infinity_energy_flux_list"] = inf.shell_list
             record_h5["meta/horizon_energy_flux_list"] = hor.shell_list
@@ -1912,6 +1963,8 @@ function generic_mode_summation(a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax 
             tail_levin_start_hor = tail_levin_horizon_start_n[],
             tail_levin_nmin = levin_nmin,
             tail_levin_max_depth = levin_max_depth,
+            infinity_truncation_floor = inf.truncation_floor,
+            horizon_truncation_floor = hor.truncation_floor,
             infinity_energy_flux_list = inf.shell_list,
             horizon_energy_flux_list = hor.shell_list,
             record_file = record ? record_path : nothing,

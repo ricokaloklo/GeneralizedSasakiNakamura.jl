@@ -1375,6 +1375,103 @@ function _try_y_isem_then_legacy(context, isem_build, riccati_build, linear_buil
     end
 end
 
+function _y_compare_values!(vals::Vector, y::YRadialFunction)
+    for value in (y.transmission_amplitude, y.incidence_amplitude, y.reflection_amplitude)
+        value === missing || push!(vals, value)
+    end
+    return vals
+end
+
+function _y_relative_difference(a::YRadialFunction, b::YRadialFunction)
+    av = _y_compare_values!(Any[], a)
+    bv = _y_compare_values!(Any[], b)
+    n = min(length(av), length(bv))
+    n == 0 && return Inf
+    diffs = Float64[]
+    for i in 1:n
+        ai = av[i]
+        bi = bv[i]
+        (ai === missing || bi === missing) && continue
+        denom = max(abs(ai), abs(bi), 1e-300)
+        push!(diffs, abs(ai - bi) / denom)
+    end
+    return isempty(diffs) ? Inf : maximum(diffs)
+end
+
+function _try_y_high_spin_isem_sanity_then_legacy(
+    context,
+    selector_build,
+    low_n_build,
+    mid_n_build,
+    riccati_build,
+    linear_build;
+    sanity_tol = 1e-8,
+)
+    function try_build_with_warning_flag(build)
+        saw_warn = Ref(false)
+        logger = EarlyFilteredLogger(
+            log -> begin
+                if log.level == Logging.Warn
+                    saw_warn[] = true
+                end
+                return log.level >= Logging.Error
+            end,
+            current_logger(),
+        )
+        sol = with_logger(logger) do
+            build()
+        end
+        return sol, saw_warn[]
+    end
+
+    selector_sol, selector_warn = try
+        try_build_with_warning_flag(selector_build)
+    catch err
+        @info "Y_radial method = \"auto\" high-spin ISEM selector build failed and switched to legacy auto (Riccati, then linear)." context=context error=sprint(showerror, err)
+        return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+    if selector_warn
+        @info "Y_radial method = \"auto\" high-spin ISEM selector build warned and switched to legacy auto (Riccati, then linear)." context=context
+        return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+
+    low_sol, low_warn = try
+        try_build_with_warning_flag(low_n_build)
+    catch err
+        @info "Y_radial method = \"auto\" high-spin low-N ISEM sanity build failed and switched to legacy auto (Riccati, then linear)." context=context error=sprint(showerror, err)
+        return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+    if low_warn
+        @debug "Y_radial method = \"auto\" high-spin low-N ISEM sanity build warned and switched to legacy auto (Riccati, then linear)." context=context low_N=12
+        return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+
+    selector_low_diff = _y_relative_difference(selector_sol, low_sol)
+    if selector_low_diff <= sanity_tol
+        return selector_sol
+    end
+
+    mid_sol, mid_warn = try
+        try_build_with_warning_flag(mid_n_build)
+    catch err
+        @info "Y_radial method = \"auto\" high-spin mid-N ISEM sanity build failed and switched to legacy auto (Riccati, then linear)." context=context selector_low_diff=selector_low_diff error=sprint(showerror, err)
+        return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+    if mid_warn
+        @debug "Y_radial method = \"auto\" high-spin mid-N ISEM sanity build warned and switched to legacy auto (Riccati, then linear)." context=context selector_low_diff=selector_low_diff mid_N=20
+        return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+    end
+
+    low_mid_diff = _y_relative_difference(low_sol, mid_sol)
+    if low_mid_diff <= sanity_tol
+        @debug "Y_radial method = \"auto\" high-spin ISEM selector/low-N sanity check selected low-N result." context=context selector_low_diff=selector_low_diff low_mid_diff=low_mid_diff low_N=12 mid_N=20
+        return low_sol
+    end
+
+    @debug "Y_radial method = \"auto\" high-spin ISEM sanity check failed and switched to legacy auto (Riccati, then linear)." context=context selector_low_diff=selector_low_diff low_mid_diff=low_mid_diff low_N=12 mid_N=20
+    return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build)
+end
+
 function Y_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::BoundaryCondition; method="auto", xm=nothing, rhom=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing)
     if _is_negative_real_frequency(omega)
         positive_func = Y_radial(s, l, -m, a, -omega, boundary_condition; method=method, xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor)
@@ -1387,6 +1484,16 @@ function Y_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::Boundary
         return _build_y_solution_from_gsn(s, l, m, a, omega, boundary_condition; method=method, tol=tol)
     elseif method == "auto"
         context = (function_name = "Y_radial", s = s, l = l, m = m, a = a, omega = omega, boundary_condition = boundary_condition)
+        if N === nothing && abs(a) > 0.95
+            return _try_y_high_spin_isem_sanity_then_legacy(
+                context,
+                () -> _build_y_solution(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+                () -> _build_y_solution(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=12, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+                () -> _build_y_solution(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=20, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
+                () -> _build_y_solution_from_gsn(s, l, m, a, omega, boundary_condition; method="Riccati", tol=tol),
+                () -> _build_y_solution_from_gsn(s, l, m, a, omega, boundary_condition; method="linear", tol=tol),
+            )
+        end
         return _try_y_isem_then_legacy(
             context,
             () -> _build_y_solution(s, l, m, a, omega, boundary_condition; xm=xm, rhom=rhom, N=N, tol=tol, sfe=sfe, lfe=lfe, TSinInf=TSinInf, TSoutInf=TSoutInf, TSinHor=TSinHor, TSoutHor=TSoutHor),
