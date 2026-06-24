@@ -213,42 +213,42 @@ julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.7, 1.0; tol=1e-8)
 TeukolskyPointParticleFlux(
     orbital_parameters(a = 0.9, p = 6.0, e = 0.7, x = 1.0),
     orbit_type = eccentric,
-    infinity_energy_flux = 0.0007457786958668483,
-    infinity_angular_momentum_flux = 0.0067595174071041625,
+    infinity_energy_flux = 0.0007457786958522503,
+    infinity_angular_momentum_flux = 0.006759517407137998,
     infinity_carter_constant_flux = 0.0,
-    horizon_energy_flux = -8.777498364622886e-6,
-    horizon_angular_momentum_flux = -7.361786624130783e-5,
+    horizon_energy_flux = -8.777498498324929e-6,
+    horizon_angular_momentum_flux = -7.361786698869744e-5,
     horizon_carter_constant_flux = 0.0,
-    total_modes = 40920,
-    n_reached_inf = 124,
-    n_reached_hor = 57,
-    convolution_integral = (...),
+    total_modes = 36876,
+    n_reached = (infinity = 124, horizon = 58),
+    convolution_integral = (strategy = "ISEM adaptive trapezoidal for n < 50; tail ISEM adaptive Levin for n >= 50", tail_levin_nmin = 50, tail_levin_max_depth = 8),
     tolerance = 1.0e-8,
-    cost = 85.36857891082764 seconds,
+    truncation_floor = (infinity = 1.0e-16, horizon = 1.0e-16),
+    cost = 80.67165613174438 seconds,
 )
 ```
-This high-eccentricity equatorial run averaged about `2.086 ms` per computed mode.
+This high-eccentricity equatorial run averaged about `2.188 ms` per computed mode.
 
 ```julia
 julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.7, 0.5; tol=1e-8)
 TeukolskyPointParticleFlux(
     orbital_parameters(a = 0.9, p = 6.0, e = 0.7, x = 0.5),
     orbit_type = generic,
-    infinity_energy_flux = 0.0022058822370784725,
-    infinity_angular_momentum_flux = 0.011244954098337357,
-    infinity_carter_constant_flux = 0.07377508186421304,
-    horizon_energy_flux = -9.201325183089276e-6,
-    horizon_angular_momentum_flux = -0.0003627153056315165,
-    horizon_carter_constant_flux = 0.0009653061239027219,
-    total_modes = 638100,
-    n_reached_inf = 225,
-    n_reached_hor = 95,
-    convolution_integral = (...),
+    infinity_energy_flux = 0.0024644958692019905,
+    infinity_angular_momentum_flux = 0.012386764337831563,
+    infinity_carter_constant_flux = 0.08159322177899339,
+    horizon_energy_flux = -9.201171207869944e-6,
+    horizon_angular_momentum_flux = -0.00036271546529366135,
+    horizon_carter_constant_flux = 0.0009653138446262085,
+    total_modes = 725608,
+    n_reached = (infinity = 267, horizon = 95),
+    convolution_integral = (strategy = "ISEM adaptive trapezoidal for n < 50; tail ISEM adaptive Levin for n >= 50", tail_levin_nmin = 50, tail_levin_max_depth = 8),
     tolerance = 1.0e-8,
-    cost = 6040.767363071442 seconds,
+    truncation_floor = (infinity = 1.0e-16, horizon = 1.0e-16),
+    cost = 6723.135498046875 seconds,
 )
 ```
-This high-eccentricity generic run averaged about `9.467 ms` per computed mode.
+This high-eccentricity generic run averaged about `9.265 ms` per computed mode.
 
 The function automatically dispatches to circular, eccentric, inclined, or generic mode summation according to the supplied orbital parameters.
 

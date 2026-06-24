@@ -207,17 +207,18 @@ julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.5, 0.8; tol = 1e-8)
 TeukolskyPointParticleFlux(
     orbital_parameters(a = 0.9, p = 6.0, e = 0.5, x = 0.8),
     orbit_type = generic,
-    infinity_energy_flux = 0.0008574853907334083,
-    infinity_angular_momentum_flux = 0.007923702251676327,
-    infinity_carter_constant_flux = 0.016863188510667797,
-    horizon_energy_flux = -8.85672969880499e-6,
-    horizon_angular_momentum_flux = -0.0001261648557146267,
-    horizon_carter_constant_flux = 0.00011196574351492719,
-    total_modes = 185914,
-    n_reached_inf = 51,
-    n_reached_hor = 29,
+    infinity_energy_flux = 0.0008574966646038735,
+    infinity_angular_momentum_flux = 0.007923768365833873,
+    infinity_carter_constant_flux = 0.016863436423747588,
+    horizon_energy_flux = -8.856729380897054e-6,
+    horizon_angular_momentum_flux = -0.0001261648560010202,
+    horizon_carter_constant_flux = 0.00011196575779113798,
+    total_modes = 207824,
+    n_reached = (infinity = 89, horizon = 29),
+    convolution_integral = (strategy = "infinity: ISEM adaptive trapezoidal for n < 50; tail ISEM adaptive Levin for n >= 50; horizon: ISEM adaptive trapezoidal for all computed n; tail ISEM adaptive Levin enabled but not triggered", infinity = (tail_levin_enabled = true, tail_levin_start_n = 50), horizon = (tail_levin_enabled = true, tail_levin_start_n = nothing), tail_levin_nmin = 50, tail_levin_max_depth = 8),
     tolerance = 1.0e-8,
-    cost = 191.83913803100586 seconds,
+    truncation_floor = (infinity = 1.0e-16, horizon = 1.0e-16),
+    cost = 349.4742510318756 seconds,
 )
 ```
 

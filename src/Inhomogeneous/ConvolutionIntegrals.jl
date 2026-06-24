@@ -56,6 +56,17 @@ const _eccentric_levin_last_key = Ref{Any}(nothing)
 const _eccentric_levin_last_result = Ref{Any}(nothing)
 const _inclined_levin_last_key = Ref{Any}(nothing)
 const _inclined_levin_last_result = Ref{Any}(nothing)
+const _Y_RADIAL_INFO = Ref(false)
+
+function with_y_radial_info(f, info::Bool)
+    old_info = _Y_RADIAL_INFO[]
+    _Y_RADIAL_INFO[] = info
+    try
+        return f()
+    finally
+        _Y_RADIAL_INFO[] = old_info
+    end
+end
 
 mutable struct EccentricFluxCache
     samples::Dict{Int, Dict}
@@ -367,9 +378,9 @@ end
 
 @inline function _isem_y_solution(s, l, m, a, omega)
     if s == -2
-        return Y_radial(s, l, m, a, omega, IN)
+        return Y_radial(s, l, m, a, omega, IN; info = _Y_RADIAL_INFO[])
     elseif s == 2
-        return Y_radial(s, l, m, a, omega, UP)
+        return Y_radial(s, l, m, a, omega, UP; info = _Y_RADIAL_INFO[])
     else
         error("ISEM Y interfaces currently support only s = -2 and s = 2.")
     end

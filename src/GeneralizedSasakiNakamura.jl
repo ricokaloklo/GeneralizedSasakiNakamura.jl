@@ -1559,7 +1559,7 @@ end
 
 Compute total point-particle fluxes by automatically selecting the mode-summation strategy from the orbit type.
 """
-function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 20, minimum_consecutive = 2, N = 64, N0 = N, K = 16, K0 = K, Nmax = 2^14, Kmax = 2^12, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, truncation_floor = 1e-16, mode_abs_floor = truncation_floor, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, tail_levin = nothing, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = mode_abs_floor, levin_max_depth::Int = 8)
+function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 20, minimum_consecutive = 2, N = 64, N0 = N, K = 16, K0 = K, Nmax = 2^14, Kmax = 2^12, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, truncation_floor = 1e-16, mode_abs_floor = truncation_floor, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, tail_levin = nothing, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = mode_abs_floor, levin_max_depth::Int = 8, info::Bool = false)
     if !_teukolsky_flux_bound_orbit(a, p, e, x)
         @warn "The specified parameters do not correspond to a bound orbit." a p e x
         return nothing
@@ -1567,14 +1567,16 @@ function Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 
 
     orbit_type = _teukolsky_flux_orbit_type(e, x)
     t0 = time()
-    result = if orbit_type == :circular
-        ModeSummation.circular_mode_summation(x == -1.0 ? -a : a, p; tol = tol, lmax = lmax, min_consecutive = minimum_consecutive)
-    elseif orbit_type == :eccentric
-        ModeSummation.eccentric_mode_summation(x == -1.0 ? -a : a, p, e; N = N, N0 = N0, Nmax = Nmax, tol = tol, lmax = lmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, tail_levin = tail_levin === nothing ? true : tail_levin, tail_levin_infinity = tail_levin_infinity, tail_levin_horizon = tail_levin_horizon, levin_nmin = levin_nmin, levin_mode_abs_floor = levin_mode_abs_floor, levin_max_depth = levin_max_depth)
-    elseif orbit_type == :inclined
-        ModeSummation.inclined_mode_summation(a, p, x; K = K, K0 = K0, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
-    else
-        ModeSummation.generic_mode_summation(a, p, e, x; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, neg_branch_scale = neg_branch_scale, tail_levin = tail_levin === nothing ? true : tail_levin, tail_levin_infinity = tail_levin_infinity, tail_levin_horizon = tail_levin_horizon, levin_nmin = levin_nmin, levin_mode_abs_floor = levin_mode_abs_floor, levin_max_depth = levin_max_depth)
+    result = ConvolutionIntegrals.with_y_radial_info(info) do
+        if orbit_type == :circular
+            ModeSummation.circular_mode_summation(x == -1.0 ? -a : a, p; tol = tol, lmax = lmax, min_consecutive = minimum_consecutive)
+        elseif orbit_type == :eccentric
+            ModeSummation.eccentric_mode_summation(x == -1.0 ? -a : a, p, e; N = N, N0 = N0, Nmax = Nmax, tol = tol, lmax = lmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, tail_levin = tail_levin === nothing ? true : tail_levin, tail_levin_infinity = tail_levin_infinity, tail_levin_horizon = tail_levin_horizon, levin_nmin = levin_nmin, levin_mode_abs_floor = levin_mode_abs_floor, levin_max_depth = levin_max_depth)
+        elseif orbit_type == :inclined
+            ModeSummation.inclined_mode_summation(a, p, x; K = K, K0 = K0, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
+        else
+            ModeSummation.generic_mode_summation(a, p, e, x; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, neg_branch_scale = neg_branch_scale, tail_levin = tail_levin === nothing ? true : tail_levin, tail_levin_infinity = tail_levin_infinity, tail_levin_horizon = tail_levin_horizon, levin_nmin = levin_nmin, levin_mode_abs_floor = levin_mode_abs_floor, levin_max_depth = levin_max_depth)
+        end
     end
     cost = time() - t0
 

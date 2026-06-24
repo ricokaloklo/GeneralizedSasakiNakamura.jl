@@ -172,7 +172,7 @@ Computes the corresponding inhomogeneous GSN mode. Fluxes are formalism-independ
 ### `Teukolsky_pointparticle_flux`
 
 ```julia
-flux = Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 20)
+flux = Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 20, truncation_floor = 1e-16)
 ```
 
 Computes total point-particle fluxes by selecting the appropriate mode-summation strategy from the orbit type:
@@ -200,6 +200,11 @@ Important keywords:
 | `Nmax` | `2^14` | maximum radial grid interval count |
 | `Kmax` | `2^12` | maximum polar grid interval count |
 | `sample_tol` | `1e-3` | adaptive single-mode sampling tolerance |
+| `truncation_floor` | `1e-16` | absolute single-mode refinement floor; the total-flux summation tracks separate infinity and horizon floor values |
+| `tail_levin` | `true` | enable adaptive Levin quadrature for high-index eccentric and generic radial tails |
+| `levin_nmin` | `50` | radial shell at which tail Levin quadrature becomes eligible |
+| `levin_max_depth` | `8` | maximum adaptive Levin subdivision depth |
+| `info` | `false` | print solver fallback diagnostics from `Y_radial` when `method = "auto"` changes radial backend |
 | `record` | `false` | when set to `true`, records mode details to HDF5 where supported |
 | `record_path` | `nothing` | optional HDF5 output path |
 | `fast` | `true` | use cached/presampled fast summation path where available |
@@ -224,7 +229,9 @@ The return type is `TeukolskyPointParticleFlux`:
 | `horizon_carter_constant_flux` | total Carter-constant flux at the horizon |
 | `total_modes` | number of single modes evaluated |
 | `tolerance` | effective summation tolerance |
-| `reached` | named tuple of reached shell indices, e.g. `n_reached_inf` or `k_reached_hor` |
+| `truncation_floor` | named tuple of final infinity and horizon absolute truncation floors |
+| `reached` | named tuple of reached shell indices, e.g. `l_reached`, `n_reached`, or `k_reached` with separate infinity and horizon entries where applicable |
+| `convolution_integral` | named tuple describing whether convolution integrals were needed and which tail strategy was used |
 | `cost` | wall-clock runtime in seconds |
 | `result` | raw mode-summation result |
 
