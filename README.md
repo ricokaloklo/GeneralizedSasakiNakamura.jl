@@ -16,7 +16,7 @@ The paper describing both the GSN formalism and the implementation can be found 
 
 Starting from v0.8.0, the code is also capable of computing the gravitational waveform amplitude and fluxes at infinity and at the horizon due a test particle orbiting around a Kerr black hole in a _generic (eccentric, inclined) timelike bound orbit_ by solving the inhomogeneous SN equation using integration by parts.
 
-Starting from v0.9.0, the package includes the ISEM solver, short for _iterative series expansion matching_. ISEM is now used by the default `method = "auto"` path where available and accelerates the homogeneous radial functions, single-mode point-particle amplitudes, and total-flux mode summations. The release also adds a high-level total-flux interface, `Teukolsky_pointparticle_flux`, which automatically selects the circular, eccentric, inclined, or generic mode-summation strategy.
+Starting from v0.9.0, the package includes the ISEM solver, short for _iterative series expansion matching_. ISEM is now used by the default `method = "auto"` option whenever possible and accelerates the homogeneous radial functions, single-mode point-particle amplitudes, and total-flux mode summations. The release also adds a high-level total-flux interface, `Teukolsky_pointparticle_flux`, which automatically selects the circular, eccentric, inclined, or generic mode-summation strategy.
 
 For high-index tail modes in eccentric and generic flux summations, the ISEM path can use adaptive Levin quadrature instead of globally densifying a trapezoidal grid. The radial phase interval is refined only where the oscillatory integral has not stabilized. In generic two-dimensional convolutions, this radial adaptive Levin rule is combined with a fixed Clenshaw-Curtis rule in the polar direction, which resolves the smooth polar dependence with a compact cosine-spaced grid while keeping the expensive adaptivity in the radial direction.
 
@@ -30,20 +30,20 @@ Pkg.add("GeneralizedSasakiNakamura")
 *Note: There is no need to install [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) separately as it should be automatically installed by the package manager.*
 
 ## Highlights
-### Two radial-solver paths
-The package supports two complementary radial-solver paths:
+### Two classes of solvers
+The package supports two complementary classes of solvers:
 
-- **Numerical path**: direct numerical integration of the radial equation using the `linear` or `Riccati` methods, with analytical near-boundary patches.
-- **Semi-analytical path**: iterative series expansion matching, selected by `method = "ISEM"` or by the default `method = "auto"` path where available.
+- **Numerical solver**: direct numerical integration of the radial equation using the `linear` or `Riccati` methods, patched with analytical solutions near the boundaries.
+- **Semi-analytical solver**: matching series expansion iteratively, by specifying `method = "ISEM"` or by the default `method = "auto"`.
 
-### Numerical solver path: linear/Riccati integration
+### Numerical solver: linear/Riccati integration
 The original GSN solver works at *both low and high frequencies* by numerically evolving the radial equation and attaching analytical boundary ansatzes near the horizon and infinity:
 
 <p align="center">
   <img width="60%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248724944-9707332b-1238-4b3b-b1c0-ac426a1b3dc6.gif">
 </p>
 
-The on-the-fly numerical-path benchmark against the Mathematica MST implementation is shown below:
+The on-the-fly benchmark against the Mathematica MST implementation is shown below:
 
 <table>
   <tr>
@@ -58,14 +58,16 @@ The on-the-fly numerical-path benchmark against the Mathematica MST implementati
 
 *(There was no caching in this benchmark; the equation was solved on the fly. The notebook generating the speed animation can be found [here](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb).)*
 
-### Semi-analytical solver path: iterative series expansion matching
-Starting from v0.9.0, the semi-analytical ISEM path constructs the Teukolsky and GSN radial functions directly from matched series expansions. This path is selected by `method = "ISEM"` or by `method = "auto"` where available. For real frequencies in the trained selector domain, ISEM chooses matching controls automatically and applies a local-`N` rescue scan when the split mismatch is above tolerance. If `method = "auto"` cannot obtain a reliable ISEM solution, it falls back to the legacy `linear` path. After warm-up, homogeneous radial solves are typically at millisecond scale or faster while retaining interactive evaluation over dense grids:
+### Semi-analytical solver: iterative series expansion matching
+The semi-analytical solver ISEM constructs the Teukolsky and GSN radial functions directly from matched series expansions:
 
 <p align="center">
   <img width="80%" src="docs/src/isem_matching_original_30fps.gif">
 </p>
 
-The ISEM on-the-fly Teukolsky/GSN solve and evaluation benchmark is shown below:
+Users can choose this solver by specifying `method = "ISEM"` or by `method = "auto"`, where ISEM will be used whenever possible. For real frequencies in the trained selector domain, ISEM chooses matching controls automatically. When the option `method = "auto"` is used but ISEM cannot obtain a reliable solution, it falls back to the legacy `linear` solver.
+
+The homogeneous radial Teukolsky/GSN equations are solved typically at millisecond timescale or faster. The ISEM on-the-fly Teukolsky/GSN solve and evaluation benchmark is shown below:
 
 <p align="center">
   <img width="80%" src="https://raw.githubusercontent.com/CuberYyc808/CuberYyc808.github.io/3b847bfb92587eecb078bf7284f1cbc86e476ddb/images/teukolsky_gsn_solver_demo_60s.gif">
@@ -73,9 +75,7 @@ The ISEM on-the-fly Teukolsky/GSN solve and evaluation benchmark is shown below:
 
 ISEM is also used in the accelerated single-mode point-particle amplitudes and total-flux mode summations where available.
 
-Static/zero-frequency solutions are solved analytically with Gauss hypergeometric functions.
-
-Superradiance-threshold solutions with $\omega = m a / (2 r_+)$ are handled by a dedicated horizon-threshold ISEM branch.
+Superradiance-threshold solutions with $\omega = m a / (2 r_+)$ are handled by a dedicated horizon-threshold ISEM branch, while static/zero-frequency solutions are solved analytically with Gauss hypergeometric functions.
 
 ### Easy to use
 The following code snippet lets you solve the (source-free) Teukolsky function (in frequency domain) for the mode $s=-2, \ell=2, m=2, a/M=0.7, M\omega=0.5$ that satisfies the purely-ingoing boundary condition at the horizon, $R^{\textrm{in}}$, and the purely-outgoing boundary condition at spatial infinity, $R^{\textrm{up}}$, respectively:
