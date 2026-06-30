@@ -1,41 +1,15 @@
-# APIs
+# API Reference
 
-There are 6 functions that are exported, namely
+This page documents the public interface intended for direct user calls. The package uses units with $G = c = M = 1$.
 
-- [`Teukolsky_radial`](@ref)
-- [`GSN_radial`](@ref)
-- [`Teukolsky_pointparticle_mode`](@ref)
-- [`GSN_pointparticle_mode`] (@ref)
-- [`rstar_from_r`](@ref)
-- [`r_from_rstar`](@ref)
+## Exported Functions
 
-and there are 7 custom types that are exported, i.e.
-
-- [BoundaryCondition](@ref)
-- [NormalizationConvention](@ref)
-- [Mode](@ref)
-- [GSNRadialFunction](@ref)
-- [TeukolskyRadialFunction](@ref)
-- [GSNPointParticleMode](@ref)
-- [TeukolskyPointParticleMode](@ref)
-
-Currently, only the exported functions and types are documented below. Documentations for private (i.e. unexported) functions will be added at a later stage.
-
-## Functions
 ```@docs
 Teukolsky_radial
 ```
 
 ```@docs
 GSN_radial
-```
-
-```@docs
-rstar_from_r
-```
-
-```@docs
-r_from_rstar
 ```
 
 ```@docs
@@ -46,107 +20,310 @@ Teukolsky_pointparticle_mode
 GSN_pointparticle_mode
 ```
 
-## Types
-#### BoundaryCondition
-This is an enum type that can take either one of the four values
+```@docs
+Teukolsky_pointparticle_flux
+```
 
-| value |  |
+```@docs
+rstar_from_r
+```
+
+```@docs
+r_from_rstar
+```
+
+## Boundary and Normalization Constants
+
+### `BoundaryCondition`
+
+Boundary conditions are represented by the constants below.
+
+| value | meaning |
 | :--- | :--- |
-| `IN` | purely ingoing at the horizon | 
+| `IN` | purely ingoing at the horizon |
 | `UP` | purely outgoing at infinity |
 | `OUT` | purely outgoing at the horizon |
-| `DOWN`| purely ingoing at infinity |
+| `DOWN` | purely ingoing at infinity |
 
-#### NormalizationConvention
-This is an enum type that can take either one of the two values
+### `NormalizationConvention`
 
-| value |   |
+| value | meaning |
 | :--- | :--- |
-| `UNIT_GSN_TRANS` | normalized to have a unit transmission amplitude for the GSN function | 
-| `UNIT_TEUKOLSKY_TRANS` | normalized to have a unit transmission amplitude for the Teukolsky function |
+| `UNIT_GSN_TRANS` | the stored GSN solution is normalized to unit GSN transmission amplitude |
+| `UNIT_TEUKOLSKY_TRANS` | the stored Teukolsky solution is normalized to unit Teukolsky transmission amplitude |
 
-#### Mode
-This is a composite struct type that stores information about a mode
+## Homogeneous Radial Solutions
 
-| field |   |
+### `Teukolsky_radial`
+
+Main call forms:
+
+```julia
+Rin, Rup = Teukolsky_radial(s, l, m, a, omega; method = "auto")
+R = Teukolsky_radial(s, l, m, a, omega, IN; method = "auto")
+R = Teukolsky_radial(s, l, m, a, omega, UP; method = "auto")
+```
+
+The tuple form returns the `IN` and `UP` solutions. The boundary-specific form also supports `OUT` and `DOWN` where available.
+
+Keyword summary:
+
+| keyword | default | meaning |
+| :--- | :--- | :--- |
+| `method` | `"auto"` | `"auto"` tries ISEM first and falls back to `"linear"` if ISEM emits a matching warning or construction error; `"ISEM"` forces ISEM; `"linear"` and `"Riccati"` use the legacy GSN ODE solvers |
+| `tol` | internal default | ISEM matching tolerance or alias for the ODE tolerance in high-level calls |
+| `tolerance` | internal default | legacy ODE tolerance; `tol` takes precedence when both are supplied |
+| `xm`, `rhom` | `nothing` | optional ISEM matching controls |
+| `N` | `nothing` | optional ISEM expansion order override; when omitted, ISEM uses selector/default controls plus local-`N` rescue |
+| `sfe`, `lfe` | `nothing` | optional small/large-frequency expansion switches |
+| `TSinInf`, `TSoutInf`, `TSinHor`, `TSoutHor` | `nothing` | optional Teukolsky-Starobinsky identity switches |
+
+For real frequencies in the trained selector domain, ISEM predicts matching controls and then rescues failed or high-mismatch builds by scanning nearby `N` values. This rescue is applied at the shared Teukolsky/P-construction layer, so `Teukolsky_radial`, `GSN_radial`, and `Y_radial` all use it. Direct low-level `_P`, `_Pin`, and `_Pup` calls are internal and do not apply the public-interface rescue layer.
+
+Static modes with `abs(omega) < 1e-12` use the analytic zero-frequency branch. Horizon-threshold modes with real `omega = m a / (2 r_+)` and `UP` boundary condition use the dedicated superradiance-threshold branch.
+
+Returned objects are `TeukolskyRadialFunction`. They are callable:
+
+```julia
+Rin, Rup = Teukolsky_radial(-2, 2, 2, 0.9, 0.5)
+Rin(10.0)
+Rin.Teukolsky_solution(10.0)
+```
+
+`TeukolskyRadialFunction(r)` returns only the radial function value. `Teukolsky_solution(r)` returns the stored radial data from the selected backend.
+
+### `GSN_radial`
+
+Main call forms:
+
+```julia
+Xin, Xup = GSN_radial(s, l, m, a, omega; method = "auto")
+X = GSN_radial(s, l, m, a, omega, IN; method = "auto")
+X = GSN_radial(s, l, m, a, omega, UP; method = "auto")
+```
+
+`method = "auto"` tries ISEM first for homogeneous solutions and falls back to `"linear"` if ISEM emits a matching warning or construction error. Legacy `"linear"` and `"Riccati"` methods remain available for direct GSN ODE evolution. The ISEM matching controls, local-`N` rescue, static branch, and superradiance-threshold branch follow the same rules as `Teukolsky_radial`.
+
+Returned objects are `GSNRadialFunction`. They are callable:
+
+```julia
+Xin, Xup = GSN_radial(-2, 2, 2, 0.9, 0.5)
+Xin(rstar_from_r(10.0, 0.9))
+Xin.GSN_solution(rstar_from_r(10.0, 0.9))
+```
+
+`GSNRadialFunction(rstar)` returns only the GSN function value. `GSN_solution(rstar)` returns the stored GSN data from the selected backend.
+
+## Point-Particle Single-Mode Fluxes
+
+### `Teukolsky_pointparticle_mode`
+
+```julia
+mode = Teukolsky_pointparticle_mode(s, l, m, n, k, a, p, e, x; method = "auto", N = -1, K = -1)
+```
+
+Computes one inhomogeneous Teukolsky mode for a bound Kerr geodesic specified by:
+
+| parameter | meaning |
 | :--- | :--- |
-| `s` | spin weight $s$ |
+| `s` | spin weight; use `-2` for flux at infinity and `+2` for horizon flux |
+| `l`, `m` | spheroidal harmonic indices |
+| `n` | radial harmonic index |
+| `k` | polar harmonic index |
+| `a` | Kerr spin parameter |
+| `p` | semi-latus rectum |
+| `e` | eccentricity |
+| `x` | inclination parameter, $x = \cos\theta_\mathrm{inc}$ |
+
+Method choices:
+
+| method | meaning |
+| :--- | :--- |
+| `"auto"` | selects `"isem_trapezoidal"` |
+| `"isem_trapezoidal"` | ISEM radial solution with adaptive trapezoidal convolution |
+| `"isem_levin"` | ISEM radial solution with Levin convolution where supported |
+| `"trapezoidal"` | legacy radial solution with trapezoidal convolution |
+| `"levin"` | legacy radial solution with Levin convolution |
+
+The return type is `TeukolskyPointParticleMode`. Its main fields are:
+
+| field | meaning |
+| :--- | :--- |
+| `mode` | `PointParticleMode` containing `s,l,m,n,k,a,omega,lambda` |
+| `amplitude` | Teukolsky amplitude at infinity for `s = -2`, or at the horizon for `s = +2` |
+| `energy_flux` | single-mode energy flux |
+| `angular_momentum_flux` | single-mode angular-momentum flux |
+| `Carter_const_flux` | single-mode Carter-constant flux |
+| `trajectory` | geodesic data used by the convolution |
+| `Y_solution` | auxiliary ISEM radial solution used by the convolution |
+| `SWSH` | spin-weighted spheroidal harmonic data |
+| `method` | named tuple recording the method and grid sizes |
+
+### `GSN_pointparticle_mode`
+
+```julia
+mode = GSN_pointparticle_mode(s, l, m, n, k, a, p, e, x; method = "auto", N = -1, K = -1)
+```
+
+Computes the corresponding inhomogeneous GSN mode. Fluxes are formalism-independent; the amplitude is expressed in the GSN normalization.
+
+## Point-Particle Total Fluxes
+
+### `Teukolsky_pointparticle_flux`
+
+```julia
+flux = Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8, lmax = 30, nmax = 500, kmax = 20, truncation_floor = 1e-16)
+```
+
+Computes total point-particle fluxes by selecting the appropriate mode-summation strategy from the orbit type:
+
+| orbit type | condition | summation |
+| :--- | :--- | :--- |
+| circular equatorial | `e == 0` and `x == ±1` | circular mode summation |
+| eccentric equatorial | `e != 0` and `x == ±1` | eccentric mode summation |
+| circular inclined | `e == 0` and `abs(x) != 1` | inclined mode summation |
+| generic | otherwise | generic mode summation |
+
+For `x == -1`, the equatorial retrograde case is internally mapped to the corresponding positive-inclination convention by flipping the sign of `a`.
+
+Important keywords:
+
+| keyword | default | meaning |
+| :--- | :--- | :--- |
+| `tol` | `1e-8` | global shell truncation tolerance |
+| `lmax` | `30` | maximum $\ell$ index |
+| `nmax` | `500` | maximum radial shell index |
+| `kmax` | `20` | maximum polar shell index |
+| `minimum_consecutive` | `2` | number of consecutive small shells required for truncation |
+| `N`, `N0` | `64` | initial radial grid interval count for adaptive sampling |
+| `K`, `K0` | `16` | initial polar grid interval count for adaptive sampling |
+| `Nmax` | `2^14` | maximum radial grid interval count |
+| `Kmax` | `2^12` | maximum polar grid interval count |
+| `sample_tol` | `1e-3` | adaptive single-mode sampling tolerance |
+| `truncation_floor` | `1e-16` | absolute single-mode refinement floor; the total-flux summation tracks separate infinity and horizon floor values |
+| `tail_levin` | `true` | enable adaptive Levin quadrature for high-index eccentric and generic radial tails |
+| `levin_nmin` | `50` | radial shell at which tail Levin quadrature becomes eligible |
+| `levin_max_depth` | `8` | maximum adaptive Levin subdivision depth |
+| `info` | `false` | print solver fallback diagnostics from `Y_radial` when `method = "auto"` changes radial backend |
+| `record` | `false` | when set to `true`, records mode details to HDF5 where supported |
+| `record_path` | `nothing` | optional HDF5 output path |
+| `fast` | `true` | use cached/presampled fast summation path where available |
+
+If the supplied orbital parameters do not define a bound orbit according to `KerrGeodesics`, the function emits a warning and returns `nothing`.
+
+The public tolerance keyword is `tol`. The returned object displays this value as `tolerance`.
+
+For high-index tail modes, eccentric and generic summations can use adaptive Levin quadrature instead of uniformly increasing a trapezoidal grid. The adaptive rule refines radial phase intervals only where the oscillatory integral has not stabilized. In generic two-dimensional convolutions, this radial adaptive Levin rule is paired with fixed Clenshaw-Curtis sampling in the polar direction, so the smooth polar dependence is resolved with a compact cosine-spaced grid while radial oscillations receive targeted refinement.
+
+The return type is `TeukolskyPointParticleFlux`:
+
+| field | meaning |
+| :--- | :--- |
+| `a`, `p`, `e`, `x` | input orbital parameters |
+| `orbit_type` | detected orbit type as a `Symbol` |
+| `infinity_energy_flux` | total energy flux at infinity |
+| `infinity_angular_momentum_flux` | total angular-momentum flux at infinity |
+| `infinity_carter_constant_flux` | total Carter-constant flux at infinity |
+| `horizon_energy_flux` | total energy flux at the horizon |
+| `horizon_angular_momentum_flux` | total angular-momentum flux at the horizon |
+| `horizon_carter_constant_flux` | total Carter-constant flux at the horizon |
+| `total_modes` | number of single modes evaluated |
+| `tolerance` | effective summation tolerance |
+| `truncation_floor` | named tuple of final infinity and horizon absolute truncation floors |
+| `reached` | named tuple of reached shell indices, e.g. `l_reached`, `n_reached`, or `k_reached` with separate infinity and horizon entries where applicable |
+| `convolution_integral` | named tuple describing whether convolution integrals were needed and which tail strategy was used |
+| `cost` | wall-clock runtime in seconds |
+| `result` | raw mode-summation result |
+
+Example:
+
+```julia
+flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.7, cos(pi / 4))
+flux.infinity_energy_flux
+flux.horizon_energy_flux
+```
+
+## HDF5 Mode Records
+
+When `record = true` is used in the mode-summation interface, mode details are written to an HDF5 file. Records are stored hierarchically by shell indices and mode indices, with datasets for amplitudes, fluxes, and grid sizes. Complex quantities are stored by real and imaginary parts for portable HDF5 access.
+
+Use `HDF5.jl` to inspect the file:
+
+```julia
+using HDF5
+
+h5open("eccentric_mode_data.h5", "r") do f
+    keys(f)
+end
+```
+
+## Returned Types
+
+### `Mode`
+
+Stores homogeneous mode metadata:
+
+| field | meaning |
+| :--- | :--- |
+| `s` | spin weight |
 | `l` | harmonic index $\ell$ |
 | `m` | azimuthal index $m$ |
-| `a` | Kerr spin parameter $a/M$ |
-| `omega` | frequency $M\omega$ |
-| `lambda` | spin-weighted spheroidal eigenvalue $\lambda$ |
+| `a` | Kerr spin parameter |
+| `omega` | frequency |
+| `lambda` | spin-weighted spheroidal eigenvalue |
 
-#### GSNRadialFunction
-This is a composite struct type that stores the output from [`GSN_radial`](@ref)
+### `PointParticleMode`
 
-!!! tip
+Stores point-particle mode metadata:
 
-    `GSNRadialFunction(rstar)` is equivalent to `GSNRadialFunction.GSN_solution(rstar)[1]`, 
-    returning only the value of the GSN function evaluated at the *tortoise coordinate* `rstar`
-
-| field |    |
+| field | meaning |
 | :--- | :--- |
-| `mode` | a [Mode](@ref) object storing information about the mode |
-| `boundary_condition` | a [BoundaryCondition](@ref) object storing which boundary condition this function satisfies |
-| `rsin` | numerical inner boundary $r_{*}^{\mathrm{in}}/M$ where the GSN equation is numerically evolved ($r_{*}$ is a tortoise coordinate) |
-| `rsout` | numerical outer boundary $r_{*}^{\mathrm{out}}/M$ where the GSN equation is numerically evolved ($r_{*}$ is a tortoise coordinate) |
-| `rsmp` | The matching point in tortoise coordinate $r_{*}^{\mathrm{mp}}$ if used  |
-| `horizon_expansion_order` | order of the asymptotic expansion at the horizon |
-| `infinity_expansion_order` | order of the asymptotic expansion at infinity |
-| `transmission_amplitude` | transmission amplitude in the GSN formalism of this function |
-| `incidence_amplitude` | incidence amplitude in the GSN formalism of this function |
-| `reflection_amplitude` | reflection amplitude in the GSN formalism of this function |
-| `numerical_GSN_solution` | numerical solution ([`ODESolution`](https://docs.sciml.ai/DiffEqDocs/stable/types/ode_types/#SciMLBase.ODESolution) object from `DifferentialEquations.jl`) to the GSN equation in [`rsin`, `rsout`] if applicable; output is a vector $[ \hat{X}(r_{*}), d\hat{X}(r_{*})/dr_{*} ]$ |
-| `numerical_Riccati_solution` | numerical solution ([`ODESolution`](https://docs.sciml.ai/DiffEqDocs/stable/types/ode_types/#SciMLBase.ODESolution) object from `DifferentialEquations.jl`) to the GSN equation in the Riccati form if applicable; output is a vector $[ \hat{\Phi}(r_{*}), d\hat{\Phi}(r_{*})/dr_{*} ]$ |
-| `GSN_solution` | full GSN solution where asymptotic solutions are smoothly attached; output is a vector $[ \hat{X}(r_{*}), d\hat{X}(r_{*})/dr_{*} ]$ |
-| `normalization_convention` | a [NormalizationConvention](@ref) object storing which normalization convention this function adheres to |
+| `s`, `l`, `m` | spin and spheroidal harmonic indices |
+| `n`, `k` | radial and polar harmonic indices |
+| `a` | Kerr spin parameter |
+| `omega` | mode frequency |
+| `lambda` | spin-weighted spheroidal eigenvalue |
 
-#### TeukolskyRadialFunction
-This is a composite struct type that stores the output from [`Teukolsky_radial`](@ref)
+### `TeukolskyRadialFunction`
 
-!!! tip
+Stores a homogeneous Teukolsky radial solution.
 
-    `TeukolskyRadialFunction(r)` is equivalent to `TeukolskyRadialFunction.Teukolsky_solution(r)[1]`, 
-    returning only the value of the Teukolsky function evaluated at the *Boyer-Lindquist coordinate* `r`
-
-| field |    |
+| field | meaning |
 | :--- | :--- |
-| `mode` | a [Mode](@ref) object storing information about the mode |
-| `boundary_condition` | a [BoundaryCondition](@ref) object storing which boundary condition this function satisfies |
-| `transmission_amplitude` | transmission amplitude in the Teukolsky formalism of this function |
-| `incidence_amplitude` | incidence amplitude in the Teukolsky formalism of this function |
-| `reflection_amplitude` | reflection amplitude in the Teukolsky formalism of this function |
-| `GSN_solution` | a [GSNRadialFunction](@ref) object storing the corresponding GSN function
-| `Teukolsky_solution` | Teukolsky solution where asymptotic solutions are smoothly attached; output is a vector $[ \hat{R}(r), d\hat{R}(r)/dr ]$ |
-| `normalization_convention` | a [NormalizationConvention](@ref) object storing which normalization convention this function adheres to |
+| `mode` | `Mode` metadata |
+| `boundary_condition` | one of `IN`, `UP`, `OUT`, `DOWN` |
+| `transmission_amplitude` | Teukolsky transmission amplitude |
+| `incidence_amplitude` | Teukolsky incidence amplitude |
+| `reflection_amplitude` | Teukolsky reflection amplitude |
+| `P_solution` | internal ISEM `P` solution when available; this is an internal callable, not the public rescue interface |
+| `GSN_solution` | associated `GSNRadialFunction` when available |
+| `Teukolsky_solution` | callable radial solution |
+| `normalization_convention` | normally `UNIT_TEUKOLSKY_TRANS` |
 
-#### GSNPointParticleMode
-This is a composite struct type that stores the output from [`GSN_pointparticle_mode`](@ref)
+### `GSNRadialFunction`
 
-| field |    |
+Stores a homogeneous GSN radial solution.
+
+| field | meaning |
 | :--- | :--- |
-| `mode` | a [Mode](@ref) object storing information about the mode (including the frequency) |
-| `amplitude` | the amplitude of the inhomogeneous GSN solution at infinity or at the horizon such that $X^{\infty}_{\ell m \omega} =$  amplitude $e^{i \omega r_*}$ or $X^{\mathrm{H}}_{\ell m \omega} =$ amplitude $e^{- i \left[ \omega - ma/(2r_{+}) \right] r_*}$|
-| `energy_flux` | the energy flux emitted towards infinity or towards the horizon|
-| `angular_momentum_flux` | the angular momentum flux towards infinity or towards the horizon|
-| `Carter_const_flux` | the Carter constant flux towards infinity or towards the horizon|
-| `trajectory` | the trajectory/geodesic that the particle follows |
-| `Y_solution` | the auxiliary function $Y$ used in the calculation |
-| `SWSH` | the spin-weighted spheroidal harmonic used in the calculation |
-| `method` | a named tuple storing the method and grid size used in computing the convolution integral |
+| `mode` | `Mode` metadata |
+| `boundary_condition` | one of `IN`, `UP`, `OUT`, `DOWN` |
+| `rsin`, `rsout`, `rsmp` | legacy ODE integration and matching coordinates, or `missing` for ISEM |
+| `horizon_expansion_order` | legacy ODE horizon expansion order, or `missing` for ISEM |
+| `infinity_expansion_order` | legacy ODE infinity expansion order, or `missing` for ISEM |
+| `transmission_amplitude` | GSN transmission amplitude |
+| `incidence_amplitude` | GSN incidence amplitude |
+| `reflection_amplitude` | GSN reflection amplitude |
+| `numerical_GSN_solution` | ODE solution for legacy methods; ISEM matching metadata for `method == "ISEM"` |
+| `numerical_Riccati_solution` | Riccati ODE solution when applicable |
+| `GSN_solution` | callable GSN radial solution |
+| `normalization_convention` | normally `UNIT_GSN_TRANS` |
+| `method` | solver method string |
 
-#### TeukolskyPointParticleMode
-This is a composite struct type that stores the output from [`Teukolsky_pointparticle_mode`](@ref)
+### `TeukolskyPointParticleMode` and `GSNPointParticleMode`
 
-| field |    |
-| :--- | :--- |
-| `mode` | a [Mode](@ref) object storing information about the mode (including the frequency) |
-| `amplitude` | the amplitude of the inhomogeneous Teukolsky solution at infinity or at the horizon such that $R^{\infty}_{\ell m \omega} =$ amplitude $r^{-(2s+1)} e^{i \omega r_*}$ or $R^{\mathrm{H}}_{\ell m \omega} =$ amplitude $\Delta^{-s} e^{- i \left[ \omega - ma/(2r_{+}) \right] r_*}$|
-| `energy_flux` | the energy flux emitted towards infinity or towards the horizon|
-| `angular_momentum_flux` | the angular momentum flux towards infinity or towards the horizon|
-| `Carter_const_flux` | the Carter constant flux towards infinity or towards the horizon|
-| `trajectory` | the trajectory/geodesic that the particle follows |
-| `Y_solution` | the auxiliary function $Y$ used in the calculation |
-| `SWSH` | the spin-weighted spheroidal harmonic used in the calculation |
-| `method` | a named tuple storing the method and grid size used in computing the convolution integral |
+These store single-mode inhomogeneous results. `TeukolskyPointParticleMode` stores the amplitude in the Teukolsky formalism; `GSNPointParticleMode` stores the amplitude in the GSN formalism. Flux fields are shared in meaning.
+
+### `TeukolskyPointParticleFlux`
+
+Stores total flux results from `Teukolsky_pointparticle_flux`; see [Point-Particle Total Fluxes](@ref).

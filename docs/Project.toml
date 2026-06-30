@@ -1,0 +1,6 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+GeneralizedSasakiNakamura = "7d2aac85-6cc1-40c7-a4aa-e1a43f13f131"
+
+[compat]
+Documenter = "1"
