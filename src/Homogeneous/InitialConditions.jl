@@ -10,22 +10,38 @@ export fansatz, gansatz, dfansatz_dr, dgansatz_dr
 const I = 1im # Mathematica being Mathematica
 _DEFAULTDATATYPE = AsymptoticExpansionCoefficients._DEFAULTDATATYPE
 
-function fansatz(func, omega, r; order=3)
-    # A template function that gives the asymptotic expansion at infinity
-    ans = 0.0
-    for i in 0:order
-        ans += func(i)/((omega*r)^i)
+# The expansion at infinity is an asymptotic series in 1/(omega r): its terms shrink
+# only down to an optimal order of about omega r and grow afterwards, so summing a
+# fixed number of terms is wrong whenever that number exceeds the optimal order.
+# _truncated_sum adds terms while they keep shrinking and stops at the first growing
+# term (from the third term on, to tolerate a small or vanishing low-order
+# coefficient), when the term is below round-off relative to the sum, or at `order`,
+# which therefore acts as a cap rather than a fixed count.
+function _truncated_sum(term, order)
+    ans = term(0)
+    prev = Inf
+    for i in 1:order
+        t = term(i)
+        at = abs(t)
+        if i >= 3 && at > prev
+            break
+        end
+        ans += t
+        at <= eps(Float64) * abs(ans) && break
+        prev = at
     end
     return ans
 end
 
+function fansatz(func, omega, r; order=3)
+    # A template function that gives the asymptotic expansion at infinity
+    z = omega * r
+    return _truncated_sum(i -> func(i) / z^i, order)
+end
+
 function dfansatz_dr(func, omega, r; order=3)
     # A template function that gives the derivative of the asymptotic expansion at infinity
-    ans = 0.0
-    for i in 1:order
-        ans += -i*func(i)/(omega^i * r^(i+1))
-    end
-    return ans
+    return _truncated_sum(i -> i == 0 ? zero(func(0)) : -i * func(i) / (omega^i * r^(i + 1)), order)
 end
 
 function gansatz(func, a, r; order=1)

@@ -1348,6 +1348,18 @@ function _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build;
     end
 end
 
+# Below this |omega| the legacy ODE routes (Riccati, linear) are known to lose the
+# UP solution while integrating inward across the static zone 1 << r << 1/omega and
+# return a wrong solution without any error (the near zone collapses onto the
+# horizon-regular solution).  Falling back to them there must not be silent.
+const _LEGACY_FALLBACK_OMEGA_WARN = 1e-8
+
+function _warn_low_frequency_fallback(context, reason)
+    omega = try getfield(context, :omega) catch; nothing end
+    (omega === nothing || abs(omega) >= _LEGACY_FALLBACK_OMEGA_WARN) && return
+    @warn "ISEM $(reason) at |omega| = $(abs(omega)) < $(_LEGACY_FALLBACK_OMEGA_WARN); falling back to the legacy ODE routes, which are unreliable at such low frequency (the inward integration loses the UP solution). Treat this mode's result with suspicion." context=context maxlog=10
+end
+
 function _try_y_isem_then_legacy(context, isem_build, riccati_build, linear_build; info::Bool=false)
     saw_warn = Ref(false)
     logger = EarlyFilteredLogger(
@@ -1366,10 +1378,12 @@ function _try_y_isem_then_legacy(context, isem_build, riccati_build, linear_buil
         end
         if saw_warn[]
             info && @info "Y_radial method = \"auto\" tried ISEM, received an ISEM warning, and switched to legacy auto (Riccati, then linear). Use method = \"ISEM\" to force ISEM." context=context
+            _warn_low_frequency_fallback(context, "warned")
             return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build; info=info)
         end
         return sol
     catch err
+        _warn_low_frequency_fallback(context, "failed")
         info && @info "Y_radial method = \"auto\" tried ISEM, received an ISEM error, and switched to legacy auto (Riccati, then linear). Use method = \"ISEM\" to force ISEM." context=context error=sprint(showerror, err)
         return _try_y_legacy_riccati_then_linear(context, riccati_build, linear_build; info=info)
     end

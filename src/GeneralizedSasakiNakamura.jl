@@ -43,11 +43,24 @@ function _adaptive_horizon_expansion_order(a, order::Int)
     return scale, max(order, _DEFAULT_horizon_expansion_order, ceil(Int, 10 * max(scale, 0) - 1e-12))
 end
 
+# Outer boundary for the numerical integration: placed where omega * rstar reaches
+# _INFINITY_BOUNDARY_PHASE, i.e. rsout = max(rsout_default, phase / |omega|), so the
+# large-r asymptotic series is always evaluated well inside its region of validity.
+# (The previous rule grew rsout only logarithmically in 1/omega while raising the
+# series order like 10 log10(1/omega); below omega ~ 1e-3 that put omega * rsout
+# below the order, where the asymptotic series diverges, and beyond order ~70 its
+# coefficients overflow -- the initial data became garbage, then NaN.)
+# The returned order is a CAP: fansatz/dfansatz_dr truncate the series at its
+# smallest term (optimal truncation of an asymptotic series), so a generous cap is
+# harmless and the actual number of terms is chosen by the series itself.
+const _INFINITY_BOUNDARY_PHASE = 30.0
+const _MAX_infinity_expansion_order = 40
 function _adaptive_infinity_expansion_order(omega, order::Int)
     freq = abs(omega)
     freq == 0 && return order
-    scale = -log10(float(freq))
-    return scale, max(order, _DEFAULT_infinity_expansion_order, ceil(Int, 10 * max(scale, 0) - 1e-12))
+    # GSN_radial uses rsout = max(10 * scale * rsout, rsout) with the default rsout
+    scale = _INFINITY_BOUNDARY_PHASE / (freq * 10 * _DEFAULT_rsout)
+    return max(scale, 0.0), max(order, _DEFAULT_infinity_expansion_order, _MAX_infinity_expansion_order)
 end
 
 # IN for purely-ingoing at the horizon and UP for purely-outgoing at infinity
