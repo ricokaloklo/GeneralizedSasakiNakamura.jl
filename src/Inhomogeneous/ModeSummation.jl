@@ -139,32 +139,38 @@ end
 
 # Walk ls, calling eval_l(l) (which returns the mode's energy flux), until minimum_consecutive consecutive modes have
 # |flux| <= threshold. Returns the last l walked.
-function _l_walk(eval_l, ls, threshold, minimum_consecutive::Int)
+const DEFAULT_GENERIC_BETA = 1e-4
+const DEFAULT_GENERIC_DEEP = 1e-5
+
+function _l_walk(eval_l, ls, threshold, minimum_consecutive::Int; deep = 0.0)
     below_count = 0
     last_l = first(ls) - step(ls)
     for l in ls
         last_l = l
-        below_count = abs(eval_l(l)) <= threshold ? below_count + 1 : 0
-        below_count >= minimum_consecutive && break
+        value = abs(eval_l(l))
+        below_count = value <= threshold ? below_count + 1 : 0
+        (below_count >= minimum_consecutive || (deep > 0 && value <= deep * threshold)) && break
     end
     return last_l
 end
 
 # l walk of one k != 0 branch; each mode is evaluated at most once, and every segment stops after minimum_consecutive
 # modes below threshold. Infinity (from_bottom = false): up from the peak, then down from the peak towards lmin.
+# Peak discovery retains the shell cutoff and original confirmation count; a larger tail
+# budget cannot bound an unvisited interior peak between stopped bottom and descent walks.
 # Horizon (from_bottom = true): Kerr horizon modes below the peak are not suppressed and often peak at lmin, so first
 # walk up from lmin as for k = 0; if that stops below the peak, walk down from the peak to where it stopped, then up
 # from the peak.
-function _branch_l_walk(eval_l, lmin::Int, lpeak::Int, lmax::Int, threshold, minimum_consecutive::Int, from_bottom::Bool)
+function _branch_l_walk(eval_l, lmin::Int, lpeak::Int, lmax::Int, threshold, minimum_consecutive::Int, from_bottom::Bool; deep = 0.0, search_threshold = threshold)
     top = min(lpeak, lmax + 1) - 1
     if from_bottom
-        l_bottom = _l_walk(eval_l, lmin:lmax, threshold, minimum_consecutive)
+        l_bottom = _l_walk(eval_l, lmin:lmax, search_threshold, minimum_consecutive)
         lpeak > l_bottom || return nothing
-        _l_walk(eval_l, top:-1:(l_bottom + 1), threshold, minimum_consecutive)
-        _l_walk(eval_l, lpeak:lmax, threshold, minimum_consecutive)
+        _l_walk(eval_l, top:-1:(l_bottom + 1), search_threshold, minimum_consecutive)
+        _l_walk(eval_l, lpeak:lmax, threshold, minimum_consecutive; deep=deep)
     else
-        _l_walk(eval_l, lpeak:lmax, threshold, minimum_consecutive)
-        _l_walk(eval_l, top:-1:lmin, threshold, minimum_consecutive)
+        _l_walk(eval_l, lpeak:lmax, threshold, minimum_consecutive; deep=deep)
+        _l_walk(eval_l, top:-1:lmin, search_threshold, minimum_consecutive)
     end
     return nothing
 end
@@ -975,6 +981,10 @@ function _record_current_mode_generic!(h5, record::Bool, boundary::AbstractStrin
     bgrp["EnergyFlux"] = get(mode, "EnergyFlux", NaN)
     bgrp["AngularMomentumFlux"] = get(mode, "AngularMomentumFlux", NaN)
     bgrp["CarterConstantFlux"] = get(mode, "CarterConstantFlux", NaN)
+    for key in ("YInterpolationPoints", "YInterpolationDoublings",
+                "YInterpolationFallback", "YInterpolationSelfCheckError")
+        haskey(mode, key) && (bgrp[key] = mode[key])
+    end
     return nothing
 end
 
@@ -1428,7 +1438,7 @@ function inclined_mode_summation(a, p, x; submission = nothing, K = 16, K0 = K, 
     end
 end
 
-function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax = 2^12, tol = 1e-8, lmax = 30, kmax = 20, nmax = 500, minimum_consecutive = 2, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, mode_abs_floor = 1e-16, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, tail_levin = :auto, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = 1e-16, levin_local_n::Int = ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, levin_max_depth::Int = 8, progress_interval::Int = 0, progress_path = nothing)
+function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nmax = 2^14, Kmax = 2^12, tol = 1e-8, lmax = 30, kmax = 20, nmax = 500, minimum_consecutive = 2, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, mode_abs_floor = 1e-16, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, beta = DEFAULT_GENERIC_BETA, deep = DEFAULT_GENERIC_DEEP, tail_levin = :auto, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = 1e-16, levin_local_n::Int = ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, levin_max_depth::Int = 8, progress_interval::Int = 0, progress_path = nothing)
     lmax < 2 && throw(ArgumentError("lmax must be at least 2"))
     kmax < 0 && throw(ArgumentError("kmax must be nonnegative"))
     nmax < 0 && throw(ArgumentError("nmax must be nonnegative"))
@@ -1660,7 +1670,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                 shell_m_angular = 0.0
                 shell_m_carter = 0.0
                 below_count_l = 0
-                _branch_l_walk(2, _branch_peak_l(2, 0, k, x), lmax, initial_mode_threshold, minimum_consecutive, s == 2) do l
+                _branch_l_walk(2, _branch_peak_l(2, 0, k, x), lmax, initial_mode_threshold, minimum_consecutive, s == 2; deep=deep) do l
                     mode = eval_mode(s, l, 0, 0, k, max_flux)
                     record_mode(s, l, 0, 0, k, mode)
                     shell_m += 2 * mode["EnergyFlux"]
@@ -1686,7 +1696,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                     shell_m_angular = 0.0
                     shell_m_carter = 0.0
                     below_count_l = 0
-                    _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, initial_mode_threshold, minimum_consecutive, s == 2) do l
+                    _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, initial_mode_threshold, minimum_consecutive, s == 2; deep=deep) do l
                         mode = eval_mode(s, l, m, 0, k, max_flux)
                         record_mode(s, l, m, 0, k, mode)
                         shell_m += 2 * mode["EnergyFlux"]
@@ -1722,7 +1732,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                     shell_m_angular = 0.0
                     shell_m_carter = 0.0
                     below_count_l = 0
-                    _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, initial_mode_threshold, minimum_consecutive, s == 2) do l
+                    _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, initial_mode_threshold, minimum_consecutive, s == 2; deep=deep) do l
                         mode = eval_mode(s, l, m, 0, k, max_flux)
                         record_mode(s, l, m, 0, k, mode)
                         shell_m += 2 * mode["EnergyFlux"]
@@ -1773,7 +1783,8 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                 shell_n_angular = 0.0
                 shell_n_carter = 0.0
                 floor = branch_mode_floor(s)
-                threshold = _mode_cutoff_threshold(tol * abs(shell_last), floor)
+                search_threshold = _mode_cutoff_threshold(tol * abs(shell_last), floor)
+                threshold = max(search_threshold, beta * tol * abs(total_energy))
                 k_shell_scale = sqrt(abs(total_energy) * abs(shell_last))
                 # k-shell stops are relative to the branch total; the absolute per-mode floor would cut whole
                 # k shells when the branch total is small (horizon totals of 1e-8..1e-7).
@@ -1799,7 +1810,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                     shell_n_carter += 2 * mode["CarterConstantFlux"]
                     total_modes += 2
                     below_count_l = abs(mode["EnergyFlux"]) <= threshold ? below_count_l + 1 : 0
-                    if below_count_l >= minimum_consecutive
+                    if below_count_l >= minimum_consecutive || (deep > 0 && abs(mode["EnergyFlux"]) <= deep * threshold)
                         break
                     end
                 end
@@ -1829,7 +1840,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                         shell_n_carter += 2 * mode["CarterConstantFlux"]
                         total_modes += 2
                         below_count_l = abs(mode["EnergyFlux"]) <= threshold ? below_count_l + 1 : 0
-                        if below_count_l >= minimum_consecutive
+                        if below_count_l >= minimum_consecutive || (deep > 0 && abs(mode["EnergyFlux"]) <= deep * threshold)
                             break
                         end
                     end
@@ -1868,7 +1879,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                         shell_n_carter += 2 * mode["CarterConstantFlux"]
                         total_modes += 2
                         below_count_l = abs(mode["EnergyFlux"]) <= threshold ? below_count_l + 1 : 0
-                        if below_count_l >= minimum_consecutive
+                        if below_count_l >= minimum_consecutive || (deep > 0 && abs(mode["EnergyFlux"]) <= deep * threshold)
                             break
                         end
                     end
@@ -1895,7 +1906,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                     shell_m_angular = 0.0
                     shell_m_carter = 0.0
                     below_count_l = 0
-                    _branch_l_walk(2, _branch_peak_l(2, 0, k, x), lmax, threshold, minimum_consecutive, s == 2) do l
+                    _branch_l_walk(2, _branch_peak_l(2, 0, k, x), lmax, threshold, minimum_consecutive, s == 2; deep=deep, search_threshold=search_threshold) do l
                         mode = eval_mode(s, l, 0, n, k, max_flux)
                         record_mode(s, l, 0, n, k, mode)
                         shell_m += 2 * mode["EnergyFlux"]
@@ -1921,7 +1932,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                         shell_m_angular = 0.0
                         shell_m_carter = 0.0
                         below_count_l = 0
-                        _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, threshold, minimum_consecutive, s == 2) do l
+                        _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, threshold, minimum_consecutive, s == 2; deep=deep, search_threshold=search_threshold) do l
                             mode = eval_mode(s, l, m, n, k, max_flux)
                             record_mode(s, l, m, n, k, mode)
                             shell_m += 2 * mode["EnergyFlux"]
@@ -1957,7 +1968,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                         shell_m_angular = 0.0
                         shell_m_carter = 0.0
                         below_count_l = 0
-                        _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, threshold, minimum_consecutive, s == 2) do l
+                        _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, threshold, minimum_consecutive, s == 2; deep=deep, search_threshold=search_threshold) do l
                             mode = eval_mode(s, l, m, n, k, max_flux)
                             record_mode(s, l, m, n, k, mode)
                             shell_m += 2 * mode["EnergyFlux"]
@@ -2001,7 +2012,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                     shell_m_angular = 0.0
                     shell_m_carter = 0.0
                     below_count_l = 0
-                    _branch_l_walk(2, _branch_peak_l(2, 0, k, x), lmax, threshold, minimum_consecutive, s == 2) do l
+                    _branch_l_walk(2, _branch_peak_l(2, 0, k, x), lmax, threshold, minimum_consecutive, s == 2; deep=deep, search_threshold=search_threshold) do l
                         mode = eval_mode(s, l, 0, n, k, max_flux)
                         record_mode(s, l, 0, n, k, mode)
                         shell_m += 2 * mode["EnergyFlux"]
@@ -2027,7 +2038,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                         shell_m_angular = 0.0
                         shell_m_carter = 0.0
                         below_count_l = 0
-                        _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, threshold, minimum_consecutive, s == 2) do l
+                        _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, threshold, minimum_consecutive, s == 2; deep=deep, search_threshold=search_threshold) do l
                             mode = eval_mode(s, l, m, n, k, max_flux)
                             record_mode(s, l, m, n, k, mode)
                             shell_m += 2 * mode["EnergyFlux"]
@@ -2063,7 +2074,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                         shell_m_angular = 0.0
                         shell_m_carter = 0.0
                         below_count_l = 0
-                        _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, threshold, minimum_consecutive, s == 2) do l
+                        _branch_l_walk(lmin, _branch_peak_l(lmin, m, k, x), lmax, threshold, minimum_consecutive, s == 2; deep=deep, search_threshold=search_threshold) do l
                             mode = eval_mode(s, l, m, n, k, max_flux)
                             record_mode(s, l, m, n, k, mode)
                             shell_m += 2 * mode["EnergyFlux"]
@@ -2195,11 +2206,11 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
     end
 end
 
-function generic_mode_summation(a, p, e, x; submission = nothing, N0 = 64, K0 = 16, Nmax = submission === nothing ? 2^14 : submission.Nmax, Kmax = submission === nothing ? 2^12 : submission.Kmax, tol = 1e-8, lmax = 30, kmax = 20, nmax = 500, minimum_consecutive = 2, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, mode_abs_floor = 1e-16, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, tail_levin = :auto, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = 1e-16, levin_local_n::Int = ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, levin_max_depth::Int = 8, progress_interval::Int = 0, progress_path = nothing, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing)
+function generic_mode_summation(a, p, e, x; submission = nothing, N0 = 64, K0 = 16, Nmax = submission === nothing ? 2^14 : submission.Nmax, Kmax = submission === nothing ? 2^12 : submission.Kmax, tol = 1e-8, lmax = 30, kmax = 20, nmax = 500, minimum_consecutive = 2, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, mode_abs_floor = 1e-16, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, beta = DEFAULT_GENERIC_BETA, deep = DEFAULT_GENERIC_DEEP, tail_levin = :auto, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = 1e-16, levin_local_n::Int = ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, levin_max_depth::Int = 8, progress_interval::Int = 0, progress_path = nothing, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing)
     scope, owned = ensure_public_submission(submission, a, p, e, x; Nmax, Kmax, stop_requested, lifecycle_observer, geometry_observer)
     return _with_public_scope(scope, owned) do
         with_submission_operation(scope) do
-            _generic_mode_summation_scoped(scope, a, p, e, x; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, neg_branch_scale = neg_branch_scale, tail_levin = tail_levin, tail_levin_infinity = tail_levin_infinity, tail_levin_horizon = tail_levin_horizon, levin_nmin = levin_nmin, levin_mode_abs_floor = levin_mode_abs_floor, levin_local_n = levin_local_n, levin_max_depth = levin_max_depth, progress_interval = progress_interval, progress_path = progress_path)
+            _generic_mode_summation_scoped(scope, a, p, e, x; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, tol = tol, lmax = lmax, kmax = kmax, nmax = nmax, minimum_consecutive = minimum_consecutive, sample_tol = sample_tol, record = record, record_path = record_path, fast = fast, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, neg_branch_scale = neg_branch_scale, beta=beta, deep=deep, tail_levin = tail_levin, tail_levin_infinity = tail_levin_infinity, tail_levin_horizon = tail_levin_horizon, levin_nmin = levin_nmin, levin_mode_abs_floor = levin_mode_abs_floor, levin_local_n = levin_local_n, levin_max_depth = levin_max_depth, progress_interval = progress_interval, progress_path = progress_path)
         end
     end
 end

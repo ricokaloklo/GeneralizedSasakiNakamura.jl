@@ -265,4 +265,10 @@ ORBITS_DEV = (
     end
 end
 
+include("generic_trapezoid_regression.jl")
+include("generic_stop_rule_regression.jl")
+include("generic_interpolation_regression.jl")
+include("generic_levin_regression.jl")
+include("eccentric_interpolation_regression.jl")
+
 end # pointparticle_mode

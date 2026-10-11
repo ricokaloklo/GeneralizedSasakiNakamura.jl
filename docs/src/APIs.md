@@ -270,6 +270,8 @@ Important keywords:
 | `Kmax` | `2^12` | maximum polar grid interval count |
 | `sample_tol` | `1e-3` | adaptive single-mode sampling tolerance |
 | `truncation_floor` | `1e-16` | absolute single-mode refinement floor; the total-flux summation tracks separate infinity and horizon floor values |
+| `generic_beta` | `1e-4` | generic orbits: per-mode budget floor `generic_beta * tol * abs(branch_total)` for outward ℓ tails; `0` disables it |
+| `generic_deep` | `1e-5` | generic orbits: an outward ℓ tail stops once a mode is at most this fraction of its cutoff; `0` disables it. Peak-search walks keep the original cutoff and confirmation count |
 | `tail_levin` | `nothing` (automatic) | adaptive Levin quadrature for high-index eccentric and generic radial tails: `true`, `false`, or automatic selection |
 | `levin_nmin` | `50` | radial shell at which tail Levin quadrature becomes eligible |
 | `levin_local_n` | `ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N` | number of local nodes per adaptive Levin subinterval |

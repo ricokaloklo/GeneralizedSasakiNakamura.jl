@@ -904,6 +904,109 @@ function _y_sample_isem(Y_soln, KG_sample::Dict, amplitude_key::String; threaded
     )
 end
 
+function y_cheb_table(Y_soln, rmin::Float64, rmax::Float64, M::Int)
+    xs = [cos(pi * j / (M - 1)) for j in 0:(M - 1)]
+    rs = 0.5 .* (rmin + rmax) .+ 0.5 .* (rmax - rmin) .* xs
+    Y = Y_soln.Y_solution
+    vals = [Y(r) for r in rs]
+    return (rmin = rmin, rmax = rmax, x = xs,
+            w = [(isodd(j) ? -1.0 : 1.0) * ((j == 0 || j == M - 1) ? 0.5 : 1.0) for j in 0:(M - 1)],
+            Y = ComplexF64[v[1] for v in vals], Yp = ComplexF64[v[2] for v in vals], X = ComplexF64[v[3] for v in vals])
+end
+
+function _bary_eval(tab, r::Float64)
+    x = clamp((2r - tab.rmin - tab.rmax) / (tab.rmax - tab.rmin), -1.0, 1.0)
+    num_Y = zero(ComplexF64); num_Yp = zero(ComplexF64); num_X = zero(ComplexF64); den = 0.0
+    @inbounds for j in eachindex(tab.x)
+        d = x - tab.x[j]
+        if d == 0.0
+            return tab.Y[j], tab.Yp[j], tab.X[j]
+        end
+        c = tab.w[j] / d
+        num_Y += c * tab.Y[j]; num_Yp += c * tab.Yp[j]; num_X += c * tab.X[j]; den += c
+    end
+    return num_Y / den, num_Yp / den, num_X / den
+end
+
+function y_sample_from_table(Y_soln, tab, KG_sample::Dict, amplitude_key::String)
+    r_vals = KG_sample["r"]
+    n = length(r_vals)
+    Y_vals = Vector{ComplexF64}(undef, n); Yp_vals = Vector{ComplexF64}(undef, n); X_vals = Vector{ComplexF64}(undef, n)
+    @inbounds for i in 1:n
+        Y_vals[i], Yp_vals[i], X_vals[i] = _bary_eval(tab, Float64(r_vals[i]))
+    end
+    return Dict("Y" => Y_vals, "Yp" => Yp_vals, "X" => X_vals, "params" => Y_soln.mode,
+        amplitude_key => _isem_gsn_incidence_amplitude(Y_soln))
+end
+
+
+const YINTERP_MIN_POINTS = 96
+const YINTERP_MAX_POINTS = 512
+const YINTERP_CHECK_RTOL = 1e-10
+const YINTERP_CHECK_FRACTIONS = (sqrt(2)/4, sqrt(3)/4, (sqrt(5)-1)/2)
+
+# Resolved high-n calibration required M/phase_extent <= 1.9212; round up to 2.
+const YINTERP_POINTS_PER_PHASE = 2.0
+# On nested radial grids retain old exact or checked values and interpolate only new nodes.
+function refine_generic_y_sample_from_table(Y_soln, tab, previous::Dict, next_sample::Dict, amplitude_key::String)
+    radii = next_sample["r"]::Vector{Float64}
+    old_Y = previous["Y"]::Vector{ComplexF64}
+    old_Yp = previous["Yp"]::Vector{ComplexF64}
+    old_X = previous["X"]::Vector{ComplexF64}
+    length(radii) == length(old_Y) && return previous
+    Y = Vector{ComplexF64}(undef, length(radii))
+    Yp = similar(Y); X = similar(Y)
+    @inbounds for i in eachindex(radii)
+        if isodd(i)
+            j = (i + 1) >>> 1
+            Y[i] = old_Y[j]; Yp[i] = old_Yp[j]; X[i] = old_X[j]
+        else
+            Y[i], Yp[i], X[i] = _bary_eval(tab, radii[i])
+        end
+    end
+    return Dict("Y"=>Y, "Yp"=>Yp, "X"=>X, "params"=>Y_soln.mode,
+                amplitude_key=>_isem_gsn_incidence_amplitude(Y_soln))
+end
+
+@inline _generic_y_initial_points(phase_extent::Float64) =
+    min(YINTERP_MAX_POINTS, max(YINTERP_MIN_POINTS,
+        ceil(Int, YINTERP_POINTS_PER_PHASE * phase_extent)))
+
+function _checked_generic_y_table(Y_soln, rmin::Float64, rmax::Float64,
+                                 phase_extent::Float64)
+    M = _generic_y_initial_points(phase_extent)
+    radii = [rmin + fraction*(rmax-rmin) for fraction in YINTERP_CHECK_FRACTIONS]
+    exact = [Y_soln.Y_solution(r) for r in radii]
+    doublings = 0
+    while true
+        tab = y_cheb_table(Y_soln, rmin, rmax, M)
+        # The irrational interior fractions must remain distinct from this table's nodes.
+        nodes = [0.5*(rmin+rmax) + 0.5*(rmax-rmin)*x for x in tab.x]
+        all(r -> all(node -> r != node, nodes), radii) ||
+            error("Interpolation self-check point coincides with a table node")
+        error_max = 0.0
+        for i in eachindex(radii)
+            interpolated = _bary_eval(tab, Float64(radii[i]))
+            for j in 1:3
+                numerator = abs(interpolated[j] - exact[i][j])
+                denominator = abs(exact[i][j])
+                component_error = iszero(denominator) ?
+                    (iszero(numerator) ? 0.0 : Inf) : numerator / denominator
+                error_max = max(error_max, component_error)
+            end
+        end
+        if error_max <= YINTERP_CHECK_RTOL
+            return (table=tab, points=M, doublings=doublings,
+                    fallback=false, self_check_error=error_max)
+        elseif M == YINTERP_MAX_POINTS
+            return (table=nothing, points=M, doublings=doublings,
+                    fallback=true, self_check_error=error_max)
+        end
+        M = min(2M, YINTERP_MAX_POINTS)
+        doublings += 1
+    end
+end
+
 function y_sample_m2_isem(Y_soln, KG_sample::Dict)
     return _y_sample_isem(Y_soln, KG_sample, "Binc")
 end

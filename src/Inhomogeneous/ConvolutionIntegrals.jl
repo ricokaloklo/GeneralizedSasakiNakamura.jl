@@ -399,7 +399,11 @@ end
 end
 
 function _generic_flux_from_sample(KG_samp::Dict, Y_samp::Dict, SH_samp::Dict, s::Int, l::Int, m::Int, n::Int, k::Int, a::Float64, ω::Float64, ϒθ::Float64)
-    carter_factor = trapezoidal_1d_integral(carter_ingredients_sample(KG_samp, a, m, ω))
+    carter_factor = if length(KG_samp["θ"]) - 1 < GENERIC_CARTER_MIN_INTERVALS
+        _generic_carter_factor_min_grid(KG_samp, m, ω)
+    else
+        trapezoidal_1d_integral(carter_ingredients_sample(KG_samp, a, m, ω))
+    end
     if s == 2
         integral = GridSampling._generic_integral_sample_p2_fast(
             KG_samp, Y_samp, SH_samp, n, k)
@@ -914,8 +918,8 @@ function _generic_adaptive_phase_basis!(cache::GenericM2FluxCache, KG_samp::Dict
     end
 end
 
-@inline function _generic_adaptive_effective_theta_intervals(local_theta_intervals::Int, k::Int)
-    required = 2 ^ ceil(Int, log2(max(1, 2 * abs(k) + 1)))
+@inline function _generic_adaptive_effective_theta_intervals(local_theta_intervals::Int, k::Int, l::Int = 0)
+    required = nextpow(2, 2 * (l + abs(k)) + 1)
     return max(local_theta_intervals, required)
 end
 
@@ -942,14 +946,9 @@ function _generic_adaptive_radial_levin_theta_cc(
     size(f2) == (nr, nt) || throw(ArgumentError("paired radial Levin inputs must have matching size"))
     length(theta_weights) == nt || throw(ArgumentError("theta weights length mismatch"))
     length(theta_phase) == nt || throw(ArgumentError("theta phase length mismatch"))
-    out1 = zero(ComplexF64)
-    out2 = zero(ComplexF64)
-    @inbounds for j in 1:nt
-        phasej = exp(1im * theta_phase[j])
-        out1 += theta_weights[j] * phasej * _levin_1d_integral_local_phase_factored(collect(@view f1[:, j]), radial_factor1)
-        out2 += theta_weights[j] * phasej * _levin_1d_integral_local_phase_factored(collect(@view f2[:, j]), radial_factor2)
-    end
-    return out1, out2
+    weights = theta_weights .* exp.(1im .* theta_phase)
+    return transpose(_levin_1d_columns_factored(f1, radial_factor1)) * weights,
+           transpose(_levin_1d_columns_factored(f2, radial_factor2)) * weights
 end
 
 @inline function _generic_adaptive_energy_from_amp(amp::ComplexF64, s::Int, a::Float64, m::Int, ω::Float64)
@@ -962,14 +961,25 @@ end
     end
 end
 
-function _generic_adaptive_segment_amplitude!(cache::GenericM2FluxCache, KG::Dict, Ysol, SH, s::Int, a::Float64, ω::Float64, m::Int, n::Int, k::Int, key::GenericAdaptiveLevin2DKey, nr::Int, nt::Int; threaded_sampling::Bool = false)
+function _generic_adaptive_radial_gprime(KG_samp::Dict, key::GenericAdaptiveLevin2DKey, s::Int, a::Float64, ω::Float64, m::Int, n::Int, sign::Int)
+    qr_lo, qr_hi, _, _ = _generic_adaptive_segment_bounds(key)
+    r = Float64.(KG_samp["r"])
+    drdq = Float64.(KG_samp["ur_fwd"]) ./ KG_samp["Frequencies"]["ϒr"]
+    Δ = r .^ 2 .- 2.0 .* r .+ a^2
+    σ = s == -2 ? 1.0 : -1.0
+    gq = sign .* (ω .* KG_samp["dtr"] .- m .* KG_samp["dφr"] .+ n) .+ σ .* (ω .* (r .^ 2 .+ a^2) .- a * m) ./ Δ .* drdq
+    return gq .* ((qr_hi - qr_lo) / π)
+end
+
+function _generic_adaptive_segment_amplitude!(cache::GenericM2FluxCache, KG::Dict, Ysol, SH, s::Int, a::Float64, ω::Float64, m::Int, n::Int, k::Int, key::GenericAdaptiveLevin2DKey, nr::Int, nt::Int; threaded_sampling::Bool = false, sh_cache = nothing)
     KG_samp = _generic_adaptive_segment_sample!(cache, KG, key, nr, nt)
     Ysamp = if s == -2
         threaded_sampling ? GridSampling.y_sample_m2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_m2_isem(Ysol, KG_samp)
     else
         threaded_sampling ? GridSampling.y_sample_p2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_p2_isem(Ysol, KG_samp)
     end
-    SHsamp = threaded_sampling ? GridSampling.swsh_sample_threaded(SH, KG_samp) : GridSampling.swsh_sample(SH, KG_samp)
+    swsh_eval = () -> threaded_sampling ? GridSampling.swsh_sample_threaded(SH, KG_samp) : GridSampling.swsh_sample(SH, KG_samp)
+    SHsamp = sh_cache === nothing ? swsh_eval() : get!(swsh_eval, sh_cache, (key.level_theta, key.jb, nt))
     Jpp, Jpm, Jmp, Jmm, _, _, _, _, _, _, prefactor = if s == -2
         integrand_generic_sample_cheby_m2(KG_samp, Ysamp, SHsamp, n, k; geometry = _generic_geometry_for_sample(cache, KG_samp))
     else
@@ -980,10 +990,10 @@ function _generic_adaptive_segment_amplitude!(cache::GenericM2FluxCache, KG::Dic
     basis_minus = _generic_adaptive_phase_basis!(cache, KG_samp, key, s, a, -1)
     radial_internal = reshape(exp.(1im .* _internal_radial_phase(KG_samp, s, a, ω, m).phase_values), :, 1)
     rfactor_plus = _cached_generic_levin_phase_factor!(cache, (:adaptive_radial, key.level_r, key.ib, s, m, n, k, 1, nr)) do
-        _levin_1d_local_phase_factor_from_values(_glevin_radial(basis_plus, m, n, k); local_order = nr)
+        _levin_1d_local_phase_factor(_generic_adaptive_radial_gprime(KG_samp, key, s, a, ω, m, n, 1), _glevin_radial(basis_plus, m, n, k); local_order = nr)
     end
     rfactor_minus = _cached_generic_levin_phase_factor!(cache, (:adaptive_radial, key.level_r, key.ib, s, m, n, k, -1, nr)) do
-        _levin_1d_local_phase_factor_from_values(_glevin_radial(basis_minus, m, n, k); local_order = nr)
+        _levin_1d_local_phase_factor(_generic_adaptive_radial_gprime(KG_samp, key, s, a, ω, m, n, -1), _glevin_radial(basis_minus, m, n, k); local_order = nr)
     end
     theta_weights = _generic_adaptive_theta_weights!(cache, key, nt)
     theta_phase = _glevin_theta(basis_plus, m, n, k).phase
@@ -1121,6 +1131,25 @@ end
     return min(target, max_stop)
 end
 
+# The Carter average has its own polar resolution, independent of the mode grid.
+const GENERIC_CARTER_MIN_INTERVALS = 64
+
+function _generic_carter_factor_min_grid(KG_samp::Dict, m::Int, omega::Float64)
+    if length(KG_samp["θ"]) - 1 >= GENERIC_CARTER_MIN_INTERVALS
+        return _generic_carter_factor_sample(KG_samp, m, omega)
+    end
+    theta = KG_samp["Trajectory"][3]
+    theta_phase = KG_samp["InitialPhases"][3]
+    theta_frequency = KG_samp["Frequencies"]["ϒθ"]
+    qtheta = collect(range(0, pi; length = GENERIC_CARTER_MIN_INTERVALS + 1))
+    theta_values = GridSampling._phase_values(theta, qtheta, theta_phase, theta_frequency)
+    carter_sample = Dict(
+        "a" => KG_samp["a"], "E" => KG_samp["E"], "Lz" => KG_samp["Lz"],
+        "θ" => theta_values,
+    )
+    return _generic_carter_factor_sample(carter_sample, m, omega)
+end
+
 function _phase_vector_exp!(out::Vector{ComplexF64}, base_omega::Float64, freq_vec::Vector{Float64}, mode_index::Int, q_vec::Vector{Float64}, fixed_phase::Vector{ComplexF64})
     @inbounds for i in eachindex(q_vec)
         out[i] = exp(im * (base_omega * freq_vec[i] + mode_index * q_vec[i])) * fixed_phase[i]
@@ -1169,7 +1198,7 @@ end
     return total
 end
 
-function _generic_m2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_samp::Dict, omega::Float64, n::Int, k::Int; recurrence_phase::Bool = true)
+function _generic_m2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_samp::Dict, omega::Float64, n::Int, k::Int; recurrence_phase::Bool = true, new_only::Bool = false)
     N = cache.N
     K = cache.K
     a = cache.a
@@ -1224,7 +1253,7 @@ function _generic_m2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_
         Mmj = cache.termM[j] + cache.uthetam[j]
         Mp2 = Mpj * Mpj
         Mm2 = Mmj * Mmj
-        @inbounds for i in 1:N
+        @inbounds for i in (new_only ? (2:2:N) : (1:N))
             r = cache.r[i]
             r2 = r * r
             rhoi = cache.rho[i, j]
@@ -1258,7 +1287,7 @@ function _generic_m2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_
     return prefactor * total
 end
 
-function _generic_p2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_samp::Dict, omega::Float64, lambda::Float64, n::Int, k::Int; recurrence_phase::Bool = true)
+function _generic_p2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_samp::Dict, omega::Float64, lambda::Float64, n::Int, k::Int; recurrence_phase::Bool = true, new_only::Bool = false)
     N = cache.N
     K = cache.K
     a = cache.a
@@ -1325,7 +1354,7 @@ function _generic_p2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_
         Mmj = -cache.termM[j] + cache.uthetam[j]
         Mp2 = Mpj * Mpj
         Mm2 = Mmj * Mmj
-        @inbounds for i in 1:N
+        @inbounds for i in (new_only ? (2:2:N) : (1:N))
             r = cache.r[i]
             r2 = r * r
             rhoi = cache.rho[i, j]
@@ -1357,16 +1386,16 @@ function _generic_p2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_
     return prefactor * total
 end
 
-function _generic_m2_integral_cached!(cache::GenericM2FluxCache, KG_master::Dict, Y_samp::Dict, SH_samp::Dict, omega::Float64, m::Int, n::Int, k::Int, N::Int, K::Int)
+function _generic_m2_integral_cached!(cache::GenericM2FluxCache, KG_master::Dict, Y_samp::Dict, SH_samp::Dict, omega::Float64, m::Int, n::Int, k::Int, N::Int, K::Int; new_only::Bool = false)
     KG_samp = _cached_generic_sample!(cache, KG_master, N, K)
     mcache = _cached_m2_mcache!(cache, KG_samp, m)
-    return _generic_m2_integral_threaded(mcache, Y_samp, SH_samp, omega, n, k)
+    return _generic_m2_integral_threaded(mcache, Y_samp, SH_samp, omega, n, k; new_only)
 end
 
-function _generic_p2_integral_cached!(cache::GenericM2FluxCache, KG_master::Dict, Y_samp::Dict, SH_samp::Dict, omega::Float64, lambda::Float64, m::Int, n::Int, k::Int, N::Int, K::Int)
+function _generic_p2_integral_cached!(cache::GenericM2FluxCache, KG_master::Dict, Y_samp::Dict, SH_samp::Dict, omega::Float64, lambda::Float64, m::Int, n::Int, k::Int, N::Int, K::Int; new_only::Bool = false)
     KG_samp = _cached_generic_sample!(cache, KG_master, N, K)
     mcache = _cached_m2_mcache!(cache, KG_samp, m)
-    return _generic_p2_integral_threaded(mcache, Y_samp, SH_samp, omega, lambda, n, k)
+    return _generic_p2_integral_threaded(mcache, Y_samp, SH_samp, omega, lambda, n, k; new_only)
 end
 
 function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_master::Dict, s::Int, l::Int, m::Int, n::Int, k::Int; N0::Int = 64, K0::Int = 16, Nmax::Int = 2^14, Kmax::Int = 2^12, sample_tol::Float64 = 1e-3, tol::Float64 = 1e-8, max_flux::Float64 = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false)
@@ -1399,10 +1428,25 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
     Ysol = _generic_isem_y_solution(s, l, m, a, ω; lambda = SH.lambda)
 
+    # Resolve the polar harmonic band independently of the radial grid.
+    K_band = min(max(K0, nextpow(2, l + abs(k) + 1)), Kmax)
     N = N0
-    K = K0
+    K = K_band
     KG_samp = _cached_generic_sample!(cache, KG_master, N, K)
-    Ysamp = if s == -2
+    radii = KG_samp["r"]
+    phase_extent = abs(ω) * (maximum(KG_samp["rs"]) - minimum(KG_samp["rs"]))
+    # Build a checked table only when it replaces at least as many direct Y calls.
+    # The three independent self-check calls count towards this work comparison.
+    table_calls = GridSampling._generic_y_initial_points(Float64(phase_extent)) +
+        length(GridSampling.YINTERP_CHECK_FRACTIONS)
+    y_attempted = length(radii) >= table_calls
+    ycheck = y_attempted ? GridSampling._checked_generic_y_table(
+        Ysol, Float64(minimum(radii)), Float64(maximum(radii)), Float64(phase_extent)) :
+        (table=nothing, points=0, doublings=0, fallback=false, self_check_error=NaN)
+    ytab = ycheck.table
+    Ysamp = if ytab !== nothing
+        GridSampling.y_sample_from_table(Ysol, ytab, KG_samp, s == -2 ? "Binc" : "Cinc")
+    elseif s == -2
         threaded_sampling ? GridSampling.y_sample_m2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_m2_isem(Ysol, KG_samp)
     else
         threaded_sampling ? GridSampling.y_sample_p2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_p2_isem(Ysol, KG_samp)
@@ -1414,17 +1458,41 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
     energy = s == -2 ? abs2(integral) / (4.0pi * ω^2) : hf * abs2(integral)
     flux_scale = max(max_flux, eps(Float64))
     effective_sample_tol = min(sample_tol, 3.0 * sqrt(tol))
-    min_stop_N = min(max(4N0, 256), Nmax)
-    min_stop_K = min(max(4K0, 64), Kmax)
+    min_stop_N = _eccentric_fourier_min_sample(min(max(4N0, 256), Nmax), Nmax, n)
+    min_stop_K = K_band
 
     while N < Nmax || K < Kmax
+        # Coarse radial grids can alias; assess polar suspicion after the n-aware floor.
+        need_K = N >= min_stop_N && max_flux > 100 * eps(Float64) &&
+            K < _suspect_min_sample(min_stop_K, Kmax, abs(energy) / flux_scale, 256, 512, 512)
         N2 = min(2N, Nmax)
-        K2 = min(2K, Kmax)
+        K2 = need_K ? min(2K, Kmax) : K
+        (N2 == N && K2 == K) && break
         next_sample = _cached_generic_sample!(cache, KG_master, N2, K2)
-        next_Ysamp = threaded_sampling ? GridSampling.refine_generic_y_sample_threaded(Ysol, Ysamp, next_sample) : GridSampling.refine_generic_y_sample(Ysol, Ysamp, next_sample)
+        if !y_attempted && N2 - N >= table_calls
+            ycheck = GridSampling._checked_generic_y_table(
+                Ysol, Float64(minimum(radii)), Float64(maximum(radii)), Float64(phase_extent))
+            ytab = ycheck.table
+            y_attempted = true
+        end
+        next_Ysamp = if ytab !== nothing
+            GridSampling.refine_generic_y_sample_from_table(
+                Ysol, ytab, Ysamp, next_sample, s == -2 ? "Binc" : "Cinc")
+        else
+            threaded_sampling ? GridSampling.refine_generic_y_sample_threaded(Ysol, Ysamp, next_sample) :
+                GridSampling.refine_generic_y_sample(Ysol, Ysamp, next_sample)
+        end
         next_SHsamp = threaded_sampling ? GridSampling.refine_generic_swsh_sample_threaded(SH, SHsamp, next_sample) : GridSampling.refine_generic_swsh_sample(SH, SHsamp, next_sample)
         lambda = (next_Ysamp["params"]).lambda
-        integral2 = s == -2 ? _generic_m2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, m, n, k, N2, K2) : _generic_p2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, lambda, m, n, k, N2, K2)
+        integral2 = if K2 == K && N2 == 2N
+            # Old nodes retain half their weight; evaluate only the inserted radial nodes.
+            0.5 * integral + (s == -2 ?
+                _generic_m2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, m, n, k, N2, K2; new_only=true) :
+                _generic_p2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, lambda, m, n, k, N2, K2; new_only=true))
+        else
+            s == -2 ? _generic_m2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, m, n, k, N2, K2) :
+                _generic_p2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, lambda, m, n, k, N2, K2)
+        end
         energy2 = s == -2 ? abs2(integral2) / (4.0pi * ω^2) : hf * abs2(integral2)
         N = N2
         K = K2
@@ -1442,7 +1510,7 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         has_flux_reference = max_flux > 100 * eps(Float64)
         low_flux_done = mode_abs_floor > 0.0 && abs(energy2) < mode_abs_floor
         suspect_min_N = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_N, Nmax, excess, 1024, 2048, 4096) : min_stop_N
-        suspect_min_K = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_K, Kmax, excess, 256, 512, 512) : min_stop_K
+        suspect_min_K = min_stop_K
         suspect_needs_extra = has_flux_reference && !low_flux_done && (N2 < suspect_min_N || K2 < suspect_min_K)
         if relE == 0.0
             if allow_stop && !suspect_needs_extra
@@ -1459,7 +1527,11 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         end
     end
 
-    carter_factor = _generic_carter_factor(_cached_m2_mcache!(cache, KG_samp, m), ω)
+    carter_factor = if K < GENERIC_CARTER_MIN_INTERVALS
+        _generic_carter_factor_min_grid(KG_samp, m, ω)
+    else
+        _generic_carter_factor(_cached_m2_mcache!(cache, KG_samp, m), ω)
+    end
     res = Dict(
         "Amplitude" => integral,
         "omega" => ω,
@@ -1473,6 +1545,11 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         "K_sample_requested" => K0,
         "N_sample" => N,
         "K_sample" => K,
+        "YInterpolationPoints" => ycheck.points,
+        "YInterpolationDoublings" => ycheck.doublings,
+        "YInterpolationFallback" => ycheck.fallback,
+        "YInterpolationSelfCheckError" => ycheck.self_check_error,
+        "YInterpolationDeferred" => !y_attempted,
     )
     if zero_low_flux && mode_abs_floor > 0.0 && energy == 0.0
         res["LowFluxZeroed"] = true
@@ -1571,6 +1648,10 @@ function generic_mode_flux_from_master_cached_levin!(cache::GenericM2FluxCache, 
     return res
 end
 
+const GENERIC_LEVIN_LOCAL_MIN_LEVEL = 3
+const GENERIC_LEVIN_LOCAL_BUDGET_FRACTION = 0.1
+const GENERIC_LEVIN_TOL_MULTIPLIER = 3.0
+
 function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2FluxCache, KG_master::Dict, s::Int, l::Int, m::Int, n::Int, k::Int;
         sample_tol::Float64 = DEFAULT_ADAPTIVE_LEVIN_TOL0,
         tol::Float64 = 1e-8,
@@ -1585,6 +1666,7 @@ function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2Fl
         max_depth::Int = 8,
         depth_tol_max::Float64 = DEFAULT_ADAPTIVE_LEVIN_TOL_MAX)
     _check_mode_geometry(cache, KG_master)
+    sample_tol = min(sample_tol, GENERIC_LEVIN_TOL_MULTIPLIER * sqrt(tol))
     if !(s == -2 || s == 2)
         error("Spin weight s must be either 2 or -2.")
     end
@@ -1602,7 +1684,7 @@ function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2Fl
     if _skip_radiative_mode(s, a, m, ω)
         res = _zero_radiative_mode(ω, KG_master; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
         res["N_sample_requested"] = local_r_intervals + 1
-        effective_local_theta_intervals = _generic_adaptive_effective_theta_intervals(local_theta_intervals, k)
+        effective_local_theta_intervals = _generic_adaptive_effective_theta_intervals(local_theta_intervals, k, l)
         res["K_sample_requested"] = effective_local_theta_intervals + 1
         res["N_sample"] = local_r_intervals + 1
         res["K_sample"] = effective_local_theta_intervals + 1
@@ -1611,12 +1693,13 @@ function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2Fl
     end
 
     nr = local_r_intervals + 1
-    effective_local_theta_intervals = _generic_adaptive_effective_theta_intervals(local_theta_intervals, k)
+    effective_local_theta_intervals = _generic_adaptive_effective_theta_intervals(local_theta_intervals, k, l)
     nt = effective_local_theta_intervals + 1
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
     Ysol = _generic_isem_y_solution(s, l, m, a, ω; lambda = SH.lambda)
     root_key = GenericAdaptiveLevin2DKey(0, 0, 0, 0)
-    root = _generic_adaptive_segment_amplitude!(cache, KG_master, Ysol, SH, s, a, ω, m, n, k, root_key, nr, nt; threaded_sampling = threaded_sampling)
+    sh_cache = Dict{NTuple{3, Int}, Any}()
+    root = _generic_adaptive_segment_amplitude!(cache, KG_master, Ysol, SH, s, a, ω, m, n, k, root_key, nr, nt; threaded_sampling = threaded_sampling, sh_cache = sh_cache)
     root_energy = abs(_generic_adaptive_energy_from_amp(root, s, a, m, ω))
     segment_evaluations = 1
     if mode_abs_floor > 0.0 && root_energy < mode_abs_floor
@@ -1655,12 +1738,20 @@ function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2Fl
                 continue
             end
             child_amp = zero(ComplexF64)
+            children = GenericAdaptiveLevin2DLeaf[]
             for child in _generic_adaptive_radial_children(leaf.key)
-                amp = _generic_adaptive_segment_amplitude!(cache, KG_master, Ysol, SH, s, a, ω, m, n, k, child, nr, nt; threaded_sampling = threaded_sampling)
+                amp = _generic_adaptive_segment_amplitude!(cache, KG_master, Ysol, SH, s, a, ω, m, n, k, child, nr, nt; threaded_sampling = threaded_sampling, sh_cache = sh_cache)
                 segment_evaluations += 1
                 child_amp += amp
                 child_energy = abs(_generic_adaptive_energy_from_amp(amp, s, a, m, ω))
-                push!(new_leaves, GenericAdaptiveLevin2DLeaf(child, amp, !(mode_abs_floor > 0.0 && child_energy < mode_abs_floor)))
+                push!(children, GenericAdaptiveLevin2DLeaf(child, amp, !(mode_abs_floor > 0.0 && child_energy < mode_abs_floor)))
+            end
+            child_level = leaf.key.level_r + 1
+            local_ok = child_level >= max(min_depth, GENERIC_LEVIN_LOCAL_MIN_LEVEL) &&
+                abs(child_amp - leaf.amp) <= GENERIC_LEVIN_LOCAL_BUDGET_FRACTION * sample_tol *
+                    abs(previous_total) * 2.0^(-child_level)
+            for child in children
+                push!(new_leaves, local_ok ? GenericAdaptiveLevin2DLeaf(child.key, child.amp, false) : child)
             end
             changed = true
             split_count += 1
@@ -1872,7 +1963,7 @@ function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, 
     res = _generic_flux_from_sample(KG_samp, Ysamp, SHsamp, s, l, m, n, k, a, ω, ϒθ)
     flux_scale = max(max_flux, eps(Float64))
     effective_sample_tol = min(sample_tol, 3.0 * sqrt(tol))
-    min_stop_N = min(max(4N0, 256), Nmax)
+    min_stop_N = _eccentric_fourier_min_sample(min(max(4N0, 256), Nmax), Nmax, n)
     min_stop_K = min(max(4K0, 64), Kmax)
     while N < Nmax || K < Kmax
         N2 = min(2N, Nmax)
@@ -2368,6 +2459,26 @@ function _conjugate_levin_1d_local_phase_factor(factor::Levin1DLocalPhaseFactor)
         ))
     end
     return Levin1DLocalPhaseFactor(factor.perm, factors)
+end
+
+function _levin_1d_columns_factored(F::AbstractMatrix{<:Number}, factor::Levin1DLocalPhaseFactor)
+    nr, nc = size(F)
+    Fp = F[factor.perm, :]
+    total = zeros(ComplexF64, nc)
+    for segment in factor.segments
+        segment.rank == 0 && continue
+        Y = segment.qadj * @view Fp[segment.idx, :]
+        Sol = UpperTriangular(segment.r) \ Y
+        @inbounds for row in 1:segment.rank
+            pidx = segment.piv[row]
+            if pidx == 1
+                @views total .-= Sol[row, :] .* segment.exp_left
+            elseif pidx == segment.n
+                @views total .+= Sol[row, :] .* segment.exp_right
+            end
+        end
+    end
+    return total
 end
 
 function _levin_1d_integral_local_phase_factored(f_vals::Vector{<:Number}, factor::Levin1DLocalPhaseFactor)
@@ -3958,11 +4069,28 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
     flux_scale = max(Float64(max_flux), eps(Float64))
     effective_sample_tol = min(sample_tol, 3.0 * sqrt(Float64(tol)))
     min_stop_N = _eccentric_fourier_min_sample(min(max(4N_sample, 256), Nmax), Nmax, n)
+    # Checked radial Y table, as for generic orbits: built only once a refinement inserts at least as
+    # many radii as the table and its three independent self-check calls cost.
+    r_master = KG_sample["r"]
+    rs_master = KG_sample["rs"]
+    y_phase_extent = Float64(abs(ω) * (maximum(rs_master) - minimum(rs_master)))
+    y_table_calls = GridSampling._generic_y_initial_points(y_phase_extent) + length(GridSampling.YINTERP_CHECK_FRACTIONS)
+    y_attempted = false
+    ycheck = (table = nothing, points = 0, doublings = 0, fallback = false, self_check_error = NaN)
 
     while N < Nmax
         N2 = min(2N, Nmax)
         KG_samp2 = cache isa EccentricFluxCache ? _cached_eccentric_sample!(cache, KG_sample, N2) : subsample_eccentric_sample(KG_sample, N2)
-        Ysamp2 = threaded_sampling ? GridSampling.refine_generic_y_sample_threaded(Ysol, Ysamp, KG_samp2) : refine_eccentric_y_sample(Ysol, Ysamp, KG_sample, N)
+        if !y_attempted && N2 - N >= y_table_calls
+            ycheck = GridSampling._checked_generic_y_table(
+                Ysol, Float64(minimum(r_master)), Float64(maximum(r_master)), y_phase_extent)
+            y_attempted = true
+        end
+        Ysamp2 = if ycheck.table !== nothing
+            GridSampling.refine_generic_y_sample_from_table(Ysol, ycheck.table, Ysamp, KG_samp2, s == -2 ? "Binc" : "Cinc")
+        else
+            threaded_sampling ? GridSampling.refine_generic_y_sample_threaded(Ysol, Ysamp, KG_samp2) : refine_eccentric_y_sample(Ysol, Ysamp, KG_sample, N)
+        end
         res2 = _eccentric_flux_from_sample(KG_samp2, Ysamp2, SH, s, a, ω, m, n)
         low_flux_cutoff = _low_flux_cutoff(Float64(max_flux), Float64(tol))
         relE = _relative_energy_change(res2["EnergyFlux"], res["EnergyFlux"])
@@ -4004,6 +4132,11 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
 
     res["N_sample_requested"] = N_sample
     res["N_sample"] = N
+    res["YInterpolationPoints"] = ycheck.points
+    res["YInterpolationDoublings"] = ycheck.doublings
+    res["YInterpolationFallback"] = ycheck.fallback
+    res["YInterpolationSelfCheckError"] = ycheck.self_check_error
+    res["YInterpolationDeferred"] = !y_attempted
     return res
 end
 
