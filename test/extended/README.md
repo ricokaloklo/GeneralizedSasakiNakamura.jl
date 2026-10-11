@@ -101,14 +101,16 @@ marked "frozen self-value", with looser tolerances.
   the solver must also agree with these independent roots within 1e-10.
 * `PUBLISHED_RESIDUES`: arXiv:2609.09531v1 Table I (a = 0.5), via
   the processed published QNM residue table (2026-09-24, not distributed) and the conversion by
-  the residue conversion script (2026-09-24, not distributed).
+  the residue conversion script (2026-09-24, not distributed). Ordinary rows n >= 9
+  keep the table's complete-spectrum ordering through explicit convention metadata.
 * `LEGACY_OVERTONES`: September-24 legacy bundle (separate implementation, cross-checked against the published
   rows at n = 8, 9, 20): the high-precision overtone reference table (2026-09-24, not distributed); atol 1e-9.
+  The co-rotating mirror rows at a = -0.5 keep the legacy complete-spectrum labels explicitly.
 * `AXISYMMETRIC_N10`: `.../qnm_axisymmetric_reference_20260924.tsv` (legacy catalogue; The independent comparison confirmed the target).
 * `Q068`, `Q068_STENCIL`: `cloud_refs/qnm068_bridge_reference/{q068_root.json,stencil_reference.tsv}`
   (independent direct solver, dps 40/60). Its excitation factor uses a denominator 2 omega;
   the detailed Teukolsky result uses 2 i omega, so the comparison divides the reference by i.
-* Registered values (n30 at a = 0.5, n8 branches) as in `test/runtests.jl`.
+* Registered values (overtone n29 at a = 0.5, called n30 before relabeling, and n8 branches) as in `test/runtests.jl`.
 
 **Point-particle modes** -- `data/mode_references.jl` and constants in `pointparticle_mode/runtests.jl`
 * Schwarzschild circular (2,+-2) at p = 10: `flux_reference/README.md` (independent:

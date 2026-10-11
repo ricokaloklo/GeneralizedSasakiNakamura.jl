@@ -87,8 +87,10 @@ with tables that number the pair consecutively is
 | `8₁` | `n = 9` |
 | `n ≥ 9` | `n + 1` |
 
-The mirror branch and the counter-rotating modes have no such pair, and their
-labels coincide in all of these conventions.
+Counter-rotating modes have no such pair, and their labels coincide in these
+conventions. The mirror branch is counter-rotating when `a*m > 0`; for signed
+inputs with `a*m < 0` it is co-rotating and inherits the split pair and label
+conversion from its ordinary `(a, -m)` partner.
 
 The continued-fraction inversion convention is available separately and
 requires both an inversion index and a root guess:

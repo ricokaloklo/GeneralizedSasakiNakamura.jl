@@ -59,6 +59,7 @@ const SCHWARZSCHILD_SCAN = [
 # published tables below at n = 8, 9, 20. Used with atol 1e-9 (check_qnm_results.jl). Labels follow Python qnm /
 # Cook: of the co-rotating (2,2) pair split from -2i, n = 8 is 8_0 and 8_1 is n = 9 with convention = :complete_spectrum;
 # higher overtones continue the Schwarzschild labels, so the bundle's own 10, ..., 20 appear here as 9, ..., 19.
+# The co-rotating signed mirror rows at a=-0.5 retain the legacy complete-spectrum n=9/20 labels explicitly.
 const LEGACY_OVERTONES = [
     (a = 0.5, l = 2, m = 2, n = 0, branch = ordinary, omega = complex(0.46412302597593824, -0.08563883498806327)),
     (a = 0.5, l = 2, m = 2, n = 1, branch = ordinary, omega = complex(0.4474070374531985, -0.26022455363703456)),
@@ -124,8 +125,8 @@ const LEGACY_OVERTONES = [
     (a = -0.5, l = 2, m = 2, n = 20, branch = ordinary, omega = complex(0.05016065009164792, -5.020065531392684)),
     (a = -0.5, l = 2, m = 2, n = 0, branch = mirror, omega = complex(-0.4641230259759379, -0.0856388349880611)),
     (a = -0.5, l = 2, m = 2, n = 8, branch = mirror, omega = complex(-0.3010183387806178, -1.665991785223467)),
-    (a = -0.5, l = 2, m = 2, n = 9, branch = mirror, omega = complex(-0.2979502029620107, -1.8893002601882234)),
-    (a = -0.5, l = 2, m = 2, n = 20, branch = mirror, omega = complex(-0.27062855248365975, -4.41356593480517)),
+    (a = -0.5, l = 2, m = 2, n = 9, convention = :complete_spectrum, branch = mirror, omega = complex(-0.2979502029620107, -1.8893002601882234)),
+    (a = -0.5, l = 2, m = 2, n = 20, convention = :complete_spectrum, branch = mirror, omega = complex(-0.27062855248365975, -4.41356593480517)),
     (a = 0.5, l = 2, m = 0, n = 0, branch = ordinary, omega = complex(0.38331827598689794, -0.08706905133637123)),
     (a = 0.5, l = 3, m = 3, n = 0, branch = ordinary, omega = complex(0.7409210976637158, -0.08867625749814535)),
     (a = 0.5, l = 3, m = 3, n = 10, branch = ordinary, omega = complex(0.5295431287807292, -2.122109554757819)),
@@ -165,6 +166,7 @@ const PUBLISHED_QNM = [
 # PUBLISHED_RESIDUES: arXiv:2609.09531v1 Table I, a = 0.5, s=-2 l=m=2: residues of 1/(i*w*Binc_T) (7 decimals;
 # the residue conversion script (2026-09-24, not distributed)). within_rounding: legacy comparison flag from
 # the processed published QNM residue table (2026-09-24, not distributed) (n=11, 13 ordinary exceed the printed rounding).
+# Ordinary n>=9 retain that table's complete-spectrum ordering; the public overtone labels differ by one.
 const PUBLISHED_RESIDUES = [
     (branch = ordinary, n = 0, published = complex(0.0199051, 0.0071751), within_rounding = true),
     (branch = ordinary, n = 1, published = complex(-0.0401675, 0.0568486), within_rounding = true),
@@ -175,11 +177,11 @@ const PUBLISHED_RESIDUES = [
     (branch = ordinary, n = 6, published = complex(0.0054399, 0.0013039), within_rounding = true),
     (branch = ordinary, n = 7, published = complex(0.0033644, 0.0005468), within_rounding = true),
     (branch = ordinary, n = 8, published = complex(0.0021833, 0.0002577), within_rounding = true),
-    (branch = ordinary, n = 9, published = complex(0.001495, 0.0001374), within_rounding = true),
-    (branch = ordinary, n = 10, published = complex(0.0010672, 7.95e-05), within_rounding = true),
-    (branch = ordinary, n = 11, published = complex(0.0007844, 4.84e-05), within_rounding = false),
-    (branch = ordinary, n = 12, published = complex(0.000588, 3.03e-05), within_rounding = true),
-    (branch = ordinary, n = 13, published = complex(0.0004466, 1.9e-05), within_rounding = false),
+    (branch = ordinary, n = 9, convention = :complete_spectrum, published = complex(0.001495, 0.0001374), within_rounding = true),
+    (branch = ordinary, n = 10, convention = :complete_spectrum, published = complex(0.0010672, 7.95e-05), within_rounding = true),
+    (branch = ordinary, n = 11, convention = :complete_spectrum, published = complex(0.0007844, 4.84e-05), within_rounding = false),
+    (branch = ordinary, n = 12, convention = :complete_spectrum, published = complex(0.000588, 3.03e-05), within_rounding = true),
+    (branch = ordinary, n = 13, convention = :complete_spectrum, published = complex(0.0004466, 1.9e-05), within_rounding = false),
     (branch = mirror, n = 0, published = complex(-0.0021521, -0.0001068), within_rounding = true),
     (branch = mirror, n = 1, published = complex(-0.0033754, 0.0064655), within_rounding = true),
     (branch = mirror, n = 2, published = complex(0.0096312, 0.0088774), within_rounding = true),

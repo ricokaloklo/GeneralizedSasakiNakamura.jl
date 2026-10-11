@@ -145,9 +145,10 @@
         @test overtone7.status == overtone10.status == :accepted
         @test abs(overtone10.omega - overtone7.omega) > 0.1
 
-        overtone30 = qnm_frequency(QNMMode(-2, 2, 2, 30), 0.5)
-        @test overtone30.status == :accepted
-        @test overtone30.omega ≈ 0.2725174928809329 - 6.734330683370764im atol=1e-10 rtol=0
+        # This root was n=30 before overtone relabeling (Python qnm / Cook labels).
+        overtone29 = qnm_frequency(QNMMode(-2, 2, 2, 29), 0.5)
+        @test overtone29.status == :accepted
+        @test overtone29.omega ≈ 0.2725174928809329 - 6.734330683370764im atol=1e-10 rtol=0
 
         for (branch, omega8) in (
                 (ordinary, 0.30101833878061446 - 1.6659917852234734im),

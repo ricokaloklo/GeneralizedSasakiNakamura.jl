@@ -11,7 +11,8 @@ const Q = GSN.QNM
 const CF = GSN.ConversionFactors
 
 "Mirror-branch root through the package's own seeding (src/QNM/ModeObservables.jl _mirror_qnm_root)."
-mirror_root(a, s, l, m, n) = first(Q._mirror_qnm_root(a, s, l, m, n, nothing, NamedTuple()))
+mirror_root(a, s, l, m, n; convention=:overtone) =
+    first(Q._mirror_qnm_root(a, s, l, m, n, nothing, NamedTuple(); convention))
 
 @testset "qnm" begin
 
@@ -75,7 +76,7 @@ end
     for r in rows
         tol = startswith(r.source, "Forteza") ? 2e-10 : 5e-9
         root = r.branch == ordinary ? qnm_frequency(QNMMode(-2, r.l, r.m, r.n), r.a; convention=get(r, :convention, :overtone)) :
-            mirror_root(r.a, -2, r.l, r.m, r.n)
+            mirror_root(r.a, -2, r.l, r.m, r.n; convention=get(r, :convention, :overtone))
         @testset "$(r.source) a=$(r.a) ($(r.l),$(r.m),$(r.n)) $(r.branch)" begin
             @test root.status == :accepted
             if startswith(r.source, "Cook") && r.n == 20 &&
@@ -114,7 +115,7 @@ end
     rows = GSN_TEST_LEVEL === :quick ? LEGACY_OVERTONES[1:9:end] : LEGACY_OVERTONES
     for r in rows
         root = r.branch == ordinary ? qnm_frequency(QNMMode(-2, r.l, r.m, r.n), r.a; convention=get(r, :convention, :overtone)) :
-            mirror_root(r.a, -2, r.l, r.m, r.n)
+            mirror_root(r.a, -2, r.l, r.m, r.n; convention=get(r, :convention, :overtone))
         @test isapprox(root.omega, r.omega; atol=1e-9, rtol=0)
     end
     # Overtones 7..10 are distinct roots on both branches (check_qnm_results.jl).
@@ -186,7 +187,11 @@ end
                 # QNM published-residue backlog: distinguish printed rounding from solver error.
                 @test_skip "QNM published-residue backlog, ordinary n=$(r.n)" == ""
             else
-                result = r.branch == ordinary ? qnm(0.5, -2, 2, 2, r.n) : qnm(0.5, -2, 2, 2, r.n, mirror)
+                # These published rows retain the table's complete-spectrum labels.
+                convention = get(r, :convention, :overtone)
+                result = r.branch == ordinary ?
+                    qnm(0.5, -2, 2, 2, r.n; convention) :
+                    qnm(0.5, -2, 2, 2, r.n, mirror; convention)
                 @test result.status in (:accepted, :estimated)
                 w = result.omega
                 conversion = CF.Binc(-2, 2, 0.5, w, result.lambda) / CF.Btrans(-2, 2, 0.5, w, result.lambda)
@@ -268,9 +273,10 @@ end
     @test overtone7.status == overtone10.status == :accepted
     @test abs(overtone10.omega - overtone7.omega) > 0.1
     if at_level(:full)
-        overtone30 = qnm_frequency(QNMMode(-2, 2, 2, 30), 0.5)
-        @test overtone30.status == :accepted
-        @test overtone30.omega ≈ 0.2725174928809329 - 6.734330683370764im atol=1e-10 rtol=0
+        # Match test/runtests.jl: this root was n=30 before overtone relabeling.
+        overtone29 = qnm_frequency(QNMMode(-2, 2, 2, 29), 0.5)
+        @test overtone29.status == :accepted
+        @test overtone29.omega ≈ 0.2725174928809329 - 6.734330683370764im atol=1e-10 rtol=0
     end
     for (branch, omega8) in ((ordinary, 0.30101833878061446 - 1.6659917852234734im),
                             (mirror, -0.09835632569909068 - 2.078506281482729im))
