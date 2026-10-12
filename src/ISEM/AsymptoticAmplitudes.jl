@@ -1,132 +1,89 @@
 module AsymptoticAmplitudes
 
-include("TeukolskyTransformation.jl")
-using .TeukolskyTransformation
+using ..Matching: Route, ConjugatedRoute
 
-export C_generic, C_inf, C_zero, _f1, _f2, _f3, _f4,
-       B_trans, B_inc, B_ref, C_trans, C_ref, C_inc
+export asymptotic_amplitudes, route_amplitude_pair
+export branch_pair_relative_error
 
-@inline _scaled(x, factor) = x * factor
+@inline _finite_complex(value) =
+    isfinite(real(value)) && isfinite(imag(value))
 
-# iota(x) cancels the x dependence of the Wronskian of two P solutions.
-@inline
-function _iota(x, s, epsilon, tau, kappa)
-    ι = exp(2im * kappa * x * epsilon) * (1 - x)^(s - 1im * tau + 1im * epsilon + 1) * (- x)^(1 - s - 1im * tau - 1im * epsilon)
-    return ι
+# Incidence and reflection amplitudes divided by the route's internal solution
+# scale (unit GSN transmission); `nothing` when either is not finite in Float64.
+function _try_unit_pair(route::Route)
+    scale = route.solution_scale
+    isfinite(scale) && scale > 0 ||
+        error("invalid ISEM GSN internal solution scale")
+    incidence = route.incidence / scale
+    reflection = route.reflection / scale
+    _finite_complex(incidence) && _finite_complex(reflection) || return nothing
+    return ComplexF64(incidence), ComplexF64(reflection)
 end
 
-@inline
-function inner_product(P1, P2, x)
-    P1x, P1x_prime, _, _ = P1(x)
-    P2x, P2x_prime, _, _ = P2(x)
-    return P1x * P2x_prime - P2x * P1x_prime
+function _try_unit_pair(route::ConjugatedRoute)
+    pair = _try_unit_pair(route.route)
+    pair === nothing && return nothing
+    return conj(pair[1]), conj(pair[2])
 end
 
-@inline
-function C_generic(x, P1, P2, P3, P4)
-    return inner_product(P1, P2, x) / inner_product(P3, P4, x)
+function _unit_pair(route::Union{Route,ConjugatedRoute})
+    pair = _try_unit_pair(route)
+    pair === nothing &&
+        error("unit-transmission ISEM GSN amplitudes exceed Float64 range")
+    return pair
 end
 
-# Connection coefficients from the Wronskian of P1 and P2, normalized by that of the infinity (C_inf)
-# or horizon (C_zero) basis pair; the methods with z take the contour coordinate rho.
-@inline
-function C_inf(x, P1, P2, s, epsilon, tau, kappa)
-    return _iota(x, s, epsilon, tau, kappa) * inner_product(P1, P2, x) / (2im * epsilon * kappa)
+# Unit-transmission amplitudes as a named tuple, labelled Binc/Bref for the IN
+# branch and Cinc/Cref for the UP branch.
+function asymptotic_amplitudes(
+    route::Union{Route,ConjugatedRoute},
+)
+    incidence, reflection = _unit_pair(route)
+    if route.branch == :IN
+        return (
+            branch=:IN,
+            convention=:unit_gsn_transmission,
+            incidence_name=:Binc,
+            reflection_name=:Bref,
+            incidence=incidence,
+            reflection=reflection,
+            Binc=incidence,
+            Bref=reflection,
+        )
+    elseif route.branch == :UP
+        return (
+            branch=:UP,
+            convention=:unit_gsn_transmission,
+            incidence_name=:Cinc,
+            reflection_name=:Cref,
+            incidence=incidence,
+            reflection=reflection,
+            Cinc=incidence,
+            Cref=reflection,
+        )
+    end
+    throw(ArgumentError("unsupported ISEM GSN route branch $(route.branch)."))
 end
 
-@inline
-function C_inf(rho, P1, P2, s, epsilon, tau, kappa, z)
-    return (-z) * _iota(-rho/z, s, epsilon, tau, kappa) * inner_product(P1, P2, rho) / (2im * epsilon * kappa)
+route_amplitude_pair(route::Union{Route,ConjugatedRoute}) =
+    _unit_pair(route)
+
+# (incidence, reflection) from a route, an amplitude named tuple, or any 2-element collection.
+function route_amplitude_pair(value)
+    if value isa NamedTuple && haskey(value, :incidence) && haskey(value, :reflection)
+        return (value.incidence, value.reflection)
+    end
+    return Tuple(value)
 end
 
-@inline
-function C_zero(x, P1, P2, s, epsilon, tau, kappa)
-    return _iota(x, s, epsilon, tau, kappa) * inner_product(P1, P2, x) / (s + 1im * (epsilon + tau))
-end
-
-@inline
-function C_zero(rho, P1, P2, s, epsilon, tau, kappa, z)
-    return (-z) * _iota(-rho/z, s, epsilon, tau, kappa) * inner_product(P1, P2, rho) / (s + 1im * (epsilon + tau))
-end
-
-# Factors converting P-space coefficients into Teukolsky amplitudes: B_trans = f1, B_inc = C_inf f3,
-# B_ref = C_inf f4, C_trans = f4, C_ref = C_zero f1, C_inc = C_zero f2.
-@inline
-function _f1(s, epsilon, tau, kappa)
-    rp = 1 + kappa
-    p = kappa * (epsilon + tau) / (2 * rp)
-    return (4.0)^s * kappa^(2im * p + 2 * s) * exp(1im * p * rp)
-end
-
-@inline
-function _f2(epsilon, tau, kappa)
-    rp = 1 + kappa
-    p = kappa * (epsilon + tau) / (2 * rp)
-    return kappa^(- 2im * p) * exp(- 1im * p * rp)
-end
-
-@inline
-function _f3(epsilon, kappa)
-    ω = epsilon / 2
-    rp = 1 + kappa
-    return 2.0 * kappa^(2im * ω + 1) * exp(1im * ω * rp)
-end
-
-@inline
-function _f4(s, epsilon, kappa)
-    ω = epsilon / 2
-    rp = 1 + kappa
-    return (2.0)^(1 + 2 * s) * kappa^(2 * s - 2im * ω + 1) * exp(- 1im * ω * rp)
-end
-
-@inline
-function B_trans(s, epsilon, tau, kappa)
-    return _f1(s, epsilon, tau, kappa)
-end
-
-@inline
-function B_inc(x, P1, P2, s, epsilon, tau, kappa)
-    return C_inf(x, P1, P2, s, epsilon, tau, kappa) * _f3(epsilon, kappa)
-end
-
-@inline
-function B_ref(x, P1, P2, s, epsilon, tau, kappa)
-    return C_inf(x, P1, P2, s, epsilon, tau, kappa) * _f4(s, epsilon, kappa)
-end
-
-@inline
-function B_inc(CInfIn, epsilon, tau, kappa)
-    return _scaled(CInfIn, _f3(epsilon, kappa))
-end
-
-@inline
-function B_ref(CInfOut, s, epsilon, tau, kappa)
-    return _scaled(CInfOut, _f4(s, epsilon, kappa))
-end
-
-@inline
-function C_trans(s, epsilon, kappa)
-    return _f4(s, epsilon, kappa)
-end
-
-@inline
-function C_ref(x, P1, P2, s, epsilon, tau, kappa)
-    return C_zero(x, P1, P2, s, epsilon, tau, kappa) * _f1(s, epsilon, tau, kappa)
-end
-
-@inline
-function C_inc(x, P1, P2, s, epsilon, tau, kappa)
-    return C_zero(x, P1, P2, s, epsilon, tau, kappa) * _f2(epsilon, tau, kappa)
-end
-
-@inline
-function C_ref(CZeroIn, s, epsilon, tau, kappa)
-    return _scaled(CZeroIn, _f1(s, epsilon, tau, kappa))
-end
-
-@inline
-function C_inc(CZeroOut, epsilon, tau, kappa)
-    return _scaled(CZeroOut, _f2(epsilon, tau, kappa))
+# Largest componentwise difference of two amplitude pairs, relative to the
+# largest amplitude magnitude in either pair.
+function branch_pair_relative_error(candidate, reference)
+    cand = route_amplitude_pair(candidate)
+    ref = route_amplitude_pair(reference)
+    scale = maximum(abs, (cand..., ref...))
+    scale == 0 && return 0.0
+    return maximum(abs.(cand .- ref)) / scale
 end
 
 end

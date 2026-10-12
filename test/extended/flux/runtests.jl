@@ -136,7 +136,7 @@ SPHERICAL_ORBITS = [(r.a, r.p, r.x) for r in CANDIDATE_TOL10 if r.e == 0]
             fullgrid = [r for r in SPHERICAL_FULLGRID if r.a == a && r.p == p && r.x == x]
             reference = isempty(fullgrid) ? find_orbit(CANDIDATE_TOL10, a, p, 0.0, x) : only(fullgrid)
             if isempty(fullgrid)
-                @test_skip "backlog 29: independent full-grid reference for ($a, $p, 0, $x)" == ""
+                @test_skip "independent full-grid reference for ($a, $p, 0, $x)" == ""
             end
             F = flux(a, p, 0.0, x)
             @test F.orbit_type == :inclined
@@ -194,7 +194,7 @@ end
 
 # Fixed l=2:7, n=-30:30 sums, independently refined at relative mode tolerance 1e-11.
 # The outer l/n layers contribute less than 7e-14; no summation stopping rule is used.
-@testset "large-p eccentric full-box totals (item13)" begin
+@testset "large-p eccentric full-box totals" begin
     for (p, infinity, horizon) in (
         (1e3, 7.069635134875905e-15, -6.639717219612091e-23),
         (1e4, 7.091345568411108e-20, -2.092300164964513e-30),

@@ -885,7 +885,7 @@ end
 
 function _mst_incidence_evaluation(mode::QNMMode, a::Float64,
         omega::ComplexF64; angular_order::Int, sheet_id::Symbol)
-    route = ISEM.DirectGSN.direct_complex_route(
+    route = ISEM.complex_route(
         mode.s, mode.l, mode.m, a, omega, :IN; backend=:mst)
     scale = max(1.0, abs(route.transmission), abs(route.incidence),
         abs(route.reflection))

@@ -4,9 +4,9 @@
 Pages = ["examples.md"]
 ```
 
-## Example 1: GSN-ISEM radial functions
+## Example 1: ISEM radial functions
 
-The public GSN-ISEM route constructs the GSN function $X$ directly. The
+The public ISEM route constructs the GSN function $X$ directly. The
 Teukolsky function $R$ and source-adapted function $Y$ are numerical wrappers
 around that route. The $Y$ wrapper is available for `s = -2, IN` and
 `s = +2, UP`.
@@ -22,9 +22,9 @@ a = 0.7
 omega = 0.25
 bc = IN
 
-X = GSN_radial(s, l, m, a, omega, bc; method = "GSN-ISEM")
-R = Teukolsky_radial(s, l, m, a, omega, bc; method = "GSN-ISEM")
-Y = Y_radial(s, l, m, a, omega, bc; method = "GSN-ISEM")
+X = GSN_radial(s, l, m, a, omega, bc; method = "ISEM")
+R = Teukolsky_radial(s, l, m, a, omega, bc; method = "ISEM")
+Y = Y_radial(s, l, m, a, omega, bc; method = "ISEM")
 
 rstar_grid = collect(range(-30, 100; length = 1400))
 r_grid = r_from_rstar.(a, rstar_grid)
@@ -58,7 +58,7 @@ The full X state evaluates $X$ and $dX/dr_*$ together:
 ```julia
 plot(rstar_grid, [real.(dXdrstar_values) imag.(dXdrstar_values)];
     label = ["real" "imag"], xlabel = L"r_*/M", ylabel = L"dX/dr_*",
-    title = "Derivative from the same GSN-ISEM series evaluation")
+    title = "Derivative from the same ISEM series evaluation")
 ```
 
 ## QNM quick start
@@ -117,7 +117,7 @@ omegas = collect(0.01:0.01:2.0);
 for s in sarr
     reflectivity_from_inf_nonrotating[s] = []
     for omg in omegas
-        Xin = GSN_radial(s, l, m, a, omg, IN; method = "GSN-ISEM")
+        Xin = GSN_radial(s, l, m, a, omg, IN; method = "ISEM")
         append!(reflectivity_from_inf_nonrotating[s], Xin.reflection_amplitude/Xin.incidence_amplitude)
     end
 end
@@ -153,7 +153,7 @@ omegas = collect(0.01:0.01:2.0);
 for s in sarr
     reflectivity_from_inf_rotating[s] = []
     for omg in omegas
-        Xin = GSN_radial(s, l, m, a, omg, IN; method = "GSN-ISEM")
+        Xin = GSN_radial(s, l, m, a, omg, IN; method = "ISEM")
         append!(reflectivity_from_inf_rotating[s], Xin.reflection_amplitude/Xin.incidence_amplitude)
     end
 end
@@ -715,8 +715,8 @@ function SN_convolution(l, omega, a; rsout = 5000, rsin = - 50)
     m = 0
     rsin = min(rsin, 50*log10(1-a))
     rsout = max(50 * pi / abs(omega), rsout)
-    # GSN-ISEM constructs X itself; rsin and rsout are convolution bounds.
-    X = GSN_radial(s, l, m, a, omega, IN; method = "GSN-ISEM")
+    # ISEM constructs X itself; rsin and rsout are convolution bounds.
+    X = GSN_radial(s, l, m, a, omega, IN; method = "ISEM")
     Binc = X.incidence_amplitude
     W = Wnn_integrals(l, a, omega; rsout = rsout)
     function integrand!(du, u, p, rs)

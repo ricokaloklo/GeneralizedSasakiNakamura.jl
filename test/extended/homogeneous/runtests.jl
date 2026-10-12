@@ -6,7 +6,7 @@
 #   incidence/reflection are B_inc, B_ref (IN) and C_up, C_ref (UP), as ratios to the transmission
 #   amplitude.
 # * Exact conjugation symmetry of the Teukolsky equation on real r (src/ISEM/ISEM.jl
-#   _conjugate_teukolsky_radial_function; DirectComplexFrequency.direct_gsn_radial comment):
+#   _conjugate_teukolsky_radial_function; ComplexFrequency.radial_route comment):
 #       R_{s,l,m}(omega; r) = conj R_{s,l,-m}(-conj(omega); r),  lambda -> conj(lambda),
 #   so the amplitude ratios map to their complex conjugates.
 # * Spin reflection (src/GeneralizedSasakiNakamura.jl, `a < zero(a)` branches):
@@ -19,7 +19,7 @@ end
 include(joinpath(@__DIR__, "..", "common", "helpers.jl"))
 include(data_file("radial_references.jl"))
 
-const D = GSN.ISEM.DirectGSN
+const D = GSN.ISEM
 const CF = GSN.ConversionFactors
 
 dominant(x, y) = max(abs(x), abs(y))
@@ -84,7 +84,7 @@ is_threshold(a, m, omega) = isreal(omega) && abs(omega - m * a / (2 * kerr_rplus
 end
 
 # ---------------------------------------------------------------------------------------------------
-# 2. The same points through the direct route, with its own error report (direct_amplitude_errors).
+# 2. The same points through the direct route, with its own error report (amplitude_errors).
 #    Coverage rule (from measured errors at these points):
 #    * complex omega, non-suppressed amplitude: actual relative error <= 2 x reported
 #      (known under-reports x1.12-1.32);
@@ -94,10 +94,10 @@ end
 @testset "independent references: direct route and reported errors" begin
     for p in level_subset(STRONG_DAMPING_POINTS, 6), (bi, branch) in ((1, :IN), (2, :UP))
         @testset "$(p.id) $(branch)" begin
-            route = D.direct_gsn_radial(p.s, p.l, p.m, p.a, p.omega, branch)
-            R = D.direct_teukolsky_radial_function(route)
+            route = D.radial_route(p.s, p.l, p.m, p.a, p.omega, branch)
+            R = D.teukolsky_radial_function(route)
             values = teukolsky_ratios(R)
-            errors = D.DirectMatching.direct_amplitude_errors(route)
+            errors = D.Matching.amplitude_errors(route)
             refs = branch == :IN ? (p.binc, p.bref) : (p.cup, p.cref)
             scale = dominant(refs...)
             @test all(isfinite, errors)   # no Inf reports
@@ -208,7 +208,7 @@ function check_radial_invariants(s, l, m, a, omega; wronskian_radii=(4.0, 6.0, 1
     # GSN <-> Teukolsky amplitude conversion (ConversionFactors) on the separately built GSN function.
     for (R, bc) in ((Rin, IN), (Rup, UP))
         X = GSN_radial(s, l, m, a, omega, bc)
-        @test X.method == "GSN-ISEM"
+        @test X.method == "ISEM"
         @test X.normalization_convention == UNIT_GSN_TRANS
         @test X.boundary_condition == bc
         @test isapprox(X.mode.lambda, R.mode.lambda; rtol=1e-14)
@@ -310,7 +310,7 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # 8. OUT / DOWN combinations (main-module combiners): amplitudes from the IN/UP formulas of
-#    _combine_direct_gsn_down/out and finite solutions.
+#    _combine_gsn_down/out and finite solutions.
 # ---------------------------------------------------------------------------------------------------
 @testset "OUT and DOWN boundary conditions" begin
     for (s, l, m, a, w) in ((-2, 2, 2, 0.7, 0.5), (2, 3, -1, 0.3, 1.1 - 0.1im), (0, 2, 0, 0.9, 0.25))
@@ -337,19 +337,33 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# 8b. Superradiant threshold omega = m Omega_H (non-extremal): UP takes the original-ISEM threshold builder
-#     (main module `_is_horizon_superradiance_frequency`); results must be finite and normalized.
+# 8b. Superradiant threshold omega = m Omega_H (non-extremal): ISEM builds UP with the logarithmic
+#     horizon companion, so the amplitudes are threshold-log connection coefficients. Check the
+#     solutions through the Teukolsky Wronskian Delta^(s+1) (R_in R_up' - R_up R_in'), which must be
+#     constant in r, down to r_+ + 1e-4.
 # ---------------------------------------------------------------------------------------------------
 @testset "superradiant threshold" begin
     for (s, l, m, a) in ((-2, 2, 2, 0.7), (-2, 3, 1, 0.9), (2, 2, 2, 0.5))
         w = m * a / (2 * kerr_rplus(a))
-        for bc in (IN, UP)
-            R = Teukolsky_radial(s, l, m, a, w, bc)
+        Rin = Teukolsky_radial(s, l, m, a, w, IN)
+        Rup = Teukolsky_radial(s, l, m, a, w, UP)
+        for R in (Rin, Rup)
             @test R.normalization_convention == UNIT_TEUKOLSKY_TRANS
-            # The threshold UP builder carries no incidence/reflection amplitude (missing); IN carries all three.
-            amps = (R.transmission_amplitude, R.incidence_amplitude, R.reflection_amplitude)
-            @test all(v -> (bc == UP && v === missing) || isfinite(v), amps)
+            @test all(isfinite, (R.transmission_amplitude, R.incidence_amplitude, R.reflection_amplitude))
             @test isfinite(R(8.0))
+        end
+        rp = kerr_rplus(a)
+        wronskian(r) = begin
+            Ri, dRi = Rin.Teukolsky_solution(r)[1:2]
+            Ru, dRu = Rup.Teukolsky_solution(r)[1:2]
+            (r^2 - 2r + a^2)^(s + 1) * (Ri * dRu - Ru * dRi)
+        end
+        reference = wronskian(8.0)
+        # Near the horizon the coefficient evaluation error (~1e-12 in dR/dr) grows like
+        # 1/(r - r_+); a missing log term would give O(1e-2) or larger.
+        for r in (rp + 1e-4, rp + 1e-3, rp + 0.03, 3.0, 30.0)
+            tol = r - rp < 0.01 ? 1e-6 : 1e-10
+            @test abs(wronskian(r) - reference) <= tol * abs(reference)
         end
     end
 end
@@ -382,17 +396,17 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# 10. Exact-extremal Kerr (a = +-1): finite GSN-ISEM solutions; synchronous omega = m Omega_H = m/2 is a
+# 10. Exact-extremal Kerr (a = +-1): finite ISEM solutions; synchronous omega = m Omega_H = m/2 is a
 #     branch point and must raise DomainError (src/Homogeneous/ExtremalRadial.jl _require_nonsynchronous).
 # ---------------------------------------------------------------------------------------------------
 @testset "exact extremal" begin
-    X = GSN_radial(-2, 2, 2, 1.0, 0.3, IN, -40.0, 60.0; method="GSN-ISEM", tolerance=1.0e-10)
-    @test X.method == "GSN-ISEM"
+    X = GSN_radial(-2, 2, 2, 1.0, 0.3, IN, -40.0, 60.0; method="ISEM", tolerance=1.0e-10)
+    @test X.method == "ISEM"
     @test all(isfinite, X.GSN_solution(0.0))
     for (s, l, m, w) in ((-2, 2, 2, 0.3), (-2, 2, 1, 0.8), (0, 2, 0, 0.5), (2, 3, 3, 1.0))
         for bc in (IN, UP)
             Xe = GSN_radial(s, l, m, 1.0, w, bc)
-            @test Xe.method == "GSN-ISEM"
+            @test Xe.method == "ISEM"
             @test all(isfinite, (Xe.transmission_amplitude, Xe.incidence_amplitude))
             @test isfinite(Xe(0.0))
             Re = Teukolsky_radial(s, l, m, 1.0, w, bc)
@@ -400,7 +414,7 @@ end
         end
     end
     for (m, w) in ((1, 0.5), (2, 1.0), (3, 1.5))
-        @test_throws DomainError GSN_radial(-2, 3, m, 1.0, w, IN; method="GSN-ISEM")
+        @test_throws DomainError GSN_radial(-2, 3, m, 1.0, w, IN; method="ISEM")
         @test_throws DomainError GSN_radial(-2, 3, m, 1.0, w, UP)
     end
     @test r_from_rstar(-1.0, rstar_from_r(-1.0, 2.0)) ≈ 2.0

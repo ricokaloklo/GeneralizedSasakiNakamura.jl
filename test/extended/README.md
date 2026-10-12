@@ -27,7 +27,7 @@ Without either selection variable, the runner prints usage and does not load the
 |---|---|
 | api | Public signatures, return types, display, invalid inputs |
 | homogeneous | Independent amplitudes and radial values; identities and transformations |
-| isem_direct | Complex contours, endpoints, tolerance handling, explicit junctions |
+| isem | Complex contours, endpoints, tolerance handling, explicit junctions |
 | qnm | Frequencies, overtone conventions, residues, derivatives, excitation factors |
 | pointparticle_mode | Circular, spherical and generic modes; interface consistency |
 | flux | Mode sums, Schwarzschild rotation identities, independently summed Kerr grids |
@@ -59,7 +59,7 @@ The reference-generation scripts are not distributed, except `tools/richartz_ext
 Package-independent ("independent") references are preferred; package outputs are used only where
 marked "frozen self-value", with looser tolerances.
 
-**Radial amplitudes (homogeneous, isem_direct, regression)** -- `data/radial_references.jl`
+**Radial amplitudes (homogeneous, isem, regression)** -- `data/radial_references.jl`
 * `STRONG_DAMPING_POINTS` G1-G10: independent mpmath MST and direct complex-path Taylor integration,
   90-160 digits, only agreeing digits kept. E (spheroidal eigenvalue) from the same computation.
 * Q_*_f64 (24 points at the exact binary QNM frequencies and +0.001): independent, same solvers; lambda given.
@@ -75,9 +75,9 @@ marked "frozen self-value", with looser tolerances.
   tolerance classes only.
 * `CLOUD_CELLS` (15 strong-damping cells): independent real-axis R(r) references (horizon Frobenius and exact
   Taylor steps along real r, dps 100/140; lambda by Leaver CF with a spectral check).
-* `ITEM25_ROWS`, `ITEM25_AXIS`: independent 384-bit Teukolsky integration near and on the positive
+* `POSITIVE_AXIS_ROWS`, `POSITIVE_AXIS_POINTS`: independent 384-bit Teukolsky integration near and on the positive
   imaginary axis.
-* Hard-coded in `isem_direct` / registered suite: negative-frequency and default-tolerance references
+* Hard-coded in `isem` / registered suite: negative-frequency and default-tolerance references
   (`test/runtests.jl`, from the same independent tables), and the real-frequency MST value nu = 2.5 + 1.262i.
 * The amplitude Wronskian `C_up (4 i k r_+ + 2 s kappa) = 2 i omega B_inc` (unit transmissions) follows from
   the package's asymptotic forms (`common/helpers.jl`); the suite also checks it on the reference values themselves.

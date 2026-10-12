@@ -46,7 +46,7 @@ CIRCULAR_A0 = (
                 @test hor.angular_momentum_flux ≈ hor.energy_flux * c.p^1.5 rtol=1e-10
                 @test inf.Carter_const_flux == 0 || abs(inf.Carter_const_flux) <= 1e-12 * inf.angular_momentum_flux
                 @test inf.mode.omega ≈ m * c.p^-1.5 rtol=1e-12
-                @test inf.method.radial_method == "GSN-ISEM"
+                @test inf.method.radial_method == "ISEM"
             end
         end
     end

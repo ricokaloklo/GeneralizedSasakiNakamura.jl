@@ -1,7 +1,7 @@
 # Quasinormal modes
 
 The QNM interface combines a Leaver continued-fraction root with an independent
-GSN-ISEM radial evaluation. Units are $M=1$.
+ISEM radial evaluation. Units are $M=1$.
 
 ## Compact interface
 
@@ -62,7 +62,8 @@ mirror_root = qnm_frequency(0.68, -2, 2, 2, 0, mirror)
 sequence = qnm_sequence([0.0, 0.3, 0.68], -2, 2, 2, 0)   # (spins, s, l, m, n)
 ```
 
-Both functions take the same five numbers as [`qnm`](@ref) and the keywords
+Both functions take the same numbers as [`qnm`](@ref) (`qnm_sequence` takes a list of
+spins in place of `a`) and the keywords
 `convention` (how `n` is counted, below) and `segment` (which part of a
 sequence that leaves and re-enters the negative imaginary axis, below). The
 form `qnm_frequency(QNMMode(s, l, m, n), a)` is equivalent.

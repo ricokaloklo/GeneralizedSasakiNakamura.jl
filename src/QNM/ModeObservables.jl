@@ -15,14 +15,14 @@ function _qnm_radial_solutions(root)
     if abs(inputs.a) == one(inputs.a)
         X = GSN_radial(
             mode.s, mode.l, mode.m, inputs.a, inputs.omega, IN;
-            method="GSN-ISEM")
+            method="ISEM")
         R = Teukolsky_radial(
             mode.s, mode.l, mode.m, inputs.a, inputs.omega, IN;
-            method="GSN-ISEM")
+            method="ISEM")
         y_boundary = mode.s == -2 ? IN : mode.s == 2 ? UP : nothing
         Y = y_boundary === nothing ? missing : Y_radial(
             mode.s, mode.l, mode.m, inputs.a, inputs.omega, y_boundary;
-            method="GSN-ISEM")
+            method="ISEM")
         return (
             X=X,
             Y=Y,
@@ -35,31 +35,31 @@ function _qnm_radial_solutions(root)
             frequency_projection_drift=inputs.projection_drift,
             source_precision_bits=inputs.source_precision_bits,
             evaluation_precision_bits=inputs.evaluation_precision_bits,
-            direct_route=missing,
-            Y_direct_route=missing,
+            isem_route=missing,
+            Y_isem_route=missing,
             pole_normalization=:exact_extremal_irregular_horizon_unit_transmission,
             coordinate_conventions=(X=:rstar, Y=:boyer_lindquist_r,
                 R=:boyer_lindquist_r),
         )
     end
-    direct_route = ISEM.DirectGSN.direct_complex_route(
+    isem_route = ISEM.complex_route(
         mode.s, mode.l, mode.m, inputs.a, inputs.omega, :IN;
         pole_normalization=true)
-    X = ISEM.DirectGSN.direct_complex_gsn_radial_function(direct_route)
-    R = ISEM.DirectGSN.direct_teukolsky_radial_function(direct_route)
+    X = ISEM.complex_gsn_radial_function(isem_route)
+    R = ISEM.teukolsky_radial_function(isem_route)
 
     y_boundary = mode.s == -2 ? IN : mode.s == 2 ? UP : nothing
     y_route = if y_boundary === nothing
         nothing
     elseif y_boundary == IN
-        direct_route
+        isem_route
     else
-        ISEM.DirectGSN.direct_complex_route(
+        ISEM.complex_route(
             mode.s, mode.l, mode.m, inputs.a, inputs.omega, :UP;
             pole_normalization=true)
     end
     Y = y_route === nothing ? missing :
-        ISEM.DirectGSN.direct_y_radial_function(y_route)
+        ISEM.y_radial_function(y_route)
     return (
         X=X,
         Y=Y,
@@ -72,8 +72,8 @@ function _qnm_radial_solutions(root)
         frequency_projection_drift=inputs.projection_drift,
         source_precision_bits=inputs.source_precision_bits,
         evaluation_precision_bits=inputs.evaluation_precision_bits,
-        direct_route=direct_route,
-        Y_direct_route=y_route,
+        isem_route=isem_route,
+        Y_isem_route=y_route,
         pole_normalization=:exact_incidence_zero,
         coordinate_conventions=(X=:rstar, Y=:boyer_lindquist_r,
             R=:boyer_lindquist_r),
@@ -98,7 +98,7 @@ function _estimated_decimal_digits(relative_drift)
     return max(zero(T), -log10(relative_drift))
 end
 
-# Turn one `LeaverResult` into the public result: validate it with GSN-ISEM,
+# Turn one `LeaverResult` into the public result: validate it with ISEM,
 # compute the excitation factor, and wrap it as QNMResult, QNMEstimate,
 # QNMEndpointResult or QNMFailure (with radial solutions when `detailed`).
 function _qnm_branch_observables(root, excitation_options;
@@ -306,7 +306,7 @@ function _qnm_branch_observables(root, excitation_options;
     )
     if status == :failed
         stage = validation.status != :accepted ?
-            :GSN_ISEM_validation : :excitation_factor
+            :ISEM_validation : :excitation_factor
         return QNMFailure(merge(compact, (stage=stage,)))
     end
     ResultType = status == :estimated ? QNMEstimate : QNMResult

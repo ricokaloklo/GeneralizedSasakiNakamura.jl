@@ -30,7 +30,7 @@ include(joinpath(@__DIR__, "..", "common", "helpers.jl"))
         @test isdefined(GSN, name)
         @test !(name in public_names)
     end
-    @test GSN.QNM isa Module && GSN.ISEM isa Module && GSN.ISEM.DirectGSN isa Module
+    @test GSN.QNM isa Module && GSN.ISEM isa Module
 end
 
 @testset "enums" begin
@@ -90,7 +90,7 @@ end
     @test startswith(sprint(show, MIME("text/plain"), X.mode), "Mode(s = -2, l = 2, m = 2")
     textX = sprint(show, MIME("text/plain"), X)
     @test startswith(textX, "GSNRadialFunction(\n") && endswith(textX, ")")
-    @test occursin("method = GSN-ISEM", textX)
+    @test occursin("method = ISEM", textX)
     @test startswith(sprint(show, X), "GSNRadialFunction(mode = Mode(s = -2")
     textR = sprint(show, MIME("text/plain"), R)
     @test startswith(textR, "TeukolskyRadialFunction(\n")
@@ -104,11 +104,11 @@ end
 
 @testset "radial argument validation" begin
     for radial in (GSN_radial, Teukolsky_radial)
-        @test_throws ArgumentError radial(-2, 2, 2, 0.68, 0.3, IN; rhom=1.0)
+        @test_throws MethodError radial(-2, 2, 2, 0.68, 0.3, IN; rhom=1.0)
         @test_throws ArgumentError radial(-2, 2, 2, 0.68, 0.3, IN; xm=-1.0)
         @test_throws ArgumentError radial(-2, 2, 2, 0.68, 0.3, IN; xm=1.0)
-        @test_throws ArgumentError radial(-2, 2, 2, 0.68, 0.3, IN; TSinHor=true)
-        @test_throws DomainError radial(-2, 2, 2, 1.0, 1.0, IN; method="GSN-ISEM")
+        @test_throws MethodError radial(-2, 2, 2, 0.68, 0.3, IN; TSinHor=true)
+        @test_throws DomainError radial(-2, 2, 2, 1.0, 1.0, IN; method="ISEM")
     end
     @test_throws ArgumentError GSN_radial(-2, 2, 2, 1.0, 0.3, IN; method="bogus")   # exact-extremal method label
     @test_throws ErrorException quietly(() -> GSN_radial(-2, 2, 2, 0.5, 0.3, IN; method="bogus"))
@@ -118,7 +118,7 @@ end
     @test_throws ErrorException Y_radial(-2, 2, 2, 0.68, 0.3, IN; method="bogus")
     Yup = Y_radial(2, 2, 2, 0.68, 0.3, UP)
     @test isfinite(Yup(10.0))
-    # tol and tolerance are aliases on the GSN-ISEM route.
+    # tol and tolerance are aliases on the ISEM route.
     a1 = GSN_radial(-2, 2, 2, 0.5, 0.4, IN; tol=1e-10)
     a2 = GSN_radial(-2, 2, 2, 0.5, 0.4, IN; tolerance=1e-10)
     @test a1.incidence_amplitude == a2.incidence_amplitude
@@ -128,7 +128,7 @@ end
     mode = Teukolsky_pointparticle_mode(-2, 2, 2, 0, 0, 0.5, 8.0, 0.0, 1.0)
     @test mode isa GSN.TeukolskyPointParticleMode
     @test mode.mode isa GSN.PointParticleMode
-    @test mode.method.radial_method == "GSN-ISEM"
+    @test mode.method.radial_method == "ISEM"
     @test mode.method.method == "isem_trapezoidal"
     @test haskey(mode.method, :truncation_floor)
     text = sprint(show, MIME("text/plain"), mode)

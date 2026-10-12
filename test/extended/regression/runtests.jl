@@ -7,7 +7,7 @@ end
 include(joinpath(@__DIR__, "..", "common", "helpers.jl"))
 include(data_file("radial_references.jl"))
 
-const D = GSN.ISEM.DirectGSN
+const D = GSN.ISEM
 dominant(x, y) = max(abs(x), abs(y))
 point(id) = only(p for p in STRONG_DAMPING_POINTS if p.id == id)
 grid_point(id) = only(g for g in GRID_POINTS if g.id == id)
@@ -18,7 +18,7 @@ grid_point(id) = only(g for g in GRID_POINTS if g.id == id)
 include(joinpath(@__DIR__, "registered_suite.jl"))
 
 # a = 0.7, l = m = 2, n = 10 root, UP C_up buried at the junction (1.78e-6 in C_ref units).
-@testset "backlog 1: buried C_up at the a=0.7 n10 root" begin
+@testset "buried C_up at the a=0.7 n10 root" begin
     q = point("Q_a07_m2_n10_at_f64")
     R = Teukolsky_radial(-2, 2, 2, q.a, q.omega, UP)
     cup, cref = teukolsky_ratios(R)
@@ -29,7 +29,7 @@ include(joinpath(@__DIR__, "registered_suite.jl"))
 end
 
 # a = 0 n12 / n20 roots, UP C_up (1.0e-7 / 1.2e-7 in C_ref units).
-@testset "backlog 2-3: a=0 high-overtone UP C_up" begin
+@testset "a=0 high-overtone UP C_up" begin
     for (id, floor) in (("Q_a0_n12_at_f64", 1e-6), ("Q_a0_n20_at_f64", 1e-6), ("Q_a0_n12_off_f64", 5e-9))
         q = point(id)
         R = Teukolsky_radial(-2, 2, 2, q.a, q.omega, UP)
@@ -41,22 +41,22 @@ end
 end
 
 # Suppressed reflection: compare the per-coefficient relative error with the independent reference.
-@testset "backlog 4: reflection error coverage" begin
+@testset "reflection error coverage" begin
     for id in (32, 62)
         g = grid_point(id)
-        route = D.direct_gsn_radial(g.s, g.l, g.m, g.a, g.omega, :IN)
-        errors = D.DirectMatching.direct_amplitude_errors(route)
+        route = D.radial_route(g.s, g.l, g.m, g.a, g.omega, :IN)
+        errors = D.Matching.amplitude_errors(route)
         ref = only(r for r in GRID_REFERENCES if r.id == id && r.branch == "IN")
-        _, reflected = teukolsky_ratios(D.direct_teukolsky_radial_function(route))
+        _, reflected = teukolsky_ratios(D.teukolsky_radial_function(route))
         @test relerr(reflected, ref.reflection) <= errors[2]
         @test isfinite(errors[1])
     end
 end
 
 # This checks the error-slot interface only; strong-damping coverage remains unresolved.
-@testset "backlog 5/5a: R(r) error slot" begin
-    route = D.direct_gsn_radial(-2, 2, 2, 0.7, 0.5 - 0.1im, :IN)
-    R = D.direct_teukolsky_radial_function(route)
+@testset "R(r) error slot" begin
+    route = D.radial_route(-2, 2, 2, 0.7, 0.5 - 0.1im, :IN)
+    R = D.teukolsky_radial_function(route)
     state = R.Teukolsky_solution(6.0)
     @test length(state) == 4
     @test all(isfinite, state[1:3])
@@ -65,7 +65,7 @@ end
 end
 
 # R(10) at real frequency (grid id45 UP, id70 IN, id111 UP): normalization floor.
-@testset "backlog 6: R(r) floor at real frequency" begin
+@testset "R(r) floor at real frequency" begin
     refs = Dict((r.id, r.branch) => r for r in GRID_REFERENCES)
     for (id, branch) in ((45, "UP"), (70, "IN"), (111, "UP"))
         g = grid_point(id)
@@ -78,14 +78,14 @@ end
 end
 
 # Error estimates short by x1.12-x1.32 (two-ray step budget, ys tables, MST eps floor).
-@testset "backlog 7-9: under-reports stay within x2" begin
+@testset "under-reports stay within x2" begin
     for (id, branch, j) in (("D_l2_a0.9_w2.0-0.1i", :UP, 1), ("Q_a07_m2_n10_at_f64", :UP, 2),
                             ("Q_a0_n9_off_f64", :UP, 1), ("Q_a0_n20_off_f64", :UP, 1), ("Q_a09_m2_n0_off_f64", :IN, 1))
         q = point(id)
-        route = D.direct_gsn_radial(q.s, q.l, q.m, q.a, q.omega, branch)
-        values = teukolsky_ratios(D.direct_teukolsky_radial_function(route))
+        route = D.radial_route(q.s, q.l, q.m, q.a, q.omega, branch)
+        values = teukolsky_ratios(D.teukolsky_radial_function(route))
         refs = branch == :IN ? (q.binc, q.bref) : (q.cup, q.cref)
-        reported = D.DirectMatching.direct_amplitude_errors(route)[j]
+        reported = D.Matching.amplitude_errors(route)[j]
         actual = relerr(values[j], refs[j])
         @test actual <= 2 * reported
         @test_broken actual <= reported   # amplitude error estimate
@@ -93,7 +93,7 @@ end
 end
 
 # Real-frequency suppressed amplitudes, in dominant units on the real-frequency (R_) validation points.
-@testset "backlog 10: suppressed real-frequency amplitudes" begin
+@testset "suppressed real-frequency amplitudes" begin
     for id in ("R_l3_a0.7_w3.0", "R_l2_a0.9_w2.0", "R_l2_a0.9_w3.0", "R_l4_a0.9_w3.0")
         q = point(id)
         Rin = Teukolsky_radial(-2, q.l, q.m, q.a, q.omega, IN)
@@ -105,13 +105,13 @@ end
 
 # Open: mst_nu_complex rejects nu at grid id32/id62 by Float64 evaluation noise. Not observable through public
 # values (MST condition 1e10-1e11 there); needs an internal reproducer with a BigFloat nu reference.
-@testset "backlog 12: nu gate (open)" begin
+@testset "nu gate (open)" begin
     @test_skip false
 end
 
 # B_inc at grid 24/34/54/64 IN (omega = -0.1-0.05i, m flipped) is the exact conjugate of the Re omega > 0
 # partner.
-@testset "backlog 16: Re omega < 0 two-ray cells" begin
+@testset "Re omega < 0 two-ray cells" begin
     for id in (24, 34, 54, 64)
         g = grid_point(id)
         P = Teukolsky_radial(g.s, g.l, g.m, g.a, g.omega, IN)
@@ -125,14 +125,14 @@ end
 
 # Open: explicit-control calls at Re omega < 0 are not reflected at the route level, so
 # the two signs are separate two-ray computations. Their disagreement must stay within the two reports.
-@testset "backlog 17: explicit controls at Re omega < 0" begin
+@testset "explicit controls at Re omega < 0" begin
     g = grid_point(24)
-    positive = D.direct_gsn_radial(g.s, g.l, g.m, g.a, g.omega, :IN; N=48)
-    negative = D.direct_gsn_radial(g.s, g.l, -g.m, g.a, -conj(g.omega), :IN; N=48)
-    rp = teukolsky_ratios(D.direct_teukolsky_radial_function(positive))
-    rn = teukolsky_ratios(D.direct_teukolsky_radial_function(negative))
-    ep = D.DirectMatching.direct_amplitude_errors(positive)
-    en = D.DirectMatching.direct_amplitude_errors(negative)
+    positive = D.radial_route(g.s, g.l, g.m, g.a, g.omega, :IN; N=48)
+    negative = D.radial_route(g.s, g.l, -g.m, g.a, -conj(g.omega), :IN; N=48)
+    rp = teukolsky_ratios(D.teukolsky_radial_function(positive))
+    rn = teukolsky_ratios(D.teukolsky_radial_function(negative))
+    ep = D.Matching.amplitude_errors(positive)
+    en = D.Matching.amplitude_errors(negative)
     for j in 1:2
         @test abs(rn[j] - conj(rp[j])) <= en[j] * abs(rn[j]) + ep[j] * abs(rp[j]) + 1e-14 * dominant(rp...)
     end
@@ -141,35 +141,35 @@ end
 
 # Explicit xm with method = "auto" rethrows instead of silently using the legacy ODE solver (which returns
 # C_up 4.52e4 off in C_ref units at every xm >= 0.5).
-@testset "backlog 20: no silent legacy fallback with explicit xm" begin
+@testset "no silent legacy fallback with explicit xm" begin
     q = point("Q_a07_m2_n10_at_f64")
     @test_throws ErrorException GSN_radial(-2, 2, 2, q.a, q.omega, UP; xm=0.7)
     @test_throws ErrorException Teukolsky_radial(-2, 2, 2, q.a, q.omega, UP; xm=0.8)
     X = GSN_radial(-2, 2, 2, q.a, q.omega, UP)
-    @test X.method == "GSN-ISEM"
+    @test X.method == "ISEM"
 end
 
 # The p-consensus route reports |p - two-ray| + E(two-ray), which must be finite.
-@testset "backlog 23: finite reports on p-consensus routes" begin
+@testset "finite reports on p-consensus routes" begin
     for id in (24, 34, 54, 64, 84, 94, 114, 124, 154, 180)
         g = grid_point(id)
-        route = D.direct_gsn_radial(g.s, g.l, g.m, g.a, g.omega, :IN)
-        @test all(isfinite, D.DirectMatching.direct_amplitude_errors(route))
+        route = D.radial_route(g.s, g.l, g.m, g.a, g.omega, :IN)
+        @test all(isfinite, D.Matching.amplitude_errors(route))
     end
 end
 
-# Default Teukolsky_radial and GSN_radial use the same GSN-ISEM route and tolerance and agree to rounding
+# Default Teukolsky_radial and GSN_radial use the same ISEM route and tolerance and agree to rounding
 # (an ODE tolerance on this route gives C_ref/C_up off by 2.0e-9 at a = 0, w = 0.3-3i).
 @testset "default tolerance passthrough" begin
     for (s, l, m, a, w) in ((-2, 2, 2, 0.0, 0.3 - 3.0im), (-2, 2, 2, 0.7, 0.5 - 0.1im), (2, 3, 1, 0.9, 1.0 - 0.5im))
         for bc in (IN, UP)
             X = GSN_radial(s, l, m, a, w, bc)
-            Xs = GSN_radial(s, l, m, a, w, bc; method="GSN-ISEM")
+            Xs = GSN_radial(s, l, m, a, w, bc; method="ISEM")
             @test X.incidence_amplitude == Xs.incidence_amplitude
             @test X.reflection_amplitude == Xs.reflection_amplitude
             # Teukolsky: auto converts the GSN amplitudes, strict reads the route's Teukolsky amplitudes.
             R = Teukolsky_radial(s, l, m, a, w, bc)
-            Rs = Teukolsky_radial(s, l, m, a, w, bc; method="GSN-ISEM")
+            Rs = Teukolsky_radial(s, l, m, a, w, bc; method="ISEM")
             ri, rr = teukolsky_ratios(R)
             si, sr = teukolsky_ratios(Rs)
             @test abs(ri - si) <= 1e-12 * dominant(si, sr)
@@ -222,7 +222,7 @@ end # regression
 
 # GSN_pointparticle_mode and Teukolsky_pointparticle_mode must use the same grid defaults; otherwise the two
 # public routes disagree (Carter flux 1.2e-2 for this generic mode, 3e-8 for spherical k = 1).
-@testset "backlog 30: GSN vs Teukolsky point-particle mode defaults" begin
+@testset "GSN vs Teukolsky point-particle mode defaults" begin
     for c in ((-2, 2, 2, 1, 1, 0.9, 10.0, 0.2, 0.3), (2, 2, 1, 0, 1, 0.9, 10.0, 0.0, 0.5))
         T = Teukolsky_pointparticle_mode(c...)
         G = GSN_pointparticle_mode(c...)

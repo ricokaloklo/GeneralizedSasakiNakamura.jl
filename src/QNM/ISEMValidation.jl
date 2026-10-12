@@ -34,7 +34,7 @@ function _qnm_conditioned_radial_tolerance(a)
     return clamp(conditioned, 1.0e-14, 1.0e-11)
 end
 
-# Radial solver used for QNM amplitudes: GSN-ISEM with a fixed collocation order
+# Radial solver used for QNM amplitudes: ISEM with a fixed collocation order
 # away from extremality; the solver default with a kappa-dependent tolerance for
 # kappa <= 0.02, and with its own defaults at abs(a) = 1.
 function _qnm_default_radial_solver(s, l, m, a, omega, boundary;
@@ -46,13 +46,13 @@ function _qnm_default_radial_solver(s, l, m, a, omega, boundary;
         order = abs(imag(omega)) > 1 ? 96 : 48
         solution = try
             solver(s, l, m, a, omega, boundary;
-                method="GSN-ISEM", N=order, tol=1.0e-14)
+                method="ISEM", N=order, tol=1.0e-14)
         catch error
             # A straight tortoise-coordinate ray can hit a coordinate
             # branch point. Move its real junction, without changing the ODE.
             occursin("two-ray coordinate path", sprint(showerror,error)) || rethrow()
             return solver(s, l, m, a, omega, boundary;
-                method="GSN-ISEM", N=order, tol=1.0e-14, xm=0.3)
+                method="ISEM", N=order, tol=1.0e-14, xm=0.3)
         end
         gsn = solver === Teukolsky_radial ? solution.GSN_solution : solution
         numerical = gsn.numerical_GSN_solution
@@ -61,7 +61,7 @@ function _qnm_default_radial_solver(s, l, m, a, omega, boundary;
             # Removing monodromy cannot recover digits already lost on
             # a winding path. Prefer an unwound real junction when available.
             alternate = solver(s, l, m, a, omega, boundary;
-                method="GSN-ISEM", N=order, tol=1.0e-14, xm=0.3)
+                method="ISEM", N=order, tol=1.0e-14, xm=0.3)
             alternate_gsn = solver === Teukolsky_radial ? alternate.GSN_solution : alternate
             alternate_gsn.numerical_GSN_solution.infinity_horizon_winding == 0 &&
                 return alternate
@@ -138,7 +138,7 @@ function _extremal_qnm_radial_solver(s, l, m, a, omega, boundary)
     rsin = _extremal_qnm_horizon_start(m, a, ComplexF64(omega))
     return GSN_radial(
         s, l, m, a, omega, boundary, rsin, 60.0;
-        method="GSN-ISEM",
+        method="ISEM",
         tolerance=1.0e-14,
         horizon_expansion_order=64,
         infinity_expansion_order=32,
@@ -327,7 +327,7 @@ end
     validate_qnm_with_isem(result::LeaverResult; kwargs...)
 
 Validate an accepted or estimated Leaver root with the independent public call
-`GSN_radial(s,l,m,a,omega,IN)` (default `method="auto"`, which uses GSN-ISEM).
+`GSN_radial(s,l,m,a,omega,IN)` (default `method="auto"`, which uses ISEM).
 At exact extremality, and for conditioned roots with `abs(a) >= 0.9999` and
 `n >= 4`, the incidence amplitude comes from the IN/UP Wronskian instead. The
 scaled gate is `abs(Ain)/max(abs(Aout),abs(Atrans),1) <= incidence_tolerance`;

@@ -77,7 +77,7 @@ end
 """
     QNMFailure
 
-Structured public result returned when a QNM root, independent GSN-ISEM
+Structured public result returned when a QNM root, independent ISEM
 validation, or excitation-factor gate fails.  It preserves the failing
 scientific object and first failed gate without presenting nonfinite amplitudes
 as a `QuasiNormalMode` success.
@@ -309,7 +309,7 @@ end
 """
     ISEMValidationResult
 
-Independent GSN-ISEM check of a QNM frequency: radial incidence, reflection and transmission amplitudes and the scaled incidence residual.
+Independent ISEM check of a QNM frequency: radial incidence, reflection and transmission amplitudes and the scaled incidence residual.
 """
 struct ISEMValidationResult{O,C,T,M}
     omega::O

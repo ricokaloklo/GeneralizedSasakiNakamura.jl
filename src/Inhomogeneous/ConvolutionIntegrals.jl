@@ -377,24 +377,24 @@ end
 const _INHOMOGENEOUS_ORDINARY_MIN_OMEGA = 0.05
 const _INHOMOGENEOUS_ORDINARY_MAX_L = 4
 
-# Small-frequency-expansion control for the GSN-ISEM Y solve: off for real, low-l (l <= 4) modes with
-# |omega| >= 0.05 and |a| <= 0.95, otherwise left to GSN-ISEM (:auto).
-@inline function _inhomogeneous_sfe_control(l, a, omega)
+# Small-frequency-expansion control for the ISEM Y solve: off for real, low-l (l <= 4) modes with
+# |omega| >= 0.05 and |a| <= 0.95, otherwise left to ISEM (:auto).
+@inline function _inhomogeneous_small_frequency_expansion_control(l, a, omega)
     regular_low_mode = isreal(omega) &&
         abs(omega) >= _INHOMOGENEOUS_ORDINARY_MIN_OMEGA &&
         l <= _INHOMOGENEOUS_ORDINARY_MAX_L && abs(a) <= 0.95
     return regular_low_mode ? false : :auto
 end
 
-# GSN-ISEM Y radial function for the source integrals: IN branch for s = -2, UP branch for s = +2.
+# ISEM Y radial function for the source integrals: IN branch for s = -2, UP branch for s = +2.
 @inline function _isem_y_solution(s, l, m, a, omega; lambda = nothing)
     branch = s == -2 ? :IN : s == 2 ? :UP :
         error("ISEM Y interfaces currently support only s = -2 and s = 2.")
-    route = DirectGSN.direct_gsn_radial(s, l, m, a, omega, branch;
+    route = ISEM.radial_route(s, l, m, a, omega, branch;
         lambda = lambda,
-        sfe = _inhomogeneous_sfe_control(l, a, omega),
-        lfe = :auto)
-    return DirectGSN.direct_y_radial_function(route)
+        small_frequency_expansion = _inhomogeneous_small_frequency_expansion_control(l, a, omega),
+        large_frequency_expansion = :auto)
+    return ISEM.y_radial_function(route)
 end
 
 @inline function _generic_isem_y_solution(s, l, m, a, omega;

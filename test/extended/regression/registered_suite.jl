@@ -11,14 +11,14 @@
         r = 10.0
         rstar = rstar_from_r(0.68, r)
 
-        @test X.method == "GSN-ISEM"
-        @test R.GSN_solution.method == "GSN-ISEM"
+        @test X.method == "ISEM"
+        @test R.GSN_solution.method == "ISEM"
         @test isfinite(X(rstar))
         @test isfinite(R(r))
         @test isfinite(Y(r))
         @test r_from_rstar(0.68, rstar) ≈ r
         for radial in (GSN_radial, Teukolsky_radial)
-            @test_throws ArgumentError radial(-2, 2, 2, 0.68, 0.3, IN; rhom=1.0)
+            @test_throws MethodError radial(-2, 2, 2, 0.68, 0.3, IN; rhom=1.0)
             @test_throws ArgumentError radial(-2, 2, 2, 0.68, 0.3, IN; xm=-1.0)
         end
     end
@@ -37,7 +37,7 @@
             _, Rup = Teukolsky_radial(-2, 2, 2, 0.0, c.omega)
             @test Rup.reflection_amplitude / Rup.incidence_amplitude ≈
                 c.reflection / c.incidence rtol=1e-10
-            route = GSN.ISEM.DirectGSN.direct_gsn_radial(
+            route = GSN.ISEM.radial_route(
                 -2, 2, 2, 0.0, c.omega, :UP)
             @test Rup.reflection_amplitude / Rup.transmission_amplitude ≈
                 route.teukolsky_reflection / route.teukolsky_transmission rtol=1e-14
@@ -83,18 +83,18 @@
     end
 
     @testset "Reflected amplitude uncertainty" begin
-        direct = GSN.ISEM.DirectGSN
-        positive = direct.direct_gsn_radial(-2, 4, 4, 0.7, 0.1 - 0.05im, :IN)
-        negative = direct.direct_gsn_radial(-2, 4, -4, 0.7, -0.1 - 0.05im, :IN)
-        errors = direct.DirectMatching.direct_amplitude_errors(positive)
+        direct = GSN.ISEM
+        positive = direct.radial_route(-2, 4, 4, 0.7, 0.1 - 0.05im, :IN)
+        negative = direct.radial_route(-2, 4, -4, 0.7, -0.1 - 0.05im, :IN)
+        errors = direct.Matching.amplitude_errors(positive)
         @test all(isfinite, errors)
-        @test errors == direct.DirectMatching.direct_amplitude_errors(negative)
+        @test errors == direct.Matching.amplitude_errors(negative)
     end
 
     @testset "Real-frequency MST branch" begin
-        direct = GSN.ISEM.DirectGSN
-        mst = direct.DirectMSTInfinity
-        parameters = direct.direct_gsn_parameters(-2, 3, 3, 0.9, 1.0)
+        direct = GSN.ISEM
+        mst = direct.MSTInfinity
+        parameters = direct.gsn_parameters(-2, 3, 3, 0.9, 1.0)
         nu = mst._mst_data(parameters).params.nu
         amplitudes = mst.mst_principal_amplitudes(parameters, :IN)
         @test abs(imag(nu)) ≈ 1.2619741165113905 atol=1e-10 rtol=0
@@ -105,12 +105,12 @@
     @testset "Exact-extremal radial interface" begin
         X = GSN_radial(
             -2, 2, 2, 1.0, 0.3, IN, -40.0, 60.0;
-            method="GSN-ISEM", tolerance=1.0e-10)
-        @test X.method == "GSN-ISEM"
+            method="ISEM", tolerance=1.0e-10)
+        @test X.method == "ISEM"
         @test all(isfinite, X.GSN_solution(0.0))
         @test r_from_rstar(-1.0, rstar_from_r(-1.0, 2.0)) ≈ 2.0
         @test_throws DomainError GSN_radial(
-            -2, 2, 2, 1.0, 1.0, IN; method="GSN-ISEM")
+            -2, 2, 2, 1.0, 1.0, IN; method="ISEM")
     end
 
     @testset "QNM interface" begin
@@ -168,7 +168,7 @@
     @testset "Point-particle mode" begin
         mode = Teukolsky_pointparticle_mode(
             -2, 2, 2, 0, 0, 0.5, 8.0, 0.0, 1.0)
-        @test mode.method.radial_method == "GSN-ISEM"
+        @test mode.method.radial_method == "ISEM"
         @test isfinite(mode.amplitude)
         @test isfinite(mode.energy_flux)
         for constructor in (Teukolsky_pointparticle_mode, GSN_pointparticle_mode)

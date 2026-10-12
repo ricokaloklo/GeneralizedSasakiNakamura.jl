@@ -463,7 +463,7 @@ function _mst_amplitude_pair(result, omega)
     inputs = _radial_evaluation_inputs(result, omega)
     a, w = inputs.a, inputs.omega
     lambda = spin_weighted_spheroidal_eigenvalue(mode.s, mode.l, mode.m, a*w)
-    mst = ISEM.DirectGSN.DirectMSTInfinity
+    mst = ISEM.MSTInfinity
     nu = mst.mst_nu_complex(mode.s, mode.l, mode.m, a, w, lambda)
     amplitudes = mst.mst_nia_amplitudes(
         mode.s, mode.l, mode.m, a, w, lambda, :IN; nu)
@@ -476,7 +476,7 @@ function _mst_amplitude_pair(result, omega)
         gsn_incidence=amplitudes.gsn[1], gsn_reflection=amplitudes.gsn[2],
         teukolsky_incidence=amplitudes.teuk[1],
         teukolsky_reflection=amplitudes.teuk[2],
-        gsn_method="GSN-ISEM", gsn_lambda=lambda, teukolsky_lambda=lambda,
+        gsn_method="ISEM", gsn_lambda=lambda, teukolsky_lambda=lambda,
         gsn_normalization=UNIT_GSN_TRANS,
         teukolsky_normalization=UNIT_TEUKOLSKY_TRANS,
         incidence_backend=:mst_amplitudes, wronskian_drift=zero(real(w)),
@@ -485,7 +485,7 @@ end
 
 # Choose one amplitude backend for the whole stencil: the supplied or special
 # solvers, MST amplitudes when the default solver's centre uses them, or the
-# default two-ray GSN-ISEM route.
+# default two-ray ISEM route.
 function _excitation_pair_function(result, radial_solver, teukolsky_solver,
         incidence_tolerance)
     defaults = radial_solver in (GSN_radial, _qnm_default_radial_solver) &&

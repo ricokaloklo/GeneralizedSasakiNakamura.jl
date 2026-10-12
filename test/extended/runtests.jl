@@ -2,7 +2,7 @@
 using Test
 
 const TEST_GROUPS = (
-    "api", "homogeneous", "isem_direct", "qnm", "pointparticle_mode", "flux", "regression", "threads",
+    "api", "homogeneous", "isem", "qnm", "pointparticle_mode", "flux", "regression", "threads",
 )
 
 selection = get(ENV, "GSN_TEST_GROUPS", haskey(ENV, "GSN_TEST_LEVEL") ? "full" : "")

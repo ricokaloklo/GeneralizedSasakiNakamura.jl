@@ -101,17 +101,14 @@ Keyword summary:
 
 | keyword | default | meaning |
 | :--- | :--- | :--- |
-| `method` | `"auto"` | `"auto"` tries GSN-ISEM first and falls back to the legacy automatic route only on direct failure with no explicit `xm`; `"GSN-ISEM"` is strict; `"ISEM"` selects the original Teukolsky-based ISEM; `"linear"` and `"Riccati"` select the legacy GSN ODE solvers |
+| `method` | `"auto"` | `"auto"` tries ISEM first and falls back to the legacy automatic route only on an ISEM failure with no explicit `xm`; `"ISEM"` is strict; `"linear"` and `"Riccati"` select the legacy GSN ODE solvers |
 | `tol` | internal default | ISEM matching tolerance or alias for the ODE tolerance in high-level calls |
 | `tolerance` | internal default | legacy ODE tolerance; `tol` takes precedence when both are supplied |
-| `xm` | `nothing` | matching point: `0 < xm < 1` for GSN-ISEM; a negative matching coordinate for the original ISEM |
-| `rhom` | `nothing` | original ISEM matching control; use with `method = "ISEM"` |
-| `N` | `nothing` | optional ISEM expansion order override; when omitted, ISEM uses selector/default controls plus local-`N` rescue |
-| `sfe`, `lfe` | `nothing` | optional small/large-frequency expansion switches |
-| `TSinInf`, `TSoutInf`, `TSinHor`, `TSoutHor` | `nothing` | original ISEM identity switches; use with `method = "ISEM"` |
+| `xm` | `nothing` | ISEM matching point in the compact coordinate, `0 < xm < 1` |
+| `N` | `nothing` | optional ISEM expansion order override; chosen automatically when omitted |
+| `small_frequency_expansion`, `large_frequency_expansion` | `nothing` | optional switches for the small-frequency (MST) and large-frequency (eikonal) expansions; `nothing` selects them automatically |
 
-Omit optional matching controls to use automatic selection. Do not transfer an
-`xm` value between `"GSN-ISEM"` and `"ISEM"`; their coordinates differ.
+Omit optional matching controls to use automatic selection.
 If construction at an explicit `xm` fails, `"auto"` reports the failure rather
 than falling back to a legacy solver that ignores that junction.
 Automatic matching is recommended. For the tested UP mode
@@ -119,13 +116,15 @@ Automatic matching is recommended. For the tested UP mode
 explicit `xm = 0.4` gives an incidence error of `1.8151e-5` in reflection-amplitude
 units (`5.048e-10` in transmission-amplitude units); matching tolerance alone
 does not bound this cancellation error.
-Original-ISEM-only controls require `method = "ISEM"`; supplying them to
-`"auto"` or `"GSN-ISEM"` raises an `ArgumentError`.
+The v0.9.0 ISEM keywords `rhom`, `TSinInf`, `TSoutInf`, `TSinHor`, `TSoutHor`
+and the negative `xm` coordinate no longer exist; passing them raises an error.
 
 Only `omega == 0` uses the analytic static branch. Small nonzero frequencies
-retain their finite-frequency boundary conditions. The dedicated UP
-horizon-threshold branch requires exact equality with `omega = m a / (2 r_+)`;
-nearby frequencies are not substituted by that value. Likewise, exact-extremal
+retain their finite-frequency boundary conditions. At the superradiant threshold
+`omega = m a / (2 r_+)` the UP solution is always built with ISEM, using a
+logarithmic horizon solution; its incidence and reflection amplitudes are then the
+coefficients of that logarithmic horizon basis. Nearby frequencies are not
+substituted by the threshold value. Likewise, exact-extremal
 dispatch requires `a == 1` or `a == -1`.
 
 Returned objects are `TeukolskyRadialFunction`. They are callable:
@@ -148,7 +147,7 @@ X = GSN_radial(s, l, m, a, omega, IN; method = "auto")
 X = GSN_radial(s, l, m, a, omega, UP; method = "auto")
 ```
 
-`method = "auto"` tries the direct GSN-ISEM route first and falls back to the legacy automatic radial route only after a direct-construction failure with no explicit `xm`. `method = "GSN-ISEM"` is strict and does not fall back; `"direct_ISEM"` is a strict alias of it. The original Teukolsky-based ISEM is available as `"ISEM"`, and `"linear"` and `"Riccati"` select the legacy GSN ODE evolution. Matching controls, the static branch, and the superradiance-threshold branch follow the same rules as `Teukolsky_radial`.
+`method = "auto"` tries ISEM first and falls back to the legacy automatic radial route only after an ISEM failure with no explicit `xm`. `method = "ISEM"` is strict and does not fall back, and `"linear"` and `"Riccati"` select the legacy GSN ODE evolution. Matching controls, the static branch, and the superradiance-threshold branch follow the same rules as `Teukolsky_radial`.
 
 Returned objects are `GSNRadialFunction`. They are callable:
 
@@ -321,11 +320,14 @@ flux.horizon_energy_flux
 
 When `record = true` is used in the mode-summation interface, mode details are written to an HDF5 file. Records are stored hierarchically by shell indices and mode indices, with datasets for amplitudes, fluxes, and grid sizes. Complex quantities are stored by real and imaginary parts for portable HDF5 access.
 
-Use `HDF5.jl` to inspect the file:
+Without `record_path` the file name is built from the orbit, e.g.
+`eccentric_mode_data_a_..._p_..._e_....h5`. Use `HDF5.jl` to inspect the file:
 
 ```julia
 using HDF5
 
+flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.3, 1.0; record = true,
+    record_path = "eccentric_mode_data.h5")
 h5open("eccentric_mode_data.h5", "r") do f
     keys(f)
 end
@@ -369,7 +371,7 @@ Stores a homogeneous Teukolsky radial solution.
 | `transmission_amplitude` | Teukolsky transmission amplitude |
 | `incidence_amplitude` | Teukolsky incidence amplitude |
 | `reflection_amplitude` | Teukolsky reflection amplitude |
-| `P_solution` | internal ISEM `P` solution when available; this is an internal callable, not the public rescue interface |
+| `P_solution` | internal `P`-equation solution when available (complex frequencies); an internal callable |
 | `GSN_solution` | associated `GSNRadialFunction` when available |
 | `Teukolsky_solution` | callable radial solution |
 | `normalization_convention` | normally `UNIT_TEUKOLSKY_TRANS` |
@@ -388,7 +390,7 @@ Stores a homogeneous GSN radial solution.
 | `transmission_amplitude` | GSN transmission amplitude |
 | `incidence_amplitude` | GSN incidence amplitude |
 | `reflection_amplitude` | GSN reflection amplitude |
-| `numerical_GSN_solution` | ODE solution for legacy methods; matching metadata for `method == "ISEM"` or `method == "GSN-ISEM"` |
+| `numerical_GSN_solution` | ODE solution for legacy methods; matching metadata for `method == "ISEM"` |
 | `numerical_Riccati_solution` | Riccati ODE solution when applicable |
 | `GSN_solution` | callable GSN radial solution |
 | `normalization_convention` | normally `UNIT_GSN_TRANS` |
@@ -405,12 +407,12 @@ Amplitude estimates do not bound errors in `X`, `R`, or `Y` evaluations. Even at
 For example, tested real-frequency cases with `s = -2`, `l = m = 2:4`, and `abs(omega) = 3` have reflection amplitudes with no reliable relative digits. These are not high-accuracy reflection results even when the dominant amplitude is accurate.
 
 Explicit legacy methods have separate low-frequency limits. At
-`(s,l,m,a,omega) = (2,2,-1,0.47302630436742865,-1e-4)`, `method="ISEM"`
-returns an unreliable `R(6)` (reference-relative error about `674`; the
-error slot is about `1.08` in returned-value units). `method="Riccati"`
+`(s,l,m,a,omega) = (2,2,-1,0.47302630436742865,-1e-4)`, `method="Riccati"`
 agrees with the default near-zone value to about `5e-14`, but its incidence
 amplitude is wrong with the default outer boundary. An accurate local
-radial value does not certify the legacy far-field amplitudes.
+radial value does not certify the legacy far-field amplitudes. Below
+`|omega| = 1e-8` the legacy ODE routes lose the UP solution; `method = "auto"`
+warns when it falls back to them there.
 
 ### `TeukolskyPointParticleMode` and `GSNPointParticleMode`
 
@@ -463,6 +465,12 @@ end
 | `with_pointparticle_submission(f, a, p, e, x; Nmax = 2^14, Kmax = 2^12, stop_requested = nothing)` | create a submission for one orbit and sampling grid, call `f(submission)`, then wait for every admitted mode and task before releasing internal caches |
 | `spawn_pointparticle_submission!(f, submission)` | start a task registered with the submission; it is joined before the submission is released |
 | `cancel_pointparticle_submission!(submission; reason)` | stop admitting new modes; modes already running finish normally |
+
+```@docs
+with_pointparticle_submission
+spawn_pointparticle_submission!
+cancel_pointparticle_submission!
+```
 
 `Teukolsky_pointparticle_mode`, `GSN_pointparticle_mode` and
 `Teukolsky_pointparticle_flux` accept `submission` and `stop_requested`
