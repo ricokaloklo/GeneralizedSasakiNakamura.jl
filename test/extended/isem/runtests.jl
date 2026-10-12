@@ -8,7 +8,7 @@ include(data_file("radial_references.jl"))
 include(data_file("positive_axis_references.jl"))
 
 const D = GSN.ISEM
-const MST = D.MSTInfinity
+const ManoSuzukiTakasugi = D.ManoSuzukiTakasugiInfinity
 
 dominant(x, y) = max(abs(x), abs(y))
 point(id) = only(p for p in STRONG_DAMPING_POINTS if p.id == id)
@@ -218,18 +218,18 @@ end
     for p in level_subset(rows, 5)
         @testset "$(p.id)" begin
             params = D.gsn_parameters(p.s, p.l, p.m, p.a, real(p.omega))
-            nu = MST._mst_data(params).params.nu
+            nu = ManoSuzukiTakasugi._mano_suzuki_takasugi_data(params).params.nu
             @test isfinite(nu)
-            amplitudes = MST.mst_principal_amplitudes(params, :IN)
+            amplitudes = ManoSuzukiTakasugi.mano_suzuki_takasugi_principal_amplitudes(params, :IN)
             @test relerr(amplitudes.teuk[1], p.binc) <= 1e-9
             @test scaled_err(amplitudes.teuk[2], p.bref, dominant(p.binc, p.bref)) <= 1e-9
         end
     end
     # Registered case: R_l3_a0.9_w1 with nu = 2.5 + 1.262i (mod integers, nu -> -nu-1).
     params = D.gsn_parameters(-2, 3, 3, 0.9, 1.0)
-    nu = MST._mst_data(params).params.nu
+    nu = ManoSuzukiTakasugi._mano_suzuki_takasugi_data(params).params.nu
     @test abs(imag(nu)) ≈ 1.2619741165113905 atol=1e-10 rtol=0
-    @test MST.mst_principal_amplitudes(params, :IN).teuk[1] ≈ 0.5043157658448172 - 0.24588840385554175im rtol=1e-10
+    @test ManoSuzukiTakasugi.mano_suzuki_takasugi_principal_amplitudes(params, :IN).teuk[1] ≈ 0.5043157658448172 - 0.24588840385554175im rtol=1e-10
 end
 
 # ---------------------------------------------------------------------------------------------------
@@ -294,7 +294,7 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # The full-state MST backend on the qnm(.68) stencil is rejected, i.e. it fails closed.
-# complex_nia_jump is not verified (no independent reference).
+# complex_negative_imaginary_axis_jump is not verified (no independent reference).
 # ---------------------------------------------------------------------------------------------------
 @testset "fail-closed and unverified paths" begin
     w = 0.5239751042900836 - 0.08151262363120163im

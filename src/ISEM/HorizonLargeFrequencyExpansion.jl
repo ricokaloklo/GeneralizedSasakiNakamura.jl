@@ -9,7 +9,7 @@ using ..OrdinaryPointExpansion:
     poly_value
 
 export HorizonLargeFrequencyExpansionPatch
-export lfeh_single, lfeh_pair, lfeh_value, lfeh_state
+export large_frequency_expansion_horizon_single, large_frequency_expansion_horizon_pair, large_frequency_expansion_horizon_value, large_frequency_expansion_horizon_state
 
 # Horizon patches for the large-frequency route: the horizon Frobenius series is
 # used directly from the seed point out to the largest x below the matching point
@@ -23,6 +23,9 @@ const LARGE_FREQUENCY_EXPANSION_HORIZON_RESIDUAL = 1e-14
 const LARGE_FREQUENCY_EXPANSION_HORIZON_CHECK = 1e-10
 const LARGE_FREQUENCY_EXPANSION_HORIZON_SAFETY = 0.8
 
+# Horizon series patch on [center_x, next_x]:
+# X(x) = scale * x^exponent * sum_k coeffs[k+1] x^k; evaluate with `large_frequency_expansion_horizon_state`
+# (X, dXdx, d2Xdx2) or `large_frequency_expansion_horizon_value` (X only).
 struct HorizonLargeFrequencyExpansionPatch
     center_x::Float64
     next_x::Float64
@@ -76,7 +79,7 @@ function _candidate(solution, x, A, B)
     highest = solution.effective_order - mod(
         solution.effective_order - LARGE_FREQUENCY_EXPANSION_HORIZON_MIN_ORDER, LARGE_FREQUENCY_EXPANSION_HORIZON_ORDER_STEP)
     highest >= LARGE_FREQUENCY_EXPANSION_HORIZON_MIN_ORDER || return nothing
-    for order in LARGE_FREQUENCY_EXPANSION_HORIZON_MIN_ORDER:LFEH_ORDER_STEP:highest
+    for order in LARGE_FREQUENCY_EXPANSION_HORIZON_MIN_ORDER:LARGE_FREQUENCY_EXPANSION_HORIZON_ORDER_STEP:highest
         full = _state(solution, x, order)
         nested = _state(solution, x, order - LARGE_FREQUENCY_EXPANSION_HORIZON_ORDER_STEP)
         tail = _tail(solution, x, order)
@@ -108,7 +111,7 @@ function _single(coefficients, solution, seed_x, scale, match_x)
                     ComplexF64(solution.exponent),
                     copy(@view(solution.coefficients[1:(safe.order + 1)])),
                     ComplexF64(scale))
-                return (; patch, state=lfeh_state(patch, safe_target),
+                return (; patch, state=large_frequency_expansion_horizon_state(patch, safe_target),
                     target=safe_target, order=safe.order, tail=safe.tail,
                     residual=safe.residual, check=safe.check)
             end
@@ -118,7 +121,9 @@ function _single(coefficients, solution, seed_x, scale, match_x)
     return nothing
 end
 
-function lfeh_single(coefficients::CoefficientSet, branch,
+# Horizon-series patch for `branch` from seed_x toward match_x (see `_single`);
+# returns the patch, its state at the end point and the check values, or nothing.
+function large_frequency_expansion_horizon_single(coefficients::CoefficientSet, branch,
         seed_x, scale, match_x)
     solution = zero_local_solution(
         coefficients, branch, LARGE_FREQUENCY_EXPANSION_HORIZON_MAX_ORDER)
@@ -126,8 +131,8 @@ function lfeh_single(coefficients::CoefficientSet, branch,
         coefficients, solution, Float64(seed_x), scale, match_x)
 end
 
-# Two-branch version of lfeh_single; both branches must pass at the same end point.
-function lfeh_pair(coefficients::CoefficientSet,
+# Two-branch version of large_frequency_expansion_horizon_single; both branches must pass at the same end point.
+function large_frequency_expansion_horizon_pair(coefficients::CoefficientSet,
         branch1, scale1, branch2, scale2, seed_x, match_x)
     solution1 = zero_local_solution(
         coefficients, branch1, LARGE_FREQUENCY_EXPANSION_HORIZON_MAX_ORDER)
@@ -158,8 +163,8 @@ function lfeh_pair(coefficients::CoefficientSet,
                 return (
                     patch1,
                     patch2,
-                    state1=lfeh_state(patch1, safe_target),
-                    state2=lfeh_state(patch2, safe_target),
+                    state1=large_frequency_expansion_horizon_state(patch1, safe_target),
+                    state2=large_frequency_expansion_horizon_state(patch2, safe_target),
                     target=safe_target,
                     tail=max(first.tail, second.tail),
                     residual=max(first.residual, second.residual),
@@ -172,7 +177,7 @@ function lfeh_pair(coefficients::CoefficientSet,
     return nothing
 end
 
-function lfeh_state(patch::HorizonLargeFrequencyExpansionPatch, x)
+function large_frequency_expansion_horizon_state(patch::HorizonLargeFrequencyExpansionPatch, x)
     X, dXdx, d2Xdx2 = horizon_series_triple(
         patch.coeffs, patch.exponent, x)
     return (
@@ -182,6 +187,6 @@ function lfeh_state(patch::HorizonLargeFrequencyExpansionPatch, x)
     )
 end
 
-lfeh_value(patch::HorizonLargeFrequencyExpansionPatch, x) = lfeh_state(patch, x).X
+large_frequency_expansion_horizon_value(patch::HorizonLargeFrequencyExpansionPatch, x) = large_frequency_expansion_horizon_state(patch, x).X
 
 end

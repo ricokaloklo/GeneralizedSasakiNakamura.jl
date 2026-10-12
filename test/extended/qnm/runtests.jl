@@ -185,7 +185,7 @@ end
             if !r.within_rounding
                 # n = 11, 13 ordinary differ from the printed values by 6.1e-8 / 3.8e-7 in a separate
                 # implementation; printed rounding and solver error are not yet distinguished.
-                @test_skip "QNM published-residue backlog, ordinary n=$(r.n)" == ""
+                @test_skip "QNM published residue, ordinary n=$(r.n)" == ""
             else
                 # These published rows retain the table's complete-spectrum labels.
                 convention = get(r, :convention, :overtone)
@@ -438,12 +438,12 @@ end
     m0 = QNMMode(-2, 2, 0, 10)
     h = Q._root_derivative_step(Float64, 0.0 - 2.5im)
     # Endpoint predicate: last accepted root within 2h of the axis, or a predictor on/over it.
-    @test Q._nia_endpoint_detected(m0, 1.5h - 2.5im, 0.01 - 2.5im, :root_line_search_stagnation)
-    @test Q._nia_endpoint_detected(m0, 0.3 - 2.5im, -1e-6 - 2.5im, :root_line_search_stagnation)
-    @test Q._nia_endpoint_detected(m0, 0.3 - 2.5im, 0.29 - 2.5im, :initial_guess_off_branch)
-    @test !Q._nia_endpoint_detected(m0, 0.3 - 2.5im, 0.29 - 2.5im, :root_line_search_stagnation)
-    @test !Q._nia_endpoint_detected(QNMMode(-2, 2, 2, 8), 1e-9 - 2.0im, -1e-6 - 2.0im, :initial_guess_off_branch)
-    @test Q._nia_endpoint_detected(QNMMode(-2, 2, 0, 10, :negative_real), -1.5h - 2.5im, nothing, :root_iteration_limit)
+    @test Q._negative_imaginary_axis_endpoint_detected(m0, 1.5h - 2.5im, 0.01 - 2.5im, :root_line_search_stagnation)
+    @test Q._negative_imaginary_axis_endpoint_detected(m0, 0.3 - 2.5im, -1e-6 - 2.5im, :root_line_search_stagnation)
+    @test Q._negative_imaginary_axis_endpoint_detected(m0, 0.3 - 2.5im, 0.29 - 2.5im, :initial_guess_off_branch)
+    @test !Q._negative_imaginary_axis_endpoint_detected(m0, 0.3 - 2.5im, 0.29 - 2.5im, :root_line_search_stagnation)
+    @test !Q._negative_imaginary_axis_endpoint_detected(QNMMode(-2, 2, 2, 8), 1e-9 - 2.0im, -1e-6 - 2.0im, :initial_guess_off_branch)
+    @test Q._negative_imaginary_axis_endpoint_detected(QNMMode(-2, 2, 0, 10, :negative_real), -1.5h - 2.5im, nothing, :root_iteration_limit)
     # Labels: segment 1 adds the suffix _1; segment 0 leaves every field unchanged.
     contract0 = Q._schwarzschild_label_contract(m0, :overtone, 0.5)
     @test Q._schwarzschild_label_contract(m0, :overtone, 0.5; segment=0) == contract0

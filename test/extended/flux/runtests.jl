@@ -125,8 +125,8 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # Kerr spherical orbits. Reference: independent full-grid sum (SPHERICAL_FULLGRID) when present, otherwise the
-# tol = 1e-10 candidate run (CANDIDATE_TOL10, frozen self-reference; agrees with the full grid to <= 3e-11 at
-# the orbits where both exist). Rows without an independent full-grid reference are marked as skipped.
+# frozen tol = 1e-10 self-reference (CANDIDATE_TOL10; agrees with the full grid to <= 3e-11 at the orbits
+# where both exist). Rows without an independent full-grid reference are marked as skipped.
 # ---------------------------------------------------------------------------------------------------
 SPHERICAL_ORBITS = [(r.a, r.p, r.x) for r in CANDIDATE_TOL10 if r.e == 0]
 @testset "Kerr spherical" begin
@@ -176,7 +176,7 @@ end
 end
 
 # Leading quadrupole limit, not a finite-frequency accuracy certificate.
-@testset "large-p circular quadrupole limit (items 1/12)" begin
+@testset "large-p circular quadrupole limit" begin
     previous = Inf
     for p in (1e5, 1e6, 1e7, 2e7, 3e7, 1.6e8, 1e9)
         mode = Teukolsky_pointparticle_mode(-2, 2, 2, 0, 0, 0.5, p, 0.0, 1.0)

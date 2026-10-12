@@ -1,11 +1,17 @@
-module NIAAmplitudes
+module NegativeImaginaryAxisAmplitudes
 
-import ..MSTInfinity
-using ..MSTInfinity:
-    mst_anchor,
-    mst_nia_amplitudes,
-    mst_nu_complex,
-    mst_principal_amplitudes
+# Special routes for complex frequencies near the negative imaginary axis: replace or
+# check the amplitudes of a ComplexRoute with the analytic MST amplitudes and anchor
+# its state evaluator to the MST solution at x = _STATE_ANCHOR_X. Registered with
+# ComplexFrequency as a special route builder (`build`) and a post-route hook
+# (`_post_overlay`).
+
+import ..ManoSuzukiTakasugiInfinity
+using ..ManoSuzukiTakasugiInfinity:
+    mano_suzuki_takasugi_anchor,
+    mano_suzuki_takasugi_negative_imaginary_axis_amplitudes,
+    mano_suzuki_takasugi_nu_complex,
+    mano_suzuki_takasugi_principal_amplitudes
 using ..CoefficientTables: gsn_coefficients
 using ..Parameters:
     gsn_controls,
@@ -17,7 +23,7 @@ import ..ComplexRational
 using ..ComplexFrequency:
     ComplexRoute,
     ComplexRoutePlan,
-    ComplexSFEvaluator,
+    ComplexSmallFrequencyExpansionEvaluator,
     ComplexStateEvaluator
 using ..ComplexRational:
     ComplexRationalEvaluator,
@@ -25,9 +31,12 @@ using ..ComplexRational:
 
 const _REAL_RATIO_MAX = 1.0e-8
 const _NONROTATING_MAX_ABS_A = 64eps(Float64)
+# |Im omega| window of the nonrotating |s| = 2 pretrigger (_pretrigger);
+# _MAX_ABS_IMAG_OMEGA is also the default |omega| ceiling of the P-route retry
+# with _fast_route (_fast_p_pretrigger).
 const _MIN_ABS_IMAG_OMEGA = 1.8
 const _MAX_ABS_IMAG_OMEGA = 2.2
-const _NIA_LATERAL_REAL_RATIO_MAX = 1.0e-6
+const _NEGATIVE_IMAGINARY_AXIS_LATERAL_REAL_RATIO_MAX = 1.0e-6
 const _STATE_ANCHOR_X = 0.5
 const _STATE_ANCHOR_MAX_ERROR = 1.0e-10
 const _REAL_AXIS_ANCHOR_MIN_DEPARTURE = 1.0e-8
@@ -35,7 +44,7 @@ const _STATE_ANCHOR_SUM_TOLERANCE = 1.0e-11
 const _STATE_ANCHOR_RELAXED_TOLERANCE = 1.0e-9
 const _STATE_ANCHOR_RELAXED_REAL_RATIO_MAX = 1.0e-3
 const _AMPLITUDE_AGREEMENT_MAX = 1.0e-10
-const _MST_STATE_NU_DELTA_MIN = 1.0e-10
+const _MANO_SUZUKI_TAKASUGI_STATE_NU_DELTA_MIN = 1.0e-10
 const _FAST_ANCHOR_MIN_OMEGA = 0.025
 const _FAST_ANCHOR_MAX_OMEGA = 2.0
 const _FAST_ANCHOR_RATIO_LOW = 0.2
@@ -473,7 +482,7 @@ end
     require_certificate && return false
     _allows_uncertified_anchor(omega) && return true
     return isfinite(anchor.condition) &&
-        anchor.condition <= MSTInfinity.MST_COEFF_CONDITION_MAX
+        anchor.condition <= ManoSuzukiTakasugiInfinity.MANO_SUZUKI_TAKASUGI_COEFF_CONDITION_MAX
 end
 
 @inline function _allows_relaxed_state_anchor(omega)
@@ -488,7 +497,7 @@ end
 # Outgoing MST state at x = _STATE_ANCHOR_X. Uses the monodromy state at the
 # complex nu when nu is away from an integer and the sum converges, else the
 # principal-branch anchor; `certified` and `source` record which was used.
-function _mst_out_anchor(
+function _mano_suzuki_takasugi_out_anchor(
     source;
     nu=nothing,
     allow_relaxed::Bool=false,
@@ -496,7 +505,7 @@ function _mst_out_anchor(
     params = hasproperty(source, :params) ? source.params : source
     selected_nu = if nu === nothing
         try
-            mst_nu_complex(
+            mano_suzuki_takasugi_nu_complex(
                 params.s,
                 params.l,
                 params.m,
@@ -513,9 +522,9 @@ function _mst_out_anchor(
     if selected_nu !== nothing
         selected_nu = ComplexF64(selected_nu)
         nu_delta = _nu_delta(selected_nu)
-        if nu_delta > _MST_STATE_NU_DELTA_MIN
+        if nu_delta > _MANO_SUZUKI_TAKASUGI_STATE_NU_DELTA_MIN
             selected = try
-                MSTInfinity.mst_monodromy_state(
+                ManoSuzukiTakasugiInfinity.mano_suzuki_takasugi_monodromy_state(
                     params,
                     _STATE_ANCHOR_X;
                     tolerance=_STATE_ANCHOR_SUM_TOLERANCE,
@@ -541,7 +550,7 @@ function _mst_out_anchor(
     fallback_tolerance =
         allow_relaxed && _allows_relaxed_state_anchor(params.omega) ?
         _STATE_ANCHOR_RELAXED_TOLERANCE : nothing
-    principal = mst_anchor(
+    principal = mano_suzuki_takasugi_anchor(
         source,
         :out,
         _STATE_ANCHOR_X;
@@ -560,7 +569,7 @@ function _mst_out_anchor(
         relaxed_sum,
     ))
     nu_delta = _nu_delta(selected_nu)
-    nu_delta <= _MST_STATE_NU_DELTA_MIN &&
+    nu_delta <= _MANO_SUZUKI_TAKASUGI_STATE_NU_DELTA_MIN &&
         return merge(principal, (
             source=relaxed_sum ? :principal_relaxed : :principal,
             nu_delta,
@@ -578,6 +587,9 @@ function _mst_out_anchor(
     ))
 end
 
+# UP state anchor for P-state evaluators: compare the evaluator's state at
+# _STATE_ANCHOR_X with the MST outgoing anchor; keep it when they agree, rescale
+# it when a projective fit agrees, otherwise record the rejection in the metadata.
 function _p_state_anchor(
     route,
     evaluator;
@@ -593,7 +605,7 @@ function _p_state_anchor(
         params.omega;
         lambda=params.lambda,
     )
-    anchor = _mst_out_anchor(mst_params; nu)
+    anchor = _mano_suzuki_takasugi_out_anchor(mst_params; nu)
     source = anchor.source
     !_anchor_accepted(anchor, params.omega, require_certificate) && return (
         evaluator,
@@ -619,12 +631,12 @@ function _p_state_anchor(
             mst_state_anchor_scale=ComplexF64(NaN, NaN),
         ),
     )
-    r = MSTInfinity._x_to_r(params, _STATE_ANCHOR_X)
+    r = ManoSuzukiTakasugiInfinity._x_to_r(params, _STATE_ANCHOR_X)
     current_state = ComplexFrequency._state_at_r(evaluator, r)
     current = (current_state.X, current_state.dXdrstar)
     target = (
         anchor.X,
-        anchor.dXdx * MSTInfinity._dx_drstar(
+        anchor.dXdx * ManoSuzukiTakasugiInfinity._dx_drstar(
             params, _STATE_ANCHOR_X),
     )
     disagreement = all(_finite, current) ?
@@ -691,6 +703,7 @@ function _p_state_anchor(
     )
 end
 
+# As _p_state_anchor, for small-frequency-expansion evaluators.
 function _small_frequency_expansion_state_anchor(
     route,
     evaluator;
@@ -698,7 +711,7 @@ function _small_frequency_expansion_state_anchor(
     require_certificate::Bool=false,
 )
     coefficients = evaluator.route.coefficients
-    anchor = _mst_out_anchor(coefficients; nu)
+    anchor = _mano_suzuki_takasugi_out_anchor(coefficients; nu)
     source = anchor.source
     !_anchor_accepted(
         anchor,
@@ -729,10 +742,10 @@ function _small_frequency_expansion_state_anchor(
         ),
     )
     params = evaluator.route.params
-    r = MSTInfinity._x_to_r(params, _STATE_ANCHOR_X)
+    r = ManoSuzukiTakasugiInfinity._x_to_r(params, _STATE_ANCHOR_X)
     current_state = ComplexFrequency._state_at_r(evaluator, r)
     dxdrstar =
-        MSTInfinity._dx_drstar(params, _STATE_ANCHOR_X)
+        ManoSuzukiTakasugiInfinity._dx_drstar(params, _STATE_ANCHOR_X)
     current = (current_state.X, current_state.dXdrstar)
     target = (anchor.X, anchor.dXdx * dxdrstar)
     disagreement = all(_finite, current) ?
@@ -808,7 +821,7 @@ function _state_anchor(
         metadata=(;),
     )
     evaluator = route.state_evaluator
-    evaluator isa ComplexSFEvaluator &&
+    evaluator isa ComplexSmallFrequencyExpansionEvaluator &&
         return _small_frequency_expansion_state_anchor(
             route,
             evaluator;
@@ -826,7 +839,7 @@ function _state_anchor(
         evaluator,
         metadata=(;),
     )
-    anchor = _mst_out_anchor(
+    anchor = _mano_suzuki_takasugi_out_anchor(
         evaluator.coefficients;
         nu,
         allow_relaxed=true,
@@ -956,7 +969,7 @@ function _analytic_result(route)
     evaluator = route.state_evaluator
     if evaluator isa ComplexRationalEvaluator
         principal = try
-            mst_principal_amplitudes(
+            mano_suzuki_takasugi_principal_amplitudes(
                 evaluator.coefficients, route.branch)
         catch
             nothing
@@ -965,14 +978,14 @@ function _analytic_result(route)
             return principal, nothing, :principal
     end
     refined_nu = try
-        mst_nu_complex(
+        mano_suzuki_takasugi_nu_complex(
             p.s, p.l, p.m, p.a, p.omega, p.lambda)
     catch
         nothing
     end
     if refined_nu !== nothing
         refined = try
-            mst_nia_amplitudes(
+            mano_suzuki_takasugi_negative_imaginary_axis_amplitudes(
                 p.s,
                 p.l,
                 p.m,
@@ -1099,18 +1112,18 @@ function _fast_route(
         return nothing
     end
     data = try
-        MSTInfinity._mst_data(params)
+        ManoSuzukiTakasugiInfinity._mano_suzuki_takasugi_data(params)
     catch
         return nothing
     end
     result = try
-        MSTInfinity._principal_amplitudes(data, branch_symbol)
+        ManoSuzukiTakasugiInfinity._principal_amplitudes(data, branch_symbol)
     catch error
-        error isa MSTInfinity.MSTCertificateError &&
+        error isa ManoSuzukiTakasugiInfinity.ManoSuzukiTakasugiCertificateError &&
             error.kind == :nia_amplitude_certificate ||
             return nothing
         try
-            MSTInfinity._refined_amplitudes(
+            ManoSuzukiTakasugiInfinity._refined_amplitudes(
                 data, branch_symbol)
         catch
             return nothing
@@ -1124,8 +1137,8 @@ function _fast_route(
         (tol === nothing ? _FAST_ANCHOR_TOLERANCE : tol) || return nothing
     state_data = if hasproperty(result, :nu)
         refined_nu = ComplexF64(result.nu)
-        MSTInfinity._nia_series_data(
-            MSTInfinity.MSTParams(
+        ManoSuzukiTakasugiInfinity._negative_imaginary_axis_series_data(
+            ManoSuzukiTakasugiInfinity.ManoSuzukiTakasugiParams(
                 data.params.s,
                 data.params.l,
                 data.params.m,
@@ -1134,7 +1147,7 @@ function _fast_route(
                 data.params.lambda,
                 refined_nu,
             ),
-            MSTInfinity.MST_NIA_TAIL,
+            ManoSuzukiTakasugiInfinity.MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_TAIL,
         )
     else
         data
@@ -1154,7 +1167,7 @@ function _fast_route(
     end
     state = try
         if branch_symbol == :UP
-            anchor = _mst_out_anchor(
+            anchor = _mano_suzuki_takasugi_out_anchor(
                 coefficients;
                 nu=hasproperty(result, :nu) ? result.nu : nothing,
                 allow_relaxed=true,
@@ -1170,26 +1183,26 @@ function _fast_route(
             )
         else
             pin = if hasproperty(result, :nu_offset_dd)
-                MSTInfinity._dd_pin_state(
+                ManoSuzukiTakasugiInfinity._dd_pin_state(
                     coefficients,
                     state_data,
                     result.nu_offset_dd,
                     _STATE_ANCHOR_X;
-                    scale=MSTInfinity._pin_unit_scale(params),
+                    scale=ManoSuzukiTakasugiInfinity._pin_unit_scale(params),
                 )
             else
                 plan = (
                     data=state_data,
-                    converter=MSTInfinity._p_converter(params),
-                    pin_norm=MSTInfinity._incoming_raw_factor(
+                    converter=ManoSuzukiTakasugiInfinity._p_converter(params),
+                    pin_norm=ManoSuzukiTakasugiInfinity._incoming_raw_factor(
                         state_data),
                     pin_scale=nothing,
                 )
-                MSTInfinity.mst_pin_state(
+                ManoSuzukiTakasugiInfinity.mano_suzuki_takasugi_pin_state(
                     coefficients,
                     plan,
                     _STATE_ANCHOR_X;
-                    scale=MSTInfinity._pin_unit_scale(params),
+                    scale=ManoSuzukiTakasugiInfinity._pin_unit_scale(params),
                 )
             end
             (
@@ -1473,7 +1486,7 @@ end
     imag(omega) < 0 || return false
     !iszero(real(omega)) || return false
     near_nia = abs(real(omega)) <=
-        _NIA_LATERAL_REAL_RATIO_MAX * max(abs(imag(omega)), 1.0)
+        _NEGATIVE_IMAGINARY_AXIS_LATERAL_REAL_RATIO_MAX * max(abs(imag(omega)), 1.0)
     near_nia && return true
     amplitude_backend = hasproperty(route.metadata, :amplitude_backend) ?
         route.metadata.amplitude_backend : :unknown
@@ -1669,7 +1682,7 @@ function _post_overlay_triggered(route, amplitude_trigger, state_trigger)
     analytic = amplitude_trigger ? _analytic_result(route) : nothing
     p = route.params
     near_nia = abs(real(p.omega)) <=
-        _NIA_LATERAL_REAL_RATIO_MAX * max(abs(imag(p.omega)), 1.0)
+        _NEGATIVE_IMAGINARY_AXIS_LATERAL_REAL_RATIO_MAX * max(abs(imag(p.omega)), 1.0)
     if analytic === nothing
         (near_nia || state_trigger) || return route
         anchor = try
@@ -1834,7 +1847,7 @@ function _build_triggered(s, l, m, a, omega, branch)
         return nothing
     end
     result = try
-        mst_nia_amplitudes(
+        mano_suzuki_takasugi_negative_imaginary_axis_amplitudes(
             route.params.s,
             route.params.l,
             route.params.m,

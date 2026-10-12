@@ -38,6 +38,7 @@ const SWSH_MIN_BUFFER = 10
 const SWSH_MAX_REFINEMENTS = 20
 const SWSH_LAPACK = LinearAlgebra.LAPACK.liblapack
 
+# Whether s is one of the tabulated spin weights -2..2.
 supported_spin_weight(s::Integer) = s in (-2, -1, 0, 1, 2)
 
 # Mode parameters in units M = 1, with a = sin(nu) and kappa = cos(nu) = sqrt(1 - a^2).
@@ -80,6 +81,10 @@ struct SpinSelection
     m_ratio::Float64
 end
 
+# Resolved solver controls: series orders at the horizon, ordinary points and
+# infinity, matching point, tolerance, bases, the selected frequency regime, and
+# `source`, which records whether the matching controls are defaults (:default),
+# user-set (:user) or defaults adjusted for the route.
 struct GSNControls
     horizon_order::Int
     ordinary_order::Int
@@ -186,6 +191,7 @@ end
     return muladd(c, muladd(c, lambda2, lambda1), lambda0)
 end
 
+# Band-matrix entries of the spheroidal operator in the spin-weighted spherical basis.
 @inline function _swsh_matrix_coefficient(c, s::Int, m::Int, l::Int, lprime::Int)
     if lprime == l
         f = _swsh_f(s, l, m)
@@ -656,8 +662,5 @@ function gsn_controls(
         control_source,
     )
 end
-
-gsn_controls(s::Integer, l::Integer, m::Integer, a, omega; kwargs...) =
-    gsn_controls(gsn_parameters(s, l, m, a, omega); kwargs...)
 
 end

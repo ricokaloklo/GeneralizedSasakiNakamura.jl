@@ -103,7 +103,7 @@ end
     end
 end
 
-# Open: mst_nu_complex rejects nu at grid id32/id62 by Float64 evaluation noise. Not observable through public
+# Open: mano_suzuki_takasugi_nu_complex rejects nu at grid id32/id62 by Float64 evaluation noise. Not observable through public
 # values (MST condition 1e10-1e11 there); needs an internal reproducer with a BigFloat nu reference.
 @testset "nu gate (open)" begin
     @test_skip false
@@ -189,7 +189,7 @@ end
 
 # Weak-damping UP state: R(5), R(10) at grid 64/134/38/164/8 UP (omega = 0.1-0.05i) against the independent
 # 896-bit grid references (GRID_REFERENCES).
-@testset "weak-damping UP state (jq12s1)" begin
+@testset "weak-damping UP state" begin
     refs = Dict((r.id, r.branch) => r for r in GRID_REFERENCES)
     for id in (64, 134, 38, 164, 8)
         g = grid_point(id)

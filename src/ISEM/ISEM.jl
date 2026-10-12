@@ -41,8 +41,8 @@ include("InfinityLargeFrequencyExpansion.jl")
 using .InfinityLargeFrequencyExpansion
 include("Iteration.jl")
 using .Iteration
-include("MSTInfinity.jl")
-using .MSTInfinity
+include("ManoSuzukiTakasugiInfinity.jl")
+using .ManoSuzukiTakasugiInfinity
 include("Matching.jl")
 using .Matching
 include("AsymptoticAmplitudes.jl")
@@ -53,8 +53,8 @@ include("ComplexRational.jl")
 using .ComplexRational
 include("ComplexFrequency.jl")
 using .ComplexFrequency
-include("NIAAmplitudes.jl")
-using .NIAAmplitudes
+include("NegativeImaginaryAxisAmplitudes.jl")
+using .NegativeImaginaryAxisAmplitudes
 
 register_coefficient_backend!(GeneratedBackend.generated_coefficients)
 
@@ -426,7 +426,7 @@ function _build_y_solution_from_gsn(s, l, m, a, omega, boundary_condition;
 end
 
 """
-    Y_radial(s, l, m, a, omega, boundary_condition; method="auto", xm=nothing, N=nothing, tol=nothing, small_frequency_expansion=nothing, large_frequency_expansion=nothing)
+    Y_radial(s, l, m, a, omega, boundary_condition; method="auto", xm=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing)
 
 Construct the auxiliary radial function Y used by the point-particle convolution integrals for the mode
 `(s, l, m, a, omega)` and return a `YRadialFunction`; only `s = -2` with `IN` and `s = +2` with `UP` are
@@ -435,12 +435,12 @@ supported, and `omega` must be nonzero. `method = "auto"` or `"ISEM"` builds Y w
 real part are obtained from the mirror modes. `xm`, `N`, `tol` and the expansion switches are passed to ISEM
 as in `GSN_radial`.
 """
-function Y_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::BoundaryCondition; method="auto", xm=nothing, N=nothing, tol=nothing, small_frequency_expansion=nothing, large_frequency_expansion=nothing)
+function Y_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::BoundaryCondition; method="auto", xm=nothing, N=nothing, tol=nothing, sfe=nothing, lfe=nothing)
     GeneralizedSasakiNakamura._check_radial_options(method, xm)
     if a < zero(a)
         positive = Y_radial(
             s, l, -m, -a, omega, boundary_condition;
-            method, xm, N, tol, small_frequency_expansion, large_frequency_expansion)
+            method, xm, N, tol, sfe, lfe)
         return _spin_reflect_y_radial_function(positive, m, a)
     end
     if _is_static_frequency(omega)
@@ -451,7 +451,7 @@ function Y_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::Boundary
             s, l, m, a, omega, boundary_condition;
             method=method == "auto" ? "ISEM" : method, tol=tol, allow_complex=true)
     elseif _is_reflected_lhp_frequency(omega)
-        positive_func = Y_radial(s, l, -m, a, -conj(omega), boundary_condition; method=method, xm=xm, N=N, tol=tol, small_frequency_expansion=small_frequency_expansion, large_frequency_expansion=large_frequency_expansion)
+        positive_func = Y_radial(s, l, -m, a, -conj(omega), boundary_condition; method=method, xm=xm, N=N, tol=tol, sfe=sfe, lfe=lfe)
         return _conjugate_y_radial_function(positive_func, m, omega)
     end
 
@@ -460,8 +460,8 @@ function Y_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition::Boundary
         branch = boundary_condition == IN ? :IN : :UP
         route = radial_route(s, l, m, a, omega, branch;
             N=N, xm=xm, tol=tol,
-            small_frequency_expansion=small_frequency_expansion === nothing ? :auto : small_frequency_expansion,
-            large_frequency_expansion=large_frequency_expansion === nothing ? :auto : large_frequency_expansion)
+            small_frequency_expansion=sfe === nothing ? :auto : sfe,
+            large_frequency_expansion=lfe === nothing ? :auto : lfe)
         return y_radial_function(route)
     elseif method == "Riccati" || method == "linear"
         return _build_y_solution_from_gsn(s, l, m, a, omega, boundary_condition; method=method, tol=tol)

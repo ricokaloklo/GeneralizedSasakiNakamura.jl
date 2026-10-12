@@ -8,6 +8,8 @@ end
 _qnm_root_segment(root) = hasproperty(root, :provenance) ?
     get(root.provenance, :sequence_segment, 0) : 0
 
+# Radial solutions X, Y, R at an accepted root with unit-transmission pole normalization: the public ISEM
+# solvers at exact extremality, otherwise the complex-frequency ISEM route.
 function _qnm_radial_solutions(root)
     inputs = _radial_evaluation_inputs(root)
     mode = root.mode
@@ -348,6 +350,9 @@ function _ordinary_qnm_root(a, s, l, m, n, primary_guess, root_options;
         convention, inversion_index, segment)
 end
 
+# Solve the negative-real (mirror) root. Without `mirror_guess` the seed is -conj of the (s, l, -m, n) ordinary root
+# (or the supplied `ordinary_root` for m = 0), returned as the partner; exact-extremal ZDM endpoints and a = 0
+# near-algebraically-special modes are solved without a seed. Returns (root, seed, partner_root).
 function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
         ordinary_root=nothing, convention=:overtone,
         inversion_index=:auto, segment=0)

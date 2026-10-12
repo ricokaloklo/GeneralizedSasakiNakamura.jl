@@ -1,6 +1,4 @@
-module MSTInfinity
-
-using LinearAlgebra: cond
+module ManoSuzukiTakasugiInfinity
 
 using HypergeometricFunctions
 using SpecialFunctions: digamma, expint, gamma, loggamma, polygamma
@@ -11,8 +9,6 @@ using ..CoefficientTables: CoefficientSet
 using ..Parameters: GSNParameters
 using ..LocalSolutionAtZero: is_horizon_threshold
 using ..Iteration:
-    Basis,
-    LogScaledState,
     endpoint_seed_scale,
     iterate_from_state,
     iterate_pair_from_state,
@@ -28,58 +24,58 @@ using ..LargeFrequencyExpansion:
     dc_neg,
     dc_sub,
     dc_value
-export abel_denominator, mst_infinity_basis, mst_infinity_pair
-export build_mst_plan, build_mst_eval_plan, mst_route_state, mst_pin_state
-export mst_logscaled_seed, mst_logscaled_state
-export mst_scaled_state
-export mst_principal_plan, mst_principal_state, mst_anchor
-export MSTPhysicalPlan, mst_physical_plan
-export mst_physical_state, mst_physical_amplitudes
-export mst_monodromy_state
-export mst_nia_branch_strength, mst_nia_jump
-export mst_nia_amplitudes, mst_principal_amplitudes
-export nia_strength_fast
-export MSTParams, MSTSeriesData, CFResult
-export MSTCertificateError
+export abel_denominator, mano_suzuki_takasugi_infinity_basis, mano_suzuki_takasugi_infinity_pair
+export build_mano_suzuki_takasugi_plan, build_mano_suzuki_takasugi_eval_plan, mano_suzuki_takasugi_route_state, mano_suzuki_takasugi_pin_state
+export mano_suzuki_takasugi_logscaled_seed, mano_suzuki_takasugi_logscaled_state
+export mano_suzuki_takasugi_scaled_state
+export mano_suzuki_takasugi_principal_plan, mano_suzuki_takasugi_principal_state, mano_suzuki_takasugi_anchor
+export ManoSuzukiTakasugiPhysicalPlan, mano_suzuki_takasugi_physical_plan
+export mano_suzuki_takasugi_physical_state, mano_suzuki_takasugi_physical_amplitudes
+export mano_suzuki_takasugi_monodromy_state
+export mano_suzuki_takasugi_negative_imaginary_axis_branch_strength, mano_suzuki_takasugi_negative_imaginary_axis_jump
+export mano_suzuki_takasugi_negative_imaginary_axis_amplitudes, mano_suzuki_takasugi_principal_amplitudes
+export negative_imaginary_axis_strength_fast
+export ManoSuzukiTakasugiParams, ManoSuzukiTakasugiSeriesData, CFResult
+export ManoSuzukiTakasugiCertificateError
 
 """
-    MSTCertificateError(kind, message)
+    ManoSuzukiTakasugiCertificateError(kind, message)
 
 Raised when an MST quantity fails its accuracy certificate (series budget, residual,
 truncation or conditioning check). `kind` names the failed stage.
 """
-struct MSTCertificateError <: Exception
+struct ManoSuzukiTakasugiCertificateError <: Exception
     kind::Symbol
     message::String
 end
 
-Base.showerror(io::IO, err::MSTCertificateError) = print(io, err.message)
-export alpha_mst, beta_mst, gamma_mst
-export rn_cf, ln_cf, mst_guess, mst_nu, mst_nu_complex
+Base.showerror(io::IO, err::ManoSuzukiTakasugiCertificateError) = print(io, err.message)
+export alpha_mano_suzuki_takasugi, beta_mano_suzuki_takasugi, gamma_mano_suzuki_takasugi
+export rn_cf, ln_cf, mano_suzuki_takasugi_guess, mano_suzuki_takasugi_nu, mano_suzuki_takasugi_nu_complex
 
 const I = 1im
 const CF_MAX = 200
 const CF_SMALL = 1.0e-50
-const MST_N_INIT = 5
-const MST_N_MAX = 200
-const MST_REL_ERROR = 1.0e-14
-const MST_MILLER_MARGIN = 32
-const MST_MILLER_STEP = 32
-const MST_MILLER_MAX = 512
-const MST_MILLER_TOL = MST_REL_ERROR
-const MST_NEGATIVE_SEGMENT_TOL = 2.0e-13
-const MST_NEGATIVE_SEGMENT_LO = -8
-const MST_STATE_REANCHOR_TOL = 1.0e-10
-const MST_NEGATIVE_REANCHOR_TOL = 1.0e-13
-const MST_NIA_TAIL = 560
-const MST_NIA_CHECK_TAIL = 480
-const MST_NIA_SUM_MAX = 200
-const MST_NIA_CHECK_SUM_MAX = 160
-const MST_NIA_CERT_TOL = 1.0e-8
-const MST_NIA_FAST_TAIL = 224
-const MST_NIA_FAST_CHECK_TAIL = 200
-const MST_NIA_FAST_SUM_MAX = 96
-const MST_NIA_FAST_CHECK_SUM_MAX = 80
+const MANO_SUZUKI_TAKASUGI_N_INIT = 5
+const MANO_SUZUKI_TAKASUGI_N_MAX = 200
+const MANO_SUZUKI_TAKASUGI_REL_ERROR = 1.0e-14
+const MANO_SUZUKI_TAKASUGI_MILLER_MARGIN = 32
+const MANO_SUZUKI_TAKASUGI_MILLER_STEP = 32
+const MANO_SUZUKI_TAKASUGI_MILLER_MAX = 512
+const MANO_SUZUKI_TAKASUGI_MILLER_TOL = MANO_SUZUKI_TAKASUGI_REL_ERROR
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_TOL = 2.0e-13
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_LO = -8
+const MANO_SUZUKI_TAKASUGI_STATE_REANCHOR_TOL = 1.0e-10
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_REANCHOR_TOL = 1.0e-13
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_TAIL = 560
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CHECK_TAIL = 480
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_SUM_MAX = 200
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CHECK_SUM_MAX = 160
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CERT_TOL = 1.0e-8
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_FAST_TAIL = 224
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_FAST_CHECK_TAIL = 200
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_FAST_SUM_MAX = 96
+const MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_FAST_CHECK_SUM_MAX = 80
 const LOG_FLOAT64_MAX = log(floatmax(Float64))
 const LOG_FLOAT64_MIN = log(nextfloat(0.0))
 const HGF_2F1 = getproperty(HypergeometricFunctions, Symbol("_\u2082F\u2081"))
@@ -173,14 +169,14 @@ function _pin_unit_scale(params)
 end
 
 """
-    mst_infinity_basis(coefficients, branch, match_x; controls, scratch=nothing, plan=nothing)
+    mano_suzuki_takasugi_infinity_basis(coefficients, branch, match_x; controls, scratch=nothing, plan=nothing)
 
 GSN infinity solution of `branch` (`:in` or `:out`) at `match_x`: the MST series is
-evaluated at the plan's seed point (a new `build_mst_plan` when `plan` is `nothing`) and
+evaluated at the plan's seed point (a new `build_mano_suzuki_takasugi_plan` when `plan` is `nothing`) and
 the state is integrated to `match_x` with `iterate_from_state`, or in the scaled
 y variable when `controls.basis == :low_frequency_scaled_y`.
 """
-function mst_infinity_basis(
+function mano_suzuki_takasugi_infinity_basis(
     coefficients::CoefficientSet,
     branch::Symbol,
     match_x::Float64;
@@ -194,7 +190,7 @@ function mst_infinity_basis(
         throw(ArgumentError("MST infinity branch must be :in or :out."))
     kind = normalized == :in ? :infinity_in : :infinity_out
     mst = plan === nothing ?
-        build_mst_plan(coefficients, Float64(match_x); branches=(normalized,)) : plan
+        build_mano_suzuki_takasugi_plan(coefficients, Float64(match_x); branches=(normalized,)) : plan
     data = mst.data
     seed_x = mst.seed_x
     r = _x_to_r(coefficients.params, seed_x)
@@ -203,7 +199,7 @@ function mst_infinity_basis(
     budget = normalized == :in ? mst.in_budget : mst.out_budget
     factor = normalized == :in ? mst.in_factor : mst.out_factor
     seed_value, seed_derivative, _ =
-        _mst_state_at(coefficients, data, normalized, seed_x, transform,
+        _mano_suzuki_takasugi_state_at(coefficients, data, normalized, seed_x, transform,
             sequence, budget, factor)
     if controls.basis == :low_frequency_scaled_y && seed_x != match_x
         return iterate_scaled_y(coefficients, kind, seed_x,
@@ -224,12 +220,12 @@ function mst_infinity_basis(
 end
 
 """
-    mst_infinity_pair(coefficients, branch1, branch2, match_x; controls, scratch=nothing, plan=nothing)
+    mano_suzuki_takasugi_infinity_pair(coefficients, branch1, branch2, match_x; controls, scratch=nothing, plan=nothing)
 
-Two infinity solutions as in `mst_infinity_basis`, sharing one MST plan and
+Two infinity solutions as in `mano_suzuki_takasugi_infinity_basis`, sharing one MST plan and
 seed point.
 """
-function mst_infinity_pair(
+function mano_suzuki_takasugi_infinity_pair(
     coefficients::CoefficientSet,
     branch1::Symbol,
     branch2::Symbol,
@@ -248,7 +244,7 @@ function mst_infinity_pair(
         throw(ArgumentError("MST infinity branch must be :in or :out."))
     kind1 = normalized1 == :in ? :infinity_in : :infinity_out
     kind2 = normalized2 == :in ? :infinity_in : :infinity_out
-    mst = plan === nothing ? build_mst_plan(
+    mst = plan === nothing ? build_mano_suzuki_takasugi_plan(
         coefficients,
         Float64(match_x);
         branches=(normalized1, normalized2),
@@ -264,10 +260,10 @@ function mst_infinity_pair(
     factor1 = normalized1 == :in ? mst.in_factor : mst.out_factor
     factor2 = normalized2 == :in ? mst.in_factor : mst.out_factor
     seed_value1, seed_derivative1, _ =
-        _mst_state_at(coefficients, data, normalized1, seed_x, transform,
+        _mano_suzuki_takasugi_state_at(coefficients, data, normalized1, seed_x, transform,
             sequence1, budget1, factor1)
     seed_value2, seed_derivative2, _ =
-        _mst_state_at(coefficients, data, normalized2, seed_x, transform,
+        _mano_suzuki_takasugi_state_at(coefficients, data, normalized2, seed_x, transform,
             sequence2, budget2, factor2)
     if controls.basis == :low_frequency_scaled_y && seed_x != match_x
         target_y = (1.0-match_x)/abs(coefficients.params.omega)
@@ -295,13 +291,13 @@ function mst_infinity_pair(
 end
 
 """
-    MSTParams(s, l, m, a, omega, lambda, nu[, nu_offset])
+    ManoSuzukiTakasugiParams(s, l, m, a, omega, lambda, nu[, nu_offset])
 
 Parameters of an MST series for |a| < 1: the mode, `epsilon = 2 omega`,
 `kappa = sqrt(1 - a^2)`, `tau = (epsilon - m a) / kappa`, `nu` and `nu_offset = nu - l`
 (kept separately so that its digits survive when nu is close to l).
 """
-struct MSTParams
+struct ManoSuzukiTakasugiParams
     s::Int
     l::Int
     m::Int
@@ -315,13 +311,13 @@ struct MSTParams
     nu_offset::ComplexF64
 end
 
-function MSTParams(s::Integer, l::Integer, m::Integer, a::Real, omega::Number, lambda, nu)
+function ManoSuzukiTakasugiParams(s::Integer, l::Integer, m::Integer, a::Real, omega::Number, lambda, nu)
     nu_value = ComplexF64(nu)
-    return MSTParams(s, l, m, a, omega, lambda, nu_value,
+    return ManoSuzukiTakasugiParams(s, l, m, a, omega, lambda, nu_value,
         nu_value - ComplexF64(l))
 end
 
-function MSTParams(
+function ManoSuzukiTakasugiParams(
     s::Integer,
     l::Integer,
     m::Integer,
@@ -334,35 +330,35 @@ function MSTParams(
     af = Float64(a)
     omegac = ComplexF64(omega)
     kappa2 = 1.0 - af * af
-    kappa2 > 0.0 || error("MSTParams requires non-extremal |a| < 1")
+    kappa2 > 0.0 || error("ManoSuzukiTakasugiParams requires non-extremal |a| < 1")
     epsilon = 2.0 * omegac
     kappa = sqrt(kappa2)
     tau = (epsilon - Int(m) * af) / kappa
-    return MSTParams(Int(s), Int(l), Int(m), af, omegac, ComplexF64(lambda),
+    return ManoSuzukiTakasugiParams(Int(s), Int(l), Int(m), af, omegac, ComplexF64(lambda),
         epsilon, kappa, tau, ComplexF64(nu), ComplexF64(nu_offset))
 end
 
-@inline _nu_shift(p::MSTParams, shift::Integer=0) =
+@inline _nu_shift(p::ManoSuzukiTakasugiParams, shift::Integer=0) =
     ComplexF64(p.l + shift) + p.nu_offset
 
-@inline _npnu(p::MSTParams, n::Integer) =
+@inline _npnu(p::ManoSuzukiTakasugiParams, n::Integer) =
     ComplexF64(p.l + n) + p.nu_offset
 
-@inline _nu_factor(p::MSTParams, n::Integer, shift::Integer=0) =
+@inline _nu_factor(p::ManoSuzukiTakasugiParams, n::Integer, shift::Integer=0) =
     ComplexF64(p.l + n + shift) + p.nu_offset
 
-@inline _twice_nu_factor(p::MSTParams, n::Integer, shift::Integer=0) =
+@inline _twice_nu_factor(p::ManoSuzukiTakasugiParams, n::Integer, shift::Integer=0) =
     ComplexF64(2 * (p.l + n) + shift) + 2 * p.nu_offset
 
 """
-    alpha_mst(n, p), beta_mst(n, p), gamma_mst(n, p)
+    alpha_mano_suzuki_takasugi(n, p), beta_mano_suzuki_takasugi(n, p), gamma_mano_suzuki_takasugi(n, p)
 
 Coefficients of the MST three-term recurrence
 alpha_n a_(n+1) + beta_n a_n + gamma_n a_(n-1) = 0
 (Sasaki & Tagoshi, Living Rev. Relativ. 6, 6 (2003)).
-`beta_mst` switches to double-double when its terms cancel.
+`beta_mano_suzuki_takasugi` switches to double-double when its terms cancel.
 """
-function alpha_mst(n::Integer, p::MSTParams)
+function alpha_mano_suzuki_takasugi(n::Integer, p::ManoSuzukiTakasugiParams)
     eps = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
     tau = ComplexF64(p.tau)
@@ -376,11 +372,11 @@ function alpha_mst(n::Integer, p::MSTParams)
 end
 
 """
-    beta_mst(n, p)
+    beta_mano_suzuki_takasugi(n, p)
 
-Middle coefficient of the MST recurrence; see `alpha_mst`.
+Middle coefficient of the MST recurrence; see `alpha_mano_suzuki_takasugi`.
 """
-function beta_mst(n::Integer, p::MSTParams)
+function beta_mano_suzuki_takasugi(n::Integer, p::ManoSuzukiTakasugiParams)
     s = ComplexF64(p.s)
     eps = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
@@ -395,18 +391,18 @@ function beta_mst(n::Integer, p::MSTParams)
         abs(eps2) + abs(linear) + abs(correction)
     # Both the angular terms and the frequency terms can cancel; under severe
     # cancellation beta_n is recomputed in double-double (_dd_beta).
-    if Base.eps(Float64)*scale > MST_COEFF_ERROR_MAX*abs(value)
+    if Base.eps(Float64)*scale > MANO_SUZUKI_TAKASUGI_COEFF_ERROR_MAX*abs(value)
         return dc_value(_dd_beta(Int(n), p, DDComplex(p.nu_offset)))
     end
     return value
 end
 
 """
-    gamma_mst(n, p)
+    gamma_mano_suzuki_takasugi(n, p)
 
-Lower coefficient of the MST recurrence; see `alpha_mst`.
+Lower coefficient of the MST recurrence; see `alpha_mano_suzuki_takasugi`.
 """
-function gamma_mst(n::Integer, p::MSTParams)
+function gamma_mano_suzuki_takasugi(n::Integer, p::ManoSuzukiTakasugiParams)
     eps = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
     tau = ComplexF64(p.tau)
@@ -478,29 +474,29 @@ end
 
 Continued fraction for the MST coefficient ratio R_n = a_n / a_(n-1), as a `CFResult`.
 """
-function rn_cf(n::Integer, p::MSTParams)
-    numerator = -alpha_mst(n - 1, p) * gamma_mst(n, p)
+function rn_cf(n::Integer, p::ManoSuzukiTakasugiParams)
+    numerator = -alpha_mano_suzuki_takasugi(n - 1, p) * gamma_mano_suzuki_takasugi(n, p)
     normalize = !iszero(numerator) &&
-        CF_SMALL*abs(beta_mst(n,p)) > MST_COEFF_ERROR_MAX*abs(numerator)
+        CF_SMALL*abs(beta_mano_suzuki_takasugi(n,p)) > MANO_SUZUKI_TAKASUGI_COEFF_ERROR_MAX*abs(numerator)
     a_coeff(j) = normalize && j == 0 ? one(numerator) :
-        -alpha_mst(j + n - 1, p) * gamma_mst(j + n, p)
-    b_coeff(j) = beta_mst(j + n, p)
+        -alpha_mano_suzuki_takasugi(j + n - 1, p) * gamma_mano_suzuki_takasugi(j + n, p)
+    b_coeff(j) = beta_mano_suzuki_takasugi(j + n, p)
     cf = lentz_cf(a_coeff, b_coeff)
-    value = normalize ? -gamma_mst(n,p)*cf.value : cf.value / alpha_mst(n-1,p)
+    value = normalize ? -gamma_mano_suzuki_takasugi(n,p)*cf.value : cf.value / alpha_mano_suzuki_takasugi(n-1,p)
     return CFResult(value, cf.relerr, cf.iterations, cf.converged)
 end
 
 # L_n = a_n / a_(n+1) from the continued fraction alone.
-function _ln_cf_unpaired(n::Integer, p::MSTParams)
-    numerator = -alpha_mst(n, p) * gamma_mst(n + 1, p)
+function _ln_cf_unpaired(n::Integer, p::ManoSuzukiTakasugiParams)
+    numerator = -alpha_mano_suzuki_takasugi(n, p) * gamma_mano_suzuki_takasugi(n + 1, p)
     # Keep a small, nonzero leading numerator outside Lentz's zero guard.
     normalize = !iszero(numerator) &&
-        CF_SMALL*abs(beta_mst(n,p)) > MST_COEFF_ERROR_MAX*abs(numerator)
+        CF_SMALL*abs(beta_mano_suzuki_takasugi(n,p)) > MANO_SUZUKI_TAKASUGI_COEFF_ERROR_MAX*abs(numerator)
     a_coeff(j) = normalize && j == 0 ? one(numerator) :
-        -alpha_mst(-j + n, p) * gamma_mst(-j + n + 1, p)
-    b_coeff(j) = beta_mst(-j + n, p)
+        -alpha_mano_suzuki_takasugi(-j + n, p) * gamma_mano_suzuki_takasugi(-j + n + 1, p)
+    b_coeff(j) = beta_mano_suzuki_takasugi(-j + n, p)
     cf = lentz_cf(a_coeff, b_coeff)
-    value = normalize ? -alpha_mst(n,p)*cf.value : cf.value / gamma_mst(n+1,p)
+    value = normalize ? -alpha_mano_suzuki_takasugi(n,p)*cf.value : cf.value / gamma_mano_suzuki_takasugi(n+1,p)
     return CFResult(value, cf.relerr, cf.iterations, cf.converged)
 end
 
@@ -511,7 +507,7 @@ Continued fraction for the MST coefficient ratio L_n = a_n / a_(n+1), as a `CFRe
 For -l <= n < 0 the rows at nu + n = 0 and -1 are eliminated together when their
 cancellation would otherwise lose accuracy.
 """
-function ln_cf(n::Integer, p::MSTParams)
+function ln_cf(n::Integer, p::ManoSuzukiTakasugiParams)
     if -p.l <= n < 0
         # Eliminate the adjacent nu+n=0,-1 rows together. Their 1/(nu-l)^2
         # terms cancel algebraically, before floating-point evaluation.
@@ -532,26 +528,26 @@ function ln_cf(n::Integer, p::MSTParams)
         d2 = 2D*(q+1-L)/(q-1)
         d3 = ek*ek*polynomial/((q-1)*(4q-1))
         determinant = d1+d2+d3
-        roundoff = eps(Float64)*(abs(beta_mst(j,p)*beta_mst(j-1,p)) +
-            abs(gamma_mst(j,p)*alpha_mst(j-1,p)))/abs(determinant)
-        roundoff > MST_COEFF_ERROR_MAX || return _ln_cf_unpaired(n,p)
+        roundoff = eps(Float64)*(abs(beta_mano_suzuki_takasugi(j,p)*beta_mano_suzuki_takasugi(j-1,p)) +
+            abs(gamma_mano_suzuki_takasugi(j,p)*alpha_mano_suzuki_takasugi(j-1,p)))/abs(determinant)
+        roundoff > MANO_SUZUKI_TAKASUGI_COEFF_ERROR_MAX || return _ln_cf_unpaired(n,p)
         tail = _ln_cf_unpaired(j-2,p)
-        coupled = gamma_mst(j-1,p)*tail.value
-        W = beta_mst(j-1,p) + coupled
-        d4 = beta_mst(j,p)*coupled
+        coupled = gamma_mano_suzuki_takasugi(j-1,p)*tail.value
+        W = beta_mano_suzuki_takasugi(j-1,p) + coupled
+        d4 = beta_mano_suzuki_takasugi(j,p)*coupled
         denominator = d1+d2+d3+d4
-        value = -alpha_mst(j,p)*W/denominator
+        value = -alpha_mano_suzuki_takasugi(j,p)*W/denominator
         error = (eps(Float64)*(abs(d1)+abs(d2)+abs(d3)+abs(d4)) +
             abs(d4)*tail.relerr)/abs(denominator) +
             (eps(Float64)*(abs(W-coupled)+abs(coupled)) +
                 abs(coupled)*tail.relerr)/abs(W)
         for k in (j+1):n
-            beta = beta_mst(k,p)
-            coupled = gamma_mst(k,p)*value
+            beta = beta_mano_suzuki_takasugi(k,p)
+            coupled = gamma_mano_suzuki_takasugi(k,p)*value
             denominator = beta+coupled
             error = (eps(Float64)*(abs(beta)+abs(coupled)) +
                 abs(coupled)*error)/abs(denominator) + eps(Float64)
-            value = -alpha_mst(k,p)/denominator
+            value = -alpha_mano_suzuki_takasugi(k,p)/denominator
         end
         return CFResult(value,error,tail.iterations+n-j+2,tail.converged)
     end
@@ -559,13 +555,13 @@ function ln_cf(n::Integer, p::MSTParams)
 end
 
 """
-    MSTSeriesData(params)
+    ManoSuzukiTakasugiSeriesData(params)
 
 Lazily filled MST series coefficients: `log a_n` with a_0 = 1, the relative error of each
 ratio, its convergence flag and the accumulated coefficient errors, guarded by a lock.
 """
-mutable struct MSTSeriesData
-    params::MSTParams
+mutable struct ManoSuzukiTakasugiSeriesData
+    params::ManoSuzukiTakasugiParams
     log_coeffs::Dict{Int,ComplexF64}
     cf_relerrs::Dict{Int,Float64}
     cf_ok::Dict{Int,Bool}
@@ -573,8 +569,8 @@ mutable struct MSTSeriesData
     coefficient_lock::ReentrantLock
 end
 
-MSTSeriesData(params::MSTParams) =
-    MSTSeriesData(
+ManoSuzukiTakasugiSeriesData(params::ManoSuzukiTakasugiParams) =
+    ManoSuzukiTakasugiSeriesData(
         params,
         Dict(0 => ComplexF64(0)),
         Dict{Int,Float64}(),
@@ -583,19 +579,19 @@ MSTSeriesData(params::MSTParams) =
         ReentrantLock(),
     )
 
-const MST_COEFF_CONDITION_MAX = 4.0
-const MST_COEFF_ERROR_MAX = 2.5e-14
+const MANO_SUZUKI_TAKASUGI_COEFF_CONDITION_MAX = 4.0
+const MANO_SUZUKI_TAKASUGI_COEFF_ERROR_MAX = 2.5e-14
 
 # Next ratio a_key / a_(key-1) (_next_rn) or a_key / a_(key+1) (_next_ln) from the
 # recurrence and the two previous coefficients, with its error; `valid` is false when the
 # step is ill conditioned and the continued fraction is used instead.
-function _next_rn(data::MSTSeriesData, key::Int)
+function _next_rn(data::ManoSuzukiTakasugiSeriesData, key::Int)
     n = key - 1
     previous = exp(data.log_coeffs[n] - data.log_coeffs[n - 1])
-    beta = beta_mst(n, data.params)
-    coupled = gamma_mst(n, data.params) / previous
+    beta = beta_mano_suzuki_takasugi(n, data.params)
+    coupled = gamma_mano_suzuki_takasugi(n, data.params) / previous
     numerator = beta + coupled
-    denominator = alpha_mst(n, data.params)
+    denominator = alpha_mano_suzuki_takasugi(n, data.params)
     ratio = -numerator / denominator
     condition = (abs(beta) + abs(coupled)) /
         max(abs(numerator), floatmin(Float64))
@@ -603,18 +599,18 @@ function _next_rn(data::MSTSeriesData, key::Int)
         abs(coupled) * data.cf_relerrs[n] /
         max(abs(numerator), floatmin(Float64))
     valid = _finite_complex(ratio) && !iszero(ratio) &&
-        isfinite(condition) && condition <= MST_COEFF_CONDITION_MAX &&
-        isfinite(error) && error <= MST_COEFF_ERROR_MAX
+        isfinite(condition) && condition <= MANO_SUZUKI_TAKASUGI_COEFF_CONDITION_MAX &&
+        isfinite(error) && error <= MANO_SUZUKI_TAKASUGI_COEFF_ERROR_MAX
     return ratio, Float64(error + eps(Float64)), valid
 end
 
-function _next_ln(data::MSTSeriesData, key::Int)
+function _next_ln(data::ManoSuzukiTakasugiSeriesData, key::Int)
     n = key + 1
     previous = exp(data.log_coeffs[n] - data.log_coeffs[n + 1])
-    beta = beta_mst(n, data.params)
-    coupled = alpha_mst(n, data.params) / previous
+    beta = beta_mano_suzuki_takasugi(n, data.params)
+    coupled = alpha_mano_suzuki_takasugi(n, data.params) / previous
     numerator = beta + coupled
-    denominator = gamma_mst(n, data.params)
+    denominator = gamma_mano_suzuki_takasugi(n, data.params)
     ratio = -numerator / denominator
     condition = (abs(beta) + abs(coupled)) /
         max(abs(numerator), floatmin(Float64))
@@ -622,20 +618,20 @@ function _next_ln(data::MSTSeriesData, key::Int)
         abs(coupled) * data.cf_relerrs[n] /
         max(abs(numerator), floatmin(Float64))
     valid = _finite_complex(ratio) && !iszero(ratio) &&
-        isfinite(condition) && condition <= MST_COEFF_CONDITION_MAX &&
-        isfinite(error) && error <= MST_COEFF_ERROR_MAX
+        isfinite(condition) && condition <= MANO_SUZUKI_TAKASUGI_COEFF_CONDITION_MAX &&
+        isfinite(error) && error <= MANO_SUZUKI_TAKASUGI_COEFF_ERROR_MAX
     return ratio, Float64(error + eps(Float64)), valid
 end
 
 # log a_n, filled on demand outward from n = 0 by recurrence when well conditioned,
 # otherwise by continued fraction.
-function log_series_coefficient!(data::MSTSeriesData, n::Integer)
+function log_series_coefficient!(data::ManoSuzukiTakasugiSeriesData, n::Integer)
     return lock(data.coefficient_lock) do
         _log_series_coefficient!(data, Int(n))
     end
 end
 
-function _log_series_coefficient!(data::MSTSeriesData, key::Int)
+function _log_series_coefficient!(data::ManoSuzukiTakasugiSeriesData, key::Int)
     if haskey(data.log_coeffs, key)
         return data.log_coeffs[key]
     elseif key > 0
@@ -680,11 +676,11 @@ function _log_series_coefficient!(data::MSTSeriesData, key::Int)
 end
 
 # MST coordinates x = (r_+ - r) / (r_+ - r_-) and z = epsilon kappa (1 - x).
-mst_x(p::MSTParams, r::Number) =
+mano_suzuki_takasugi_x(p::ManoSuzukiTakasugiParams, r::Number) =
     (1.0 + p.kappa - r) / (2.0 * p.kappa)
-mst_z(p::MSTParams, r::Number) = p.epsilon * p.kappa * (1.0 - mst_x(p, r))
+mano_suzuki_takasugi_z(p::ManoSuzukiTakasugiParams, r::Number) = p.epsilon * p.kappa * (1.0 - mano_suzuki_takasugi_x(p, r))
 
-struct MSTSum
+struct ManoSuzukiTakasugiSum
     value::ComplexF64
     derivative::ComplexF64
     estimated_relerr::Float64
@@ -694,7 +690,7 @@ struct MSTSum
     log_scale::Float64
 end
 
-struct MSTTriplet
+struct ManoSuzukiTakasugiTriplet
     value::ComplexF64
     deriv::ComplexF64
     second::ComplexF64
@@ -1101,8 +1097,6 @@ end
     out[N] = 0
     return SVector{N,ComplexF64}(out)
 end
-
-@inline _pi_delta_jet() = _pi_delta_jet(Val(U_JET_SIZE))
 
 @inline function _pi_delta_jet(::Val{N}) where {N}
     out = MVector{N,ComplexF64}(ntuple(_ -> ComplexF64(0), N))
@@ -1742,9 +1736,9 @@ function _eval_log_u(backend::HyperUBackend, a, b, z; integer_route::Bool=true)
 end
 
 # log U at a = a0 + delta/2, b = integer_b + delta: the near-integer jet when it succeeds,
-# otherwise the more accurate of it and the general evaluator. _mst_log_du gives
+# otherwise the more accurate of it and the general evaluator. _mano_suzuki_takasugi_log_du gives
 # log dU/dz = log(-a U(a + 1, b + 1, z)).
-function _mst_log_u(a0, integer_b::Int, delta, z)
+function _mano_suzuki_takasugi_log_u(a0, integer_b::Int, delta, z)
     near = _near_integer_u(a0, integer_b, delta, z, HYPER_U)
     near.status == :OK && return near
     actual_a = ComplexF64(a0) + ComplexF64(delta) / 2
@@ -1755,7 +1749,7 @@ function _mst_log_u(a0, integer_b::Int, delta, z)
     return near.estimated_relerr <= outer.estimated_relerr ? near : outer
 end
 
-function _mst_log_du(a0, integer_b::Int, delta, z)
+function _mano_suzuki_takasugi_log_du(a0, integer_b::Int, delta, z)
     actual_a = ComplexF64(a0) + ComplexF64(delta) / 2
     _near_zero(actual_a) && return HyperEval(
         ComplexF64(-Inf),
@@ -1765,7 +1759,7 @@ function _mst_log_du(a0, integer_b::Int, delta, z)
         :OK,
         "dU/dz is exactly zero for a=0",
     )
-    shifted = _mst_log_u(ComplexF64(a0) + 1, integer_b + 1, delta, z)
+    shifted = _mano_suzuki_takasugi_log_u(ComplexF64(a0) + 1, integer_b + 1, delta, z)
     if _usable(shifted.status)
         return HyperEval(
             shifted.value + log(-actual_a),
@@ -1781,22 +1775,22 @@ end
 
 # A U-function state (value, first and second z-derivatives) normalized to unit size,
 # with its log scale.
-struct MSTHState
+struct ManoSuzukiTakasugiHState
     value::ComplexF64
     deriv::ComplexF64
     second::ComplexF64
     log_scale::Float64
 end
 
-# The U-function states h_n, |n| <= MST_N_MAX, of one infinity series at a fixed argument,
+# The U-function states h_n, |n| <= MANO_SUZUKI_TAKASUGI_N_MAX, of one infinity series at a fixed argument,
 # filled lazily by three-term recurrence with direct evaluation as anchor and fallback,
 # plus the status of the Miller and negative-n constructions.
-mutable struct MSTUSequence
+mutable struct ManoSuzukiTakasugiUSequence
     a0::ComplexF64
     integer_b::Int
     delta::ComplexF64
     argument::ComplexF64
-    states::Vector{MSTHState}
+    states::Vector{ManoSuzukiTakasugiHState}
     ready::BitVector
     conditions::Vector{Float64}
     errors::Vector{Float64}
@@ -1809,7 +1803,7 @@ mutable struct MSTUSequence
     negative_error::Float64
 end
 
-@inline _seq_index(n::Integer) = Int(n) + MST_N_MAX + 1
+@inline _seq_index(n::Integer) = Int(n) + MANO_SUZUKI_TAKASUGI_N_MAX + 1
 
 @inline function _term_cond(total, terms...)
     scale = 0.0
@@ -1828,9 +1822,9 @@ function _normalize_h(value, deriv, second, log_scale)
     norm = max(abs(value), abs(deriv), abs(second))
     if !isfinite(norm) || iszero(norm)
         nan = ComplexF64(NaN + NaN * im)
-        return MSTHState(nan, nan, nan, NaN)
+        return ManoSuzukiTakasugiHState(nan, nan, nan, NaN)
     end
-    return MSTHState(
+    return ManoSuzukiTakasugiHState(
         ComplexF64(value / norm),
         ComplexF64(deriv / norm),
         ComplexF64(second / norm),
@@ -1840,7 +1834,7 @@ end
 
 # h_n = c^n U(a0 + n, integer_b + 2n + delta, c) and its c-derivatives from the
 # near-integer jet; returns (state, jet result) or nothing.
-function _near_h(sequence::MSTUSequence, n::Integer)
+function _near_h(sequence::ManoSuzukiTakasugiUSequence, n::Integer)
     a0 = sequence.a0 + n
     integer_b = sequence.integer_b + 2n
     c = sequence.argument
@@ -1868,16 +1862,16 @@ function _near_h(sequence::MSTUSequence, n::Integer)
 end
 
 # h_n from log U and log dU of the general evaluator, with its error estimate.
-function _legacy_h_eval(sequence::MSTUSequence, n::Integer)
+function _legacy_h_eval(sequence::ManoSuzukiTakasugiUSequence, n::Integer)
     a0 = sequence.a0 + n
     integer_b = sequence.integer_b + 2n
     delta = sequence.delta
     c = sequence.argument
-    log_u = _mst_log_u(a0, integer_b, delta, c)
-    log_du = _mst_log_du(a0, integer_b, delta, c)
+    log_u = _mano_suzuki_takasugi_log_u(a0, integer_b, delta, c)
+    log_du = _mano_suzuki_takasugi_log_du(a0, integer_b, delta, c)
     if !_usable(log_u.status) || !_usable(log_du.status)
         nan = ComplexF64(NaN + NaN * im)
-        return MSTHState(nan, nan, nan, NaN), Inf
+        return ManoSuzukiTakasugiHState(nan, nan, nan, NaN), Inf
     end
     actual_a = a0 + delta / 2
     actual_b_minus_c = (ComplexF64(integer_b) - c) + delta
@@ -1906,7 +1900,7 @@ end
 
 # Direct h_n: the near-integer jet when it is accurate, else whichever of it and the
 # general evaluator has the smaller error.
-function _h_eval(sequence::MSTUSequence, n::Integer)
+function _h_eval(sequence::ManoSuzukiTakasugiUSequence, n::Integer)
     near = _near_h(sequence, n)
     if near !== nothing
         near_state, near_result = near
@@ -1921,16 +1915,16 @@ function _h_eval(sequence::MSTUSequence, n::Integer)
     return _legacy_h_eval(sequence, n)
 end
 
-function MSTUSequence(a0, integer_b::Int, delta, argument)
+function ManoSuzukiTakasugiUSequence(a0, integer_b::Int, delta, argument)
     a0c = ComplexF64(a0)
     dc = ComplexF64(delta)
     c = ComplexF64(argument)
     iszero(c) && error("MST U sequence requires a nonzero argument")
-    states = Vector{MSTHState}(undef, 2MST_N_MAX + 1)
+    states = Vector{ManoSuzukiTakasugiHState}(undef, 2MANO_SUZUKI_TAKASUGI_N_MAX + 1)
     ready = falses(length(states))
     conditions = fill(Inf, length(states))
     errors = fill(Inf, length(states))
-    sequence = MSTUSequence(
+    sequence = ManoSuzukiTakasugiUSequence(
         a0c,
         integer_b,
         dc,
@@ -1958,11 +1952,11 @@ function MSTUSequence(a0, integer_b::Int, delta, argument)
     return sequence
 end
 
-@inline _h_norm(state::MSTHState) =
+@inline _h_norm(state::ManoSuzukiTakasugiHState) =
     max(abs(state.value), abs(state.deriv), abs(state.second))
 
 # Coefficients of the three-term recurrence of h_n and the c-derivatives of the middle one.
-@inline function _h_coeffs(sequence::MSTUSequence, n::Int)
+@inline function _h_coeffs(sequence::ManoSuzukiTakasugiUSequence, n::Int)
     a0 = sequence.a0
     integer_b = sequence.integer_b
     delta = sequence.delta
@@ -1982,12 +1976,12 @@ end
 end
 
 # One backward step of the h_n recurrence with its condition number.
-function _miller_step(sequence::MSTUSequence, n::Int, hn::MSTHState, hn1::MSTHState)
+function _miller_step(sequence::ManoSuzukiTakasugiUSequence, n::Int, hn::ManoSuzukiTakasugiHState, hn1::ManoSuzukiTakasugiHState)
     A, B, Bprime, Bsecond, D = _h_coeffs(sequence, n)
     abs_A = abs(A)
     if !isfinite(abs_A) || iszero(abs_A)
         nan = ComplexF64(NaN + NaN * im)
-        return MSTHState(nan, nan, nan, NaN), Inf
+        return ManoSuzukiTakasugiHState(nan, nan, nan, NaN), Inf
     end
     weight_n = max(abs(D) * _h_norm(hn), floatmin(Float64))
     weight_n1 = max(
@@ -2000,7 +1994,7 @@ function _miller_step(sequence::MSTUSequence, n::Int, hn::MSTHState, hn1::MSTHSt
     )
     if !isfinite(aligned_scale)
         nan = ComplexF64(NaN + NaN * im)
-        return MSTHState(nan, nan, nan, NaN), Inf
+        return ManoSuzukiTakasugiHState(nan, nan, nan, NaN), Inf
     end
     scale_n = exp(hn.log_scale - aligned_scale)
     scale_n1 = exp(hn1.log_scale - aligned_scale)
@@ -2037,7 +2031,7 @@ function _miller_step(sequence::MSTUSequence, n::Int, hn::MSTHState, hn1::MSTHSt
     return state, condition
 end
 
-function _h_relerr(candidate::MSTHState, reference::MSTHState, field::Symbol)
+function _h_relerr(candidate::ManoSuzukiTakasugiHState, reference::ManoSuzukiTakasugiHState, field::Symbol)
     candidate_value = getfield(candidate, field)
     reference_value = getfield(reference, field)
     if !(_finite_complex(candidate_value) && _finite_complex(reference_value) &&
@@ -2051,7 +2045,7 @@ function _h_relerr(candidate::MSTHState, reference::MSTHState, field::Symbol)
         max(abs(scaled_candidate), abs(scaled_reference), floatmin(Float64))
 end
 
-function _h_adjust(state::MSTHState, phase, log_adjust, ell, q)
+function _h_adjust(state::ManoSuzukiTakasugiHState, phase, log_adjust, ell, q)
     return _normalize_h(
         phase * state.value,
         phase * (state.deriv + ell * state.value),
@@ -2062,12 +2056,12 @@ end
 
 # Miller's backward recurrence from `cutoff`, normalized to the direct h_0 and checked
 # against the direct h_1; returns (states, conditions, error) or nothing.
-function _miller_trial(sequence::MSTUSequence, cutoff::Int, requested_n::Int)
+function _miller_trial(sequence::ManoSuzukiTakasugiUSequence, cutoff::Int, requested_n::Int)
     cutoff > requested_n || error("Miller cutoff must exceed requested index")
-    trial = Vector{MSTHState}(undef, cutoff + 2)
+    trial = Vector{ManoSuzukiTakasugiHState}(undef, cutoff + 2)
     conditions = fill(Inf, cutoff + 2)
-    trial[cutoff + 2] = MSTHState(0, 0, 0, 0.0)
-    trial[cutoff + 1] = MSTHState(1, 0, 0, 0.0)
+    trial[cutoff + 2] = ManoSuzukiTakasugiHState(0, 0, 0, 0.0)
+    trial[cutoff + 1] = ManoSuzukiTakasugiHState(1, 0, 0, 0.0)
     for n in (cutoff + 1):-1:2
         state, condition = _miller_step(sequence, n, trial[n + 1], trial[n])
         if !(_finite_complex(state.value) && _finite_complex(state.deriv) &&
@@ -2094,7 +2088,7 @@ function _miller_trial(sequence::MSTUSequence, cutoff::Int, requested_n::Int)
     if !(_finite_complex(ell) && _finite_complex(q) && isfinite(log_adjust))
         return nothing
     end
-    normalized = Vector{MSTHState}(undef, requested_n + 1)
+    normalized = Vector{ManoSuzukiTakasugiHState}(undef, requested_n + 1)
     for n in 0:requested_n
         state = trial[n + 1]
         normalized_state = _h_adjust(state, phase, log_adjust, ell, q)
@@ -2116,14 +2110,14 @@ function _miller_trial(sequence::MSTUSequence, cutoff::Int, requested_n::Int)
 end
 
 # Fills h_2..h_requested_n by Miller's algorithm, raising the cutoff until the h_1 check
-# meets MST_MILLER_TOL.
-function _miller_positive!(sequence::MSTUSequence, requested_n::Int)
+# meets MANO_SUZUKI_TAKASUGI_MILLER_TOL.
+function _miller_positive!(sequence::ManoSuzukiTakasugiUSequence, requested_n::Int)
     sequence.miller_status == :ACCEPTED &&
         sequence.miller_nmax >= requested_n && return sequence
-    start = max(requested_n + MST_MILLER_MARGIN, MST_MILLER_MARGIN)
-    cutoffs = collect(start:MST_MILLER_STEP:MST_MILLER_MAX)
-    if isempty(cutoffs) || last(cutoffs) != MST_MILLER_MAX
-        push!(cutoffs, MST_MILLER_MAX)
+    start = max(requested_n + MANO_SUZUKI_TAKASUGI_MILLER_MARGIN, MANO_SUZUKI_TAKASUGI_MILLER_MARGIN)
+    cutoffs = collect(start:MANO_SUZUKI_TAKASUGI_MILLER_STEP:MANO_SUZUKI_TAKASUGI_MILLER_MAX)
+    if isempty(cutoffs) || last(cutoffs) != MANO_SUZUKI_TAKASUGI_MILLER_MAX
+        push!(cutoffs, MANO_SUZUKI_TAKASUGI_MILLER_MAX)
     end
     best_error = Inf
     best_cutoff = 0
@@ -2135,7 +2129,7 @@ function _miller_positive!(sequence::MSTUSequence, requested_n::Int)
             best_error = error
             best_cutoff = cutoff
         end
-        if error <= MST_MILLER_TOL
+        if error <= MANO_SUZUKI_TAKASUGI_MILLER_TOL
             for n in 2:requested_n
                 index = _seq_index(n)
                 sequence.states[index] = states[n + 1]
@@ -2164,7 +2158,7 @@ end
 
 # h_n from h_(n-1) and h_(n-2); when unstable, Miller's algorithm (n > 1) or direct
 # evaluation. Returns (state, condition, error).
-function _forward_h(sequence::MSTUSequence, n::Int)
+function _forward_h(sequence::ManoSuzukiTakasugiUSequence, n::Int)
     previous2 = _h_state(sequence, n - 2)
     previous1 = _h_state(sequence, n - 1)
     parent_error = max(
@@ -2256,7 +2250,7 @@ function _forward_h(sequence::MSTUSequence, n::Int)
 end
 
 # h_n from h_(n+1) and h_(n+2); when unstable, direct evaluation.
-function _backward_h(sequence::MSTUSequence, n::Int)
+function _backward_h(sequence::ManoSuzukiTakasugiUSequence, n::Int)
     next1 = _h_state(sequence, n + 1)
     next2 = _h_state(sequence, n + 2)
     parent_error = max(
@@ -2340,7 +2334,7 @@ function _backward_h(sequence::MSTUSequence, n::Int)
     return state, condition, error
 end
 
-@inline function _h_error(candidate::MSTHState, reference::MSTHState)
+@inline function _h_error(candidate::ManoSuzukiTakasugiHState, reference::ManoSuzukiTakasugiHState)
     return max(
         _h_relerr(candidate, reference, :value),
         _h_relerr(candidate, reference, :deriv),
@@ -2349,11 +2343,11 @@ end
 end
 
 @inline _reanchor_tol(n::Int) =
-    n < 0 ? MST_NEGATIVE_REANCHOR_TOL : MST_STATE_REANCHOR_TOL
+    n < 0 ? MANO_SUZUKI_TAKASUGI_NEGATIVE_REANCHOR_TOL : MANO_SUZUKI_TAKASUGI_STATE_REANCHOR_TOL
 
 # Error of a direct re-anchor: at least the direct error, and at least the smaller of the
 # recurrence error and twice the recurrence-direct discrepancy.
-function _reanchor_error(state::MSTHState, recurrence_error, direct::MSTHState,
+function _reanchor_error(state::ManoSuzukiTakasugiHState, recurrence_error, direct::ManoSuzukiTakasugiHState,
         direct_error)
     discrepancy = _h_error(state, direct)
     guarded_discrepancy = isfinite(discrepancy) ?
@@ -2363,8 +2357,8 @@ function _reanchor_error(state::MSTHState, recurrence_error, direct::MSTHState,
     return max(Float64(direct_error), Float64(cross_error))
 end
 
-function _clear_negative!(sequence::MSTUSequence)
-    for n in MST_NEGATIVE_SEGMENT_LO:-1
+function _clear_negative!(sequence::ManoSuzukiTakasugiUSequence)
+    for n in MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_LO:-1
         index = _seq_index(n)
         sequence.ready[index] = false
         sequence.conditions[index] = Inf
@@ -2376,7 +2370,7 @@ end
 # Builds the negative-n segment once. An unstable segment is rejected
 # (false or a caught exception) and cleared; _backward_h then supplies
 # those values.
-function _negative_segment!(sequence::MSTUSequence)
+function _negative_segment!(sequence::ManoSuzukiTakasugiUSequence)
     sequence.negative_status == :UNTRIED || return sequence
     sequence.negative_status = :RUNNING
     accepted = try
@@ -2392,10 +2386,10 @@ function _negative_segment!(sequence::MSTUSequence)
     return sequence
 end
 
-# h_n for MST_NEGATIVE_SEGMENT_LO <= n <= -1 by forward recurrence from two direct
+# h_n for MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_LO <= n <= -1 by forward recurrence from two direct
 # anchors; accepted when it agrees with the direct h_(-1).
-function _build_negative_segment!(sequence::MSTUSequence)
-    for n in MST_NEGATIVE_SEGMENT_LO:(MST_NEGATIVE_SEGMENT_LO + 1)
+function _build_negative_segment!(sequence::ManoSuzukiTakasugiUSequence)
+    for n in MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_LO:(MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_LO + 1)
         index = _seq_index(n)
         state, state_error = _h_eval(sequence, n)
         isfinite(state.log_scale) || return false
@@ -2405,7 +2399,7 @@ function _build_negative_segment!(sequence::MSTUSequence)
         sequence.errors[index] = state_error
     end
 
-    for n in (MST_NEGATIVE_SEGMENT_LO + 2):-1
+    for n in (MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_LO + 2):-1
         state, condition, state_error = _forward_h(sequence, n)
         condition <= 2.0 && isfinite(state.log_scale) || return false
         index = _seq_index(n)
@@ -2417,9 +2411,9 @@ function _build_negative_segment!(sequence::MSTUSequence)
     end_index = _seq_index(-1)
     end_direct, end_error = _h_eval(sequence, -1)
     end_delta = _h_error(sequence.states[end_index], end_direct)
-    end_delta <= MST_NEGATIVE_SEGMENT_TOL || return false
+    end_delta <= MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_TOL || return false
     segment_error = 2 * end_delta + 16eps(Float64)
-    for n in (MST_NEGATIVE_SEGMENT_LO + 2):-2
+    for n in (MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_LO + 2):-2
         index = _seq_index(n)
         sequence.errors[index] = max(sequence.errors[index], segment_error)
     end
@@ -2432,11 +2426,11 @@ function _build_negative_segment!(sequence::MSTUSequence)
 end
 
 # h_n on demand, cached in the sequence.
-function _h_state(sequence::MSTUSequence, n::Integer)
-    -MST_N_MAX <= n <= MST_N_MAX || error("MST U sequence index outside supported range")
+function _h_state(sequence::ManoSuzukiTakasugiUSequence, n::Integer)
+    -MANO_SUZUKI_TAKASUGI_N_MAX <= n <= MANO_SUZUKI_TAKASUGI_N_MAX || error("MST U sequence index outside supported range")
     index = _seq_index(n)
     sequence.ready[index] && return sequence.states[index]
-    MST_NEGATIVE_SEGMENT_LO <= n < 0 &&
+    MANO_SUZUKI_TAKASUGI_NEGATIVE_SEGMENT_LO <= n < 0 &&
         sequence.negative_status == :UNTRIED && _negative_segment!(sequence)
     sequence.ready[index] && return sequence.states[index]
     state, condition, error = n > 1 ? _forward_h(sequence, Int(n)) :
@@ -2449,32 +2443,32 @@ function _h_state(sequence::MSTUSequence, n::Integer)
 end
 
 # U-function sequences of the infinity-out and infinity-in series at MST coordinate x.
-function _out_sequence(data::MSTSeriesData, x)
+function _out_sequence(data::ManoSuzukiTakasugiSeriesData, x)
     p = data.params
     epsilon = ComplexF64(p.epsilon)
     delta = 2 * p.nu_offset
     z = epsilon * p.kappa * (1 - ComplexF64(x))
     a0 = ComplexF64(p.l + 1 + p.s) - I * epsilon
-    return MSTUSequence(a0, 2 * (p.l + 1), delta, -2I * z)
+    return ManoSuzukiTakasugiUSequence(a0, 2 * (p.l + 1), delta, -2I * z)
 end
 
-function _in_sequence(data::MSTSeriesData, x)
+function _in_sequence(data::ManoSuzukiTakasugiSeriesData, x)
     p = data.params
     epsilon = ComplexF64(p.epsilon)
     delta = 2 * p.nu_offset
     z = 2I * epsilon * p.kappa * (1 - ComplexF64(x))
     a0 = ComplexF64(p.l + 1 - p.s) + I * epsilon
-    return MSTUSequence(a0, 2 * (p.l + 1), delta, z)
+    return ManoSuzukiTakasugiUSequence(a0, 2 * (p.l + 1), delta, z)
 end
 
-const MST_TAIL_WINDOW = 3
-const MST_TAIL_STREAK = 3
-const MST_TAIL_SHARE = 0.25
-const MST_SUM_GAMMA = 2eps(Float64)
+const MANO_SUZUKI_TAKASUGI_TAIL_WINDOW = 3
+const MANO_SUZUKI_TAKASUGI_TAIL_STREAK = 3
+const MANO_SUZUKI_TAKASUGI_TAIL_SHARE = 0.25
+const MANO_SUZUKI_TAKASUGI_SUM_GAMMA = 2eps(Float64)
 
 # Compensated (Neumaier) sums of term triplets with their absolute sums, propagated
 # state errors and largest terms.
-mutable struct MSTAccum
+mutable struct ManoSuzukiTakasugiAccum
     value::ComplexF64
     deriv::ComplexF64
     second::ComplexF64
@@ -2493,7 +2487,7 @@ mutable struct MSTAccum
     count::Int
 end
 
-MSTAccum() = MSTAccum(
+ManoSuzukiTakasugiAccum() = ManoSuzukiTakasugiAccum(
     0, 0, 0, 0, 0, 0,
     0.0, 0.0, 0.0,
     0.0, 0.0, 0.0,
@@ -2503,10 +2497,10 @@ MSTAccum() = MSTAccum(
 
 # Convergence monitor of one direction of a series: recent term ratios and the
 # geometric tail bound they imply.
-mutable struct MSTTail
+mutable struct ManoSuzukiTakasugiTail
     direction::Int
     last::NTuple{3,Float64}
-    ratios::NTuple{MST_TAIL_WINDOW,NTuple{3,Float64}}
+    ratios::NTuple{MANO_SUZUKI_TAKASUGI_TAIL_WINDOW,NTuple{3,Float64}}
     ratio_count::Int
     bounds::NTuple{3,Float64}
     streak::Int
@@ -2514,10 +2508,10 @@ mutable struct MSTTail
     status::Symbol
 end
 
-MSTTail(direction::Int) = MSTTail(
+ManoSuzukiTakasugiTail(direction::Int) = ManoSuzukiTakasugiTail(
     direction,
     (NaN, NaN, NaN),
-    ntuple(_ -> (NaN, NaN, NaN), MST_TAIL_WINDOW),
+    ntuple(_ -> (NaN, NaN, NaN), MANO_SUZUKI_TAKASUGI_TAIL_WINDOW),
     0,
     (Inf, Inf, Inf),
     0,
@@ -2525,10 +2519,10 @@ MSTTail(direction::Int) = MSTTail(
     :UNTRIED,
 )
 
-# Result of _mst_budget: the sum, its error split into rounding, state and tail parts,
+# Result of _mano_suzuki_takasugi_budget: the sum, its error split into rounding, state and tail parts,
 # and the status.
-struct MSTBudget
-    sum::MSTTriplet
+struct ManoSuzukiTakasugiBudget
+    sum::ManoSuzukiTakasugiTriplet
     estimated_relerr::Float64
     nmin::Int
     nmax::Int
@@ -2541,7 +2535,7 @@ struct MSTBudget
     log_scale::Float64
 end
 
-@inline _triplet_abs(term::MSTTriplet) =
+@inline _triplet_abs(term::ManoSuzukiTakasugiTriplet) =
     (abs(term.value), abs(term.deriv), abs(term.second))
 
 @inline function _neumaier(total, correction, term)
@@ -2555,7 +2549,7 @@ end
     iszero(magnitude) ? 0.0 :
     isfinite(error) ? magnitude * max(0.0, error) : Inf
 
-function _accum_add!(acc::MSTAccum, term::MSTTriplet, state_error::Float64)
+function _accum_add!(acc::ManoSuzukiTakasugiAccum, term::ManoSuzukiTakasugiTriplet, state_error::Float64)
     acc.value, acc.value_c = _neumaier(acc.value, acc.value_c, term.value)
     acc.deriv, acc.deriv_c = _neumaier(acc.deriv, acc.deriv_c, term.deriv)
     acc.second, acc.second_c = _neumaier(acc.second, acc.second_c, term.second)
@@ -2573,7 +2567,7 @@ function _accum_add!(acc::MSTAccum, term::MSTTriplet, state_error::Float64)
     return acc
 end
 
-@inline _accum_sum(acc::MSTAccum) = MSTTriplet(
+@inline _accum_sum(acc::ManoSuzukiTakasugiAccum) = ManoSuzukiTakasugiTriplet(
     acc.value + acc.value_c,
     acc.deriv + acc.deriv_c,
     acc.second + acc.second_c,
@@ -2584,11 +2578,11 @@ end
     return current / previous
 end
 
-function _tail_observe!(tail::MSTTail, term::MSTTriplet, n::Int)
+function _tail_observe!(tail::ManoSuzukiTakasugiTail, term::ManoSuzukiTakasugiTriplet, n::Int)
     current = _triplet_abs(term)
     if all(isfinite, tail.last)
         ratio = ntuple(j -> _tail_ratio(current[j], tail.last[j]), 3)
-        if tail.ratio_count < MST_TAIL_WINDOW
+        if tail.ratio_count < MANO_SUZUKI_TAKASUGI_TAIL_WINDOW
             tail.ratio_count += 1
             tail.ratios = Base.setindex(tail.ratios, ratio, tail.ratio_count)
         else
@@ -2597,7 +2591,7 @@ function _tail_observe!(tail::MSTTail, term::MSTTriplet, n::Int)
     end
     tail.last = current
     tail.index = n
-    if tail.ratio_count < MST_TAIL_WINDOW
+    if tail.ratio_count < MANO_SUZUKI_TAKASUGI_TAIL_WINDOW
         tail.bounds = (Inf, Inf, Inf)
         return tail
     end
@@ -2608,7 +2602,7 @@ function _tail_observe!(tail::MSTTail, term::MSTTriplet, n::Int)
     return tail
 end
 
-function _tail_small(acc::MSTAccum, tail::MSTTail, reltol, abstol)
+function _tail_small(acc::ManoSuzukiTakasugiAccum, tail::ManoSuzukiTakasugiTail, reltol, abstol)
     total = _accum_sum(acc)
     scales = (
         max(abs(total.value), acc.value_max),
@@ -2616,13 +2610,13 @@ function _tail_small(acc::MSTAccum, tail::MSTTail, reltol, abstol)
         max(abs(total.second), acc.second_max),
     )
     return all(j -> tail.bounds[j] <=
-        MST_TAIL_SHARE * (abstol + reltol * scales[j]), 1:3)
+        MANO_SUZUKI_TAKASUGI_TAIL_SHARE * (abstol + reltol * scales[j]), 1:3)
 end
 
 function _budget_fail(status::Symbol, log_scale::Float64=0.0)
     nan = ComplexF64(NaN + NaN * im)
-    return MSTBudget(
-        MSTTriplet(nan, nan, nan),
+    return ManoSuzukiTakasugiBudget(
+        ManoSuzukiTakasugiTriplet(nan, nan, nan),
         Inf, 0, 0, Inf, Inf, Inf, Inf, Inf, status, log_scale,
     )
 end
@@ -2656,7 +2650,7 @@ function _extend_tail!(acc, tail, termfun, errorfun, start, nmax, reltol, abstol
         _tail_observe!(tail, term, n)
         if _tail_small(acc, tail, reltol, abstol)
             tail.streak += 1
-            if tail.streak >= MST_TAIL_STREAK
+            if tail.streak >= MANO_SUZUKI_TAKASUGI_TAIL_STREAK
                 tail.status = :OK
                 return tail
             end
@@ -2670,21 +2664,21 @@ function _extend_tail!(acc, tail, termfun, errorfun, start, nmax, reltol, abstol
 end
 
 # Sums termfun(n) outward from n = 0 in both directions until each tail bound stays below
-# MST_TAIL_SHARE of the target for MST_TAIL_STREAK terms. The error is rounding plus
+# MANO_SUZUKI_TAKASUGI_TAIL_SHARE of the target for MANO_SUZUKI_TAKASUGI_TAIL_STREAK terms. The error is rounding plus
 # propagated state error (errorfun) plus tail bound, compared with budget_tol.
-function _mst_budget(
+function _mano_suzuki_takasugi_budget(
     termfun,
     errorfun;
-    reltol::Float64=MST_REL_ERROR,
+    reltol::Float64=MANO_SUZUKI_TAKASUGI_REL_ERROR,
     budget_tol::Float64=reltol,
     abstol::Float64=0.0,
-    ninit::Int=MST_N_INIT,
-    nmax::Int=MST_N_MAX,
+    ninit::Int=MANO_SUZUKI_TAKASUGI_N_INIT,
+    nmax::Int=MANO_SUZUKI_TAKASUGI_N_MAX,
     log_scale::Float64=0.0,
 )
-    acc = MSTAccum()
-    positive = MSTTail(1)
-    negative = MSTTail(-1)
+    acc = ManoSuzukiTakasugiAccum()
+    positive = ManoSuzukiTakasugiTail(1)
+    negative = ManoSuzukiTakasugiTail(-1)
     center = _budget_term(termfun, errorfun, 0)
     center === nothing && return _budget_fail(:NONFINITE_CENTER, log_scale)
     _accum_add!(acc, center...)
@@ -2707,7 +2701,7 @@ function _mst_budget(
     abs_sums = (acc.value_abs, acc.deriv_abs, acc.second_abs)
     state_abs = (acc.value_state, acc.deriv_state, acc.second_state)
     tail_abs = ntuple(j -> positive.bounds[j] + negative.bounds[j], 3)
-    round_abs = ntuple(j -> MST_SUM_GAMMA * abs_sums[j], 3)
+    round_abs = ntuple(j -> MANO_SUZUKI_TAKASUGI_SUM_GAMMA * abs_sums[j], 3)
     targets = ntuple(j -> abstol + budget_tol * totals[j], 3)
     errors = ntuple(j -> round_abs[j] + state_abs[j] + tail_abs[j], 3)
     denominators = ntuple(j -> max(totals[j], floatmin(Float64)), 3)
@@ -2723,7 +2717,7 @@ function _mst_budget(
         budget_ok ? :OK :
         round_rel >= max(state_rel, tail_rel) ? :ROUNDING_LIMIT :
         state_rel >= tail_rel ? :STATE_LIMIT : :TAIL_LIMIT
-    return MSTBudget(
+    return ManoSuzukiTakasugiBudget(
         total,
         maximum(relerrs),
         negative.index,
@@ -2739,7 +2733,7 @@ function _mst_budget(
 end
 
 # Relative error of the n-th term: coefficient error plus U-state error.
-function _term_error(data::MSTSeriesData, sequence::MSTUSequence, n::Integer)
+function _term_error(data::ManoSuzukiTakasugiSeriesData, sequence::ManoSuzukiTakasugiUSequence, n::Integer)
     index = _seq_index(n)
     coefficient_error = _coefficient_error(data, n)
     state_error = sequence.errors[index]
@@ -2765,9 +2759,9 @@ end
 # Sum of exp(logtermfun(n)) over n = 0, +-1, ... until the new terms fall below reltol,
 # in log-norm form.
 function _sum_symmetric_logs(logtermfun;
-    reltol::Float64=MST_REL_ERROR,
-    ninit::Int=MST_N_INIT,
-    nmax::Int=MST_N_MAX,
+    reltol::Float64=MANO_SUZUKI_TAKASUGI_REL_ERROR,
+    ninit::Int=MANO_SUZUKI_TAKASUGI_N_INIT,
+    nmax::Int=MANO_SUZUKI_TAKASUGI_N_MAX,
 )
     total = ComplexF64(0)
     scale = -Inf
@@ -2809,25 +2803,25 @@ function _sum_symmetric_logs(logtermfun;
     )
 end
 
-# Budgeted sum of the infinity-out (U-function) series; throws MSTCertificateError
+# Budgeted sum of the infinity-out (U-function) series; throws ManoSuzukiTakasugiCertificateError
 # unless the budget is :OK.
-function _sum_type2(data::MSTSeriesData, x; reltol::Float64=MST_REL_ERROR,
+function _sum_type2(data::ManoSuzukiTakasugiSeriesData, x; reltol::Float64=MANO_SUZUKI_TAKASUGI_REL_ERROR,
         sequence=nothing)
     sequence = sequence === nothing ? _out_sequence(data, x) : sequence
     log_scale = _out_term_log_scale(data, x, sequence)
-    budget = _mst_budget(
+    budget = _mano_suzuki_takasugi_budget(
         n -> _out_term_triplet(data, n, x, sequence, log_scale),
         n -> _term_error(data, sequence, n);
         reltol=reltol,
-        budget_tol=MST_RESIDUAL_TOL,
+        budget_tol=MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL,
         log_scale=log_scale,
     )
-    budget.status == :OK || throw(MSTCertificateError(
+    budget.status == :OK || throw(ManoSuzukiTakasugiCertificateError(
         budget.status == :TAIL_NOT_CONVERGED ?
             :infinity_out_tail : :infinity_out_sum,
         "MST infinity-out sum rejected: status=$(budget.status), " *
         "error=$(budget.estimated_relerr), condition=$(budget.condition)"))
-    return MSTSum(
+    return ManoSuzukiTakasugiSum(
         budget.sum.value,
         budget.sum.deriv,
         budget.estimated_relerr,
@@ -2839,8 +2833,8 @@ function _sum_type2(data::MSTSeriesData, x; reltol::Float64=MST_REL_ERROR,
 end
 
 # Prefactor of the infinity-out series and its x-derivative.
-function _up_prefactor(p::MSTParams, r::Number)
-    z = ComplexF64(mst_z(p, r))
+function _up_prefactor(p::ManoSuzukiTakasugiParams, r::Number)
+    z = ComplexF64(mano_suzuki_takasugi_z(p, r))
     epsv = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
     tau = ComplexF64(p.tau)
@@ -2852,8 +2846,8 @@ function _up_prefactor(p::MSTParams, r::Number)
     return value
 end
 
-function _dup_prefactor_dx(p::MSTParams, r::Number)
-    z = ComplexF64(mst_z(p, r))
+function _dup_prefactor_dx(p::ManoSuzukiTakasugiParams, r::Number)
+    z = ComplexF64(mano_suzuki_takasugi_z(p, r))
     epsv = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
     tau = ComplexF64(p.tau)
@@ -2867,9 +2861,9 @@ function _dup_prefactor_dx(p::MSTParams, r::Number)
 end
 
 # P and dP/dx of the infinity-out solution at r, with relative error and log scale.
-function _mst_out_p_pair(data::MSTSeriesData, r, sequence=nothing, budget=nothing)
+function _mano_suzuki_takasugi_out_p_pair(data::ManoSuzukiTakasugiSeriesData, r, sequence=nothing, budget=nothing)
     p = data.params
-    x = mst_x(p, r)
+    x = mano_suzuki_takasugi_x(p, r)
     sum = budget === nothing ? _sum_type2(data, x; sequence=sequence) : budget
     value = budget === nothing ? sum.value : sum.sum.value
     derivative = budget === nothing ? sum.derivative : sum.sum.deriv
@@ -2887,22 +2881,22 @@ function _mst_out_p_pair(data::MSTSeriesData, r, sequence=nothing, budget=nothin
     return P, Px, estimated_relerr, log_scale
 end
 
-# Budgeted sum of the infinity-in series; throws MSTCertificateError unless :OK.
-function _sum_true_in(data::MSTSeriesData, x; reltol::Float64=MST_REL_ERROR,
+# Budgeted sum of the infinity-in series; throws ManoSuzukiTakasugiCertificateError unless :OK.
+function _sum_true_in(data::ManoSuzukiTakasugiSeriesData, x; reltol::Float64=MANO_SUZUKI_TAKASUGI_REL_ERROR,
         sequence=nothing)
     sequence = sequence === nothing ? _in_sequence(data, x) : sequence
-    budget = _mst_budget(
+    budget = _mano_suzuki_takasugi_budget(
         n -> _in_term_triplet(data, n, x, sequence),
         n -> _term_error(data, sequence, n);
         reltol=reltol,
-        budget_tol=MST_RESIDUAL_TOL,
+        budget_tol=MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL,
     )
-    budget.status == :OK || throw(MSTCertificateError(
+    budget.status == :OK || throw(ManoSuzukiTakasugiCertificateError(
         budget.status == :TAIL_NOT_CONVERGED ?
             :infinity_in_tail : :infinity_in_sum,
         "MST infinity-in sum rejected: status=$(budget.status), " *
         "error=$(budget.estimated_relerr), condition=$(budget.condition)"))
-    return MSTSum(
+    return ManoSuzukiTakasugiSum(
         budget.sum.value,
         budget.sum.deriv,
         budget.estimated_relerr,
@@ -2914,9 +2908,9 @@ function _sum_true_in(data::MSTSeriesData, x; reltol::Float64=MST_REL_ERROR,
 end
 
 # P and dP/dx of the infinity-in solution at r, with relative error and log scale.
-function _mst_in_p_pair(data::MSTSeriesData, r, sequence=nothing, budget=nothing)
+function _mano_suzuki_takasugi_in_p_pair(data::ManoSuzukiTakasugiSeriesData, r, sequence=nothing, budget=nothing)
     p = data.params
-    x = mst_x(p, r)
+    x = mano_suzuki_takasugi_x(p, r)
     series = budget === nothing ? _sum_true_in(data, x; sequence=sequence) : budget
     value = budget === nothing ? series.value : series.sum.value
     derivative = budget === nothing ? series.derivative : series.sum.deriv
@@ -2975,20 +2969,20 @@ function _p_to_gsn_dx(
 end
 
 # Normalization sum of a_n over n, in log-norm form.
-function _incoming_raw_factor(data::MSTSeriesData)
+function _incoming_raw_factor(data::ManoSuzukiTakasugiSeriesData)
     return _sum_symmetric_logs(n -> log_series_coefficient!(data, n))
 end
 
 # Compensated sum of exp(logtermfun(n)) over |n| <= nmax in log-norm form, with a
 # rounding bound.
-function _nia_full_logsum(logtermfun, nmax::Int)
+function _negative_imaginary_axis_full_logsum(logtermfun, nmax::Int)
     nmax >= 0 || throw(ArgumentError(
         "MST NIA full-term sum requires nmax >= 0."))
     indices = collect(-nmax:nmax)
     logs = ComplexF64[logtermfun(n) for n in indices]
     scale = maximum(real, logs)
     isfinite(scale) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_sum_scale,
             "nonfinite MST NIA full-term sum scale.",
         ))
@@ -3005,7 +2999,7 @@ function _nia_full_logsum(logtermfun, nmax::Int)
     end
     norm = abs(total)
     isfinite(norm) && !iszero(norm) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_sum_cancellation,
             "zero or nonfinite MST NIA full-term sum.",
         ))
@@ -3023,7 +3017,7 @@ end
 
 # Double-double l + n + shift + offset and 2(l + n) + shift + 2 offset.
 @inline _dd_factor(
-    p::MSTParams,
+    p::ManoSuzukiTakasugiParams,
     offset::DDComplex,
     n::Int,
     shift::Int=0,
@@ -3034,7 +3028,7 @@ end
     )
 
 @inline _dd_twice(
-    p::MSTParams,
+    p::ManoSuzukiTakasugiParams,
     offset::DDComplex,
     n::Int,
     shift::Int=0,
@@ -3045,7 +3039,7 @@ end
     )
 
 # Double-double alpha_n, beta_n and gamma_n of the MST recurrence at nu = l + offset.
-function _dd_alpha(n::Int, p::MSTParams, offset::DDComplex)
+function _dd_alpha(n::Int, p::ManoSuzukiTakasugiParams, offset::DDComplex)
     epsc = DDComplex(p.epsilon)
     kappa = DDComplex(p.kappa)
     tau = DDComplex(p.tau)
@@ -3067,7 +3061,7 @@ function _dd_alpha(n::Int, p::MSTParams, offset::DDComplex)
     return dc_div(numerator, denominator)
 end
 
-function _dd_beta(n::Int, p::MSTParams, offset::DDComplex)
+function _dd_beta(n::Int, p::ManoSuzukiTakasugiParams, offset::DDComplex)
     epsc = DDComplex(p.epsilon)
     tau = DDComplex(p.tau)
     product = dc_mul(
@@ -3095,7 +3089,7 @@ function _dd_beta(n::Int, p::MSTParams, offset::DDComplex)
     return dc_add(base, correction)
 end
 
-function _dd_gamma(n::Int, p::MSTParams, offset::DDComplex)
+function _dd_gamma(n::Int, p::ManoSuzukiTakasugiParams, offset::DDComplex)
     epsc = DDComplex(p.epsilon)
     kappa = DDComplex(p.kappa)
     tau = DDComplex(p.tau)
@@ -3117,19 +3111,19 @@ function _dd_gamma(n::Int, p::MSTParams, offset::DDComplex)
     return dc_div(numerator, denominator)
 end
 
-@inline _nia_alpha_dd(n::Int, p::MSTParams) =
+@inline _negative_imaginary_axis_alpha_dd(n::Int, p::ManoSuzukiTakasugiParams) =
     _dd_alpha(n, p, DDComplex(p.nu_offset))
 
-@inline _nia_beta_dd(n::Int, p::MSTParams) =
+@inline _negative_imaginary_axis_beta_dd(n::Int, p::ManoSuzukiTakasugiParams) =
     _dd_beta(n, p, DDComplex(p.nu_offset))
 
-@inline _nia_gamma_dd(n::Int, p::MSTParams) =
+@inline _negative_imaginary_axis_gamma_dd(n::Int, p::ManoSuzukiTakasugiParams) =
     _dd_gamma(n, p, DDComplex(p.nu_offset))
 
 # Sum over |n| <= nmax of a_n (-1)^n (nu+1+s-i epsilon)_n / (nu+1-s+i epsilon)_n.
-function _nia_aminus_sum(data::MSTSeriesData, nmax::Int)
+function _negative_imaginary_axis_aminus_sum(data::ManoSuzukiTakasugiSeriesData, nmax::Int)
     p = data.params
-    return _nia_full_logsum(nmax) do n
+    return _negative_imaginary_axis_full_logsum(nmax) do n
         log_series_coefficient!(data, n) +
             I * pi * n +
             log_pochhammer(_nu_shift(p, 1 + p.s) - I * p.epsilon, n) -
@@ -3137,58 +3131,58 @@ function _nia_aminus_sum(data::MSTSeriesData, nmax::Int)
     end
 end
 
-# MSTSeriesData with a_n for |n| <= MST_N_MAX from double-double backward recurrences
+# ManoSuzukiTakasugiSeriesData with a_n for |n| <= MANO_SUZUKI_TAKASUGI_N_MAX from double-double backward recurrences
 # started at +-cutoff.
-function _nia_series_data(params::MSTParams, cutoff::Int)
-    cutoff >= MST_N_MAX ||
+function _negative_imaginary_axis_series_data(params::ManoSuzukiTakasugiParams, cutoff::Int)
+    cutoff >= MANO_SUZUKI_TAKASUGI_N_MAX ||
         throw(ArgumentError(
-            "MST NIA recurrence cutoff must be at least $MST_N_MAX."))
-    positive = Vector{ComplexF64}(undef, MST_N_MAX)
-    negative = Vector{ComplexF64}(undef, MST_N_MAX)
+            "MST NIA recurrence cutoff must be at least $MANO_SUZUKI_TAKASUGI_N_MAX."))
+    positive = Vector{ComplexF64}(undef, MANO_SUZUKI_TAKASUGI_N_MAX)
+    negative = Vector{ComplexF64}(undef, MANO_SUZUKI_TAKASUGI_N_MAX)
 
     ratio = DDComplex(0)
     for n in cutoff:-1:1
         denominator = dc_add(
-            _nia_beta_dd(n, params),
-            dc_mul(_nia_alpha_dd(n, params), ratio),
+            _negative_imaginary_axis_beta_dd(n, params),
+            dc_mul(_negative_imaginary_axis_alpha_dd(n, params), ratio),
         )
         denominator_value = dc_value(denominator)
         _finite_complex(denominator_value) && !iszero(denominator_value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :nia_positive_tail,
                 "nonfinite MST NIA positive-tail denominator at n=$n.",
             ))
         ratio = dc_div(
-            dc_neg(_nia_gamma_dd(n, params)),
+            dc_neg(_negative_imaginary_axis_gamma_dd(n, params)),
             denominator,
         )
-        n <= MST_N_MAX && (positive[n] = ComplexF64(dc_value(ratio)))
+        n <= MANO_SUZUKI_TAKASUGI_N_MAX && (positive[n] = ComplexF64(dc_value(ratio)))
     end
 
     ratio = DDComplex(0)
     for n in (-cutoff):-1
         denominator = dc_add(
-            _nia_beta_dd(n, params),
-            dc_mul(_nia_gamma_dd(n, params), ratio),
+            _negative_imaginary_axis_beta_dd(n, params),
+            dc_mul(_negative_imaginary_axis_gamma_dd(n, params), ratio),
         )
         denominator_value = dc_value(denominator)
         _finite_complex(denominator_value) && !iszero(denominator_value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :nia_negative_tail,
                 "nonfinite MST NIA negative-tail denominator at n=$n.",
             ))
         ratio = dc_div(
-            dc_neg(_nia_alpha_dd(n, params)),
+            dc_neg(_negative_imaginary_axis_alpha_dd(n, params)),
             denominator,
         )
-        n >= -MST_N_MAX && (negative[-n] = ComplexF64(dc_value(ratio)))
+        n >= -MANO_SUZUKI_TAKASUGI_N_MAX && (negative[-n] = ComplexF64(dc_value(ratio)))
     end
 
-    data = MSTSeriesData(params)
-    for n in 1:MST_N_MAX
+    data = ManoSuzukiTakasugiSeriesData(params)
+    for n in 1:MANO_SUZUKI_TAKASUGI_N_MAX
         value = positive[n]
         _finite_complex(value) && !iszero(value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :nia_positive_coefficient,
                 "nonfinite MST NIA positive coefficient ratio at n=$n.",
             ))
@@ -3197,10 +3191,10 @@ function _nia_series_data(params::MSTParams, cutoff::Int)
         data.cf_ok[n] = true
         data.coeff_errors[n] = data.coeff_errors[n - 1] + 2eps(Float64)
     end
-    for n in 1:MST_N_MAX
+    for n in 1:MANO_SUZUKI_TAKASUGI_N_MAX
         value = negative[n]
         _finite_complex(value) && !iszero(value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :nia_negative_coefficient,
                 "nonfinite MST NIA negative coefficient ratio at n=$(-n).",
             ))
@@ -3215,7 +3209,7 @@ end
 @inline function _lognorm_value(value::LogNormSum)
     _finite_complex(value.phase) && isfinite(value.logabs) &&
         !iszero(value.phase) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_sum,
             "nonfinite MST NIA normalization sum.",
         ))
@@ -3224,30 +3218,30 @@ end
 
 # A series sum in log form: its condition sum|t|/|sum t| and a running bound
 # on the relative error of exp(logvalue).
-struct MSTAmplitudeSum
+struct ManoSuzukiTakasugiAmplitudeSum
     logvalue::ComplexF64
     condition::Float64
     error::Float64
 end
 
 # Representation shifts nu + k and acceptance thresholds of the amplitude certificates.
-const MST_AMP_SHIFTS = (-4, -3, 2, 3)
-const MST_AMP_NMAX = 120
-const MST_AMP_CHECK_NMAX = 96
-const MST_AMP_SPREAD_MAX = 1.0e-8
-const MST_AMP_NEAREST_MAX = 1.0e-9
-const MST_AMP_TRUNCATION_MAX = 1.0e-10
-const MST_AMP_CONDITION_MAX = 1.0e7
-const MST_DD_NU_RESIDUAL_MAX = 1.0e-24
-const MST_DD_CONDITION_MAX = 1.0e12
+const MANO_SUZUKI_TAKASUGI_AMP_SHIFTS = (-4, -3, 2, 3)
+const MANO_SUZUKI_TAKASUGI_AMP_NMAX = 120
+const MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX = 96
+const MANO_SUZUKI_TAKASUGI_AMP_SPREAD_MAX = 1.0e-8
+const MANO_SUZUKI_TAKASUGI_AMP_NEAREST_MAX = 1.0e-9
+const MANO_SUZUKI_TAKASUGI_AMP_TRUNCATION_MAX = 1.0e-10
+const MANO_SUZUKI_TAKASUGI_AMP_CONDITION_MAX = 1.0e7
+const MANO_SUZUKI_TAKASUGI_DD_NU_RESIDUAL_MAX = 1.0e-24
+const MANO_SUZUKI_TAKASUGI_DD_CONDITION_MAX = 1.0e12
 
 # Double-double ratios a_n / a_(n-1) (positive) and a_(-n) / a_(-n+1) (negative) for
 # n = 1..nmax, from backward recurrences started at +-cutoff.
 function _dd_ratios(
-    p::MSTParams,
+    p::ManoSuzukiTakasugiParams,
     offset::DDComplex;
-    cutoff::Int=MST_NIA_TAIL,
-    nmax::Int=MST_AMP_NMAX,
+    cutoff::Int=MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_TAIL,
+    nmax::Int=MANO_SUZUKI_TAKASUGI_AMP_NMAX,
 )
     cutoff >= nmax || throw(ArgumentError(
         "DD MST recurrence cutoff must be at least its sum order."))
@@ -3262,7 +3256,7 @@ function _dd_ratios(
         )
         value = dc_value(denominator)
         _finite_complex(value) && !iszero(value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_nu_positive,
                 "nonfinite DD MST positive-tail denominator at n=$n.",
             ))
@@ -3273,7 +3267,7 @@ function _dd_ratios(
         if n <= nmax
             value = dc_value(ratio)
             _finite_complex(value) && !iszero(value) ||
-                throw(MSTCertificateError(
+                throw(ManoSuzukiTakasugiCertificateError(
                     :dd_nu_positive,
                     "nonfinite DD MST positive-tail ratio at n=$n.",
                 ))
@@ -3289,7 +3283,7 @@ function _dd_ratios(
         )
         value = dc_value(denominator)
         _finite_complex(value) && !iszero(value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_nu_negative,
                 "nonfinite DD MST negative-tail denominator at n=$n.",
             ))
@@ -3300,7 +3294,7 @@ function _dd_ratios(
         if n >= -nmax
             value = dc_value(ratio)
             _finite_complex(value) && !iszero(value) ||
-                throw(MSTCertificateError(
+                throw(ManoSuzukiTakasugiCertificateError(
                     :dd_nu_negative,
                     "nonfinite DD MST negative-tail ratio at n=$n.",
                 ))
@@ -3312,9 +3306,9 @@ end
 
 # Double-double MST equation beta_0 + alpha_0 R_1 + gamma_0 L_(-1) at nu = l + offset.
 function _dd_equation(
-    p::MSTParams,
+    p::ManoSuzukiTakasugiParams,
     offset::DDComplex;
-    cutoff::Int=MST_NIA_TAIL,
+    cutoff::Int=MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_TAIL,
 )
     positive, negative = _dd_ratios(
         p, offset; cutoff, nmax=1)
@@ -3328,10 +3322,10 @@ function _dd_equation(
 end
 
 # Newton refinement of nu - l in double-double; throws unless the scaled residual
-# reaches MST_DD_NU_RESIDUAL_MAX.
+# reaches MANO_SUZUKI_TAKASUGI_DD_NU_RESIDUAL_MAX.
 function _dd_refine(
-    p::MSTParams;
-    cutoff::Int=MST_NIA_TAIL,
+    p::ManoSuzukiTakasugiParams;
+    cutoff::Int=MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_TAIL,
     maxiter::Int=8,
 )
     current = DDComplex(p.nu_offset)
@@ -3356,7 +3350,7 @@ function _dd_refine(
         derivative_value = dc_value(derivative)
         _finite_complex(derivative_value) &&
             !iszero(derivative_value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_nu_derivative,
                 "nonfinite DD MST nu derivative.",
             ))
@@ -3390,8 +3384,8 @@ function _dd_refine(
         abs(dc_value(step)) <= 1.0e-25 * step_scale && break
     end
 
-    best_residual <= MST_DD_NU_RESIDUAL_MAX ||
-        throw(MSTCertificateError(
+    best_residual <= MANO_SUZUKI_TAKASUGI_DD_NU_RESIDUAL_MAX ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_nu_residual,
             "DD MST nu refinement rejected: residual=$best_residual.",
         ))
@@ -3401,18 +3395,18 @@ end
 function _dd_sum_result(total::DDComplex, absolute_sum)
     value = dc_value(total)
     _finite_complex(value) && !iszero(value) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_amplitude_sum,
             "nonfinite DD MST amplitude sum.",
         ))
     condition = Float64(absolute_sum / abs(value))
-    isfinite(condition) || throw(MSTCertificateError(
+    isfinite(condition) || throw(ManoSuzukiTakasugiCertificateError(
         :dd_amplitude_sum,
         "nonfinite DD MST amplitude condition.",
     ))
     # Double-double terms: the sum rounds at eps^2 per term (condition
     # times that) before the final rounding to Float64.
-    return MSTAmplitudeSum(
+    return ManoSuzukiTakasugiAmplitudeSum(
         ComplexF64(log(abs(value)) + I * angle(value)),
         condition,
         eps(Float64) * (1 + eps(Float64) * condition),
@@ -3470,10 +3464,10 @@ end
 # Double-double amplitude sums (coefficient sum, A_- sum, K_nu sums, D sum) at full and
 # check order.
 function _dd_amp_sums(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     offset::DDComplex;
-    nmax::Int=MST_AMP_NMAX,
-    check_nmax::Int=MST_AMP_CHECK_NMAX,
+    nmax::Int=MANO_SUZUKI_TAKASUGI_AMP_NMAX,
+    check_nmax::Int=MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX,
 )
     p = data.params
     positive, negative = _dd_ratios(
@@ -3588,9 +3582,9 @@ function _dd_amp_sums(
             down_check_absolute = down_absolute
         end
     end
-    up_check === nothing && throw(MSTCertificateError(
+    up_check === nothing && throw(ManoSuzukiTakasugiCertificateError(
         :dd_amplitude_sum, "missing DD MST upper check sum."))
-    down_check === nothing && throw(MSTCertificateError(
+    down_check === nothing && throw(ManoSuzukiTakasugiCertificateError(
         :dd_amplitude_sum, "missing DD MST lower check sum."))
     ksum = (
         (
@@ -3644,10 +3638,10 @@ end
 
 # Double-double version of _amp_pair at nu = l + offset.
 function _dd_amp_pair(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     offset::DDComplex;
-    nmax::Int=MST_AMP_NMAX,
-    check_nmax::Int=MST_AMP_CHECK_NMAX,
+    nmax::Int=MANO_SUZUKI_TAKASUGI_AMP_NMAX,
+    check_nmax::Int=MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX,
 )
     p = data.params
     offset2 = dc_sub(
@@ -3655,7 +3649,7 @@ function _dd_amp_pair(
         offset,
     )
     nu2 = ComplexF64(p.l) + dc_value(offset2)
-    data2 = MSTSeriesData(MSTParams(
+    data2 = ManoSuzukiTakasugiSeriesData(ManoSuzukiTakasugiParams(
         p.s, p.l, p.m, p.a, p.omega, p.lambda, nu2))
     fsum, asum, ksum1, dsum1 = _dd_amp_sums(
         data, offset; nmax, check_nmax)
@@ -3672,7 +3666,7 @@ end
 
 function _amp_logsum_values(logs)
     all(z -> isfinite(real(z)) && isfinite(imag(z)), logs) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_amplitude_sum,
             "nonfinite analytic MST amplitude summand.",
         ))
@@ -3695,11 +3689,11 @@ function _amp_logsum_values(logs)
     end
     norm = abs(total)
     isfinite(norm) && !iszero(norm) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_amplitude_sum,
             "zero or nonfinite analytic MST amplitude sum.",
         ))
-    return MSTAmplitudeSum(
+    return ManoSuzukiTakasugiAmplitudeSum(
         ComplexF64(scale + log(norm) + I * angle(total)),
         Float64(absolute_sum / norm),
         eps(Float64) * (1 + (weighted + 2 * absolute_sum) / norm),
@@ -3715,7 +3709,7 @@ end
 # _amp_rec_pair also returns the sum over [check_min, check_max].
 function _amp_rec_sum(
     ratio_log,
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     nmin::Int,
     nmax::Int,
     base_extra,
@@ -3758,7 +3752,7 @@ end
 
 function _amp_rec_pair(
     ratio_log,
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     nmin::Int,
     nmax::Int,
     check_min::Int,
@@ -3789,7 +3783,7 @@ function _amp_logadd(first::ComplexF64, second::ComplexF64)
     scale = max(real(first), real(second))
     value = exp(first - scale) + exp(second - scale)
     !iszero(value) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_amplitude_cancellation,
             "exact cancellation in analytic MST amplitude formula.",
         ))
@@ -3802,7 +3796,7 @@ _amp_logminus(first::ComplexF64, second::ComplexF64) =
 function _amp_lgamma(z)
     value = ComplexF64(loggamma(ComplexF64(z)))
     isfinite(real(value)) && isfinite(imag(value)) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_amplitude_gamma,
             "nonfinite analytic MST loggamma factor.",
         ))
@@ -3813,14 +3807,14 @@ _amp_lfactorial(n::Int) = _amp_lgamma(n + 1)
 _amp_lsin(z) = log(ComplexF64(sin(ComplexF64(z))))
 
 # Sum of a_n over |n| <= nmax.
-function _amp_coeff_sum(data::MSTSeriesData, nmax::Int)
+function _amp_coeff_sum(data::ManoSuzukiTakasugiSeriesData, nmax::Int)
     return _amp_logsum(-nmax, nmax) do n
         log_series_coefficient!(data, n)
     end
 end
 
 function _amp_coeff_pair(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     nmax::Int,
     check_nmax::Int,
 )
@@ -3831,7 +3825,7 @@ end
 
 # A_- sum of a_n (-1)^n (nu+1+s-i epsilon)_n / (nu+1-s+i epsilon)_n; the _fast and _pair
 # versions build the weights by recurrence.
-function _amp_aminus_sum(data::MSTSeriesData, nmax::Int)
+function _amp_aminus_sum(data::ManoSuzukiTakasugiSeriesData, nmax::Int)
     p = data.params
     nu = _nu_shift(p)
     epsc = ComplexF64(p.epsilon)
@@ -3843,7 +3837,7 @@ function _amp_aminus_sum(data::MSTSeriesData, nmax::Int)
     end
 end
 
-function _amp_aminus_sum_fast(data::MSTSeriesData, nmax::Int)
+function _amp_aminus_sum_fast(data::ManoSuzukiTakasugiSeriesData, nmax::Int)
     p = data.params
     nu = _nu_shift(p)
     epsc = ComplexF64(p.epsilon)
@@ -3857,7 +3851,7 @@ function _amp_aminus_sum_fast(data::MSTSeriesData, nmax::Int)
 end
 
 function _amp_aminus_pair(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     nmax::Int,
     check_nmax::Int,
 )
@@ -3876,7 +3870,7 @@ function _amp_aminus_pair(
 end
 
 # Upper (n >= 0) and lower (n <= 0) sums of K_nu.
-function _amp_knu_sums(data::MSTSeriesData, nmax::Int)
+function _amp_knu_sums(data::ManoSuzukiTakasugiSeriesData, nmax::Int)
     p = data.params
     nu = _nu_shift(p)
     epsc = ComplexF64(p.epsilon)
@@ -3902,7 +3896,7 @@ function _amp_knu_sums(data::MSTSeriesData, nmax::Int)
     return up, down
 end
 
-function _amp_knu_sums_fast(data::MSTSeriesData, nmax::Int)
+function _amp_knu_sums_fast(data::ManoSuzukiTakasugiSeriesData, nmax::Int)
     p = data.params
     nu = _nu_shift(p)
     epsc = ComplexF64(p.epsilon)
@@ -3943,7 +3937,7 @@ function _amp_knu_sums_fast(data::MSTSeriesData, nmax::Int)
 end
 
 function _amp_knu_pair(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     nmax::Int,
     check_nmax::Int,
 )
@@ -3995,7 +3989,7 @@ end
 
 # Sum of a_n Gamma(1+nu+n+s+i epsilon) Gamma(1+nu+n+i tau) /
 # (Gamma(1+nu+n-s-i epsilon) Gamma(1+nu+n-i tau)), used in up_inc.
-function _amp_dsum(data::MSTSeriesData, nmax::Int)
+function _amp_dsum(data::ManoSuzukiTakasugiSeriesData, nmax::Int)
     p = data.params
     nu = _nu_shift(p)
     epsc = ComplexF64(p.epsilon)
@@ -4009,7 +4003,7 @@ function _amp_dsum(data::MSTSeriesData, nmax::Int)
     end
 end
 
-function _amp_dsum_fast(data::MSTSeriesData, nmax::Int)
+function _amp_dsum_fast(data::ManoSuzukiTakasugiSeriesData, nmax::Int)
     p = data.params
     nu = _nu_shift(p)
     epsc = ComplexF64(p.epsilon)
@@ -4032,7 +4026,7 @@ function _amp_dsum_fast(data::MSTSeriesData, nmax::Int)
 end
 
 function _amp_d_pair(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     nmax::Int,
     check_nmax::Int,
 )
@@ -4060,7 +4054,7 @@ function _amp_d_pair(
 end
 
 # log K_nu from its upper and lower sums, with its absolute error.
-function _amp_klog(data::MSTSeriesData, sums)
+function _amp_klog(data::ManoSuzukiTakasugiSeriesData, sums)
     p = data.params
     nu = _nu_shift(p)
     epsc = ComplexF64(p.epsilon)
@@ -4105,11 +4099,11 @@ end
 # reflected parameters and conjugated. The split lies on the negative
 # imaginary omega axis, the amplitudes' own branch cut, and the sign of the
 # zero of Re omega picks the side (the reflection maps -0.0 to +0.0).
-_amp_reflected(p::MSTParams) = signbit(real(p.omega))
-_amp_reflect(p::MSTParams) = MSTParams(p.s, p.l, -p.m, p.a, -conj(p.omega),
+_amp_reflected(p::ManoSuzukiTakasugiParams) = signbit(real(p.omega))
+_amp_reflect(p::ManoSuzukiTakasugiParams) = ManoSuzukiTakasugiParams(p.s, p.l, -p.m, p.a, -conj(p.omega),
     conj(p.lambda), conj(p.nu), conj(p.nu_offset))
-_amp_conj(x::MSTAmplitudeSum) =
-    MSTAmplitudeSum(conj(x.logvalue), x.condition, x.error)
+_amp_conj(x::ManoSuzukiTakasugiAmplitudeSum) =
+    ManoSuzukiTakasugiAmplitudeSum(conj(x.logvalue), x.condition, x.error)
 _amp_conj(x::Tuple) = map(_amp_conj, x)
 _amp_conj(x::NamedTuple) = map(v -> v isa Complex ? conj(v) : v, x)
 
@@ -4117,8 +4111,8 @@ _amp_conj(x::NamedTuple) = map(v -> v isa Complex ? conj(v) : v, x)
 # and their absolute errors from the coefficient sum, the A_- sum, the K sums at nu and
 # -nu - 1 and the D sums (Sasaki & Tagoshi, Living Rev. Relativ. 6, 6 (2003)).
 function _amp_build(
-    data::MSTSeriesData,
-    data2::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
+    data2::ManoSuzukiTakasugiSeriesData,
     fsum,
     asum,
     ksum1,
@@ -4127,8 +4121,8 @@ function _amp_build(
     dsum2,
 )
     _amp_reflected(data.params) && return _amp_conj(_amp_build(
-        MSTSeriesData(_amp_reflect(data.params)),
-        MSTSeriesData(_amp_reflect(data2.params)),
+        ManoSuzukiTakasugiSeriesData(_amp_reflect(data.params)),
+        ManoSuzukiTakasugiSeriesData(_amp_reflect(data2.params)),
         map(_amp_conj, (fsum, asum, ksum1, ksum2, dsum1, dsum2))...))
     p = data.params
     nu = _nu_shift(p)
@@ -4287,9 +4281,9 @@ function _amp_build(
 end
 
 # The series at -nu - 1 of a representation, computed on its own.
-function _amp_mirror_data(data::MSTSeriesData)
+function _amp_mirror_data(data::ManoSuzukiTakasugiSeriesData)
     p = data.params
-    return MSTSeriesData(MSTParams(
+    return ManoSuzukiTakasugiSeriesData(ManoSuzukiTakasugiParams(
         p.s, p.l, p.m, p.a, p.omega, p.lambda, -_nu_shift(p) - 1))
 end
 
@@ -4297,11 +4291,11 @@ end
 # (a_0 = 1), relative to its terms: a representation whose a_n are
 # recomputed from an anchor in the tail of |a_k| carries that error into
 # every coefficient.
-function _amp_anchor_residual(data::MSTSeriesData)
+function _amp_anchor_residual(data::ManoSuzukiTakasugiSeriesData)
     p = data.params
-    up = alpha_mst(0, p) * exp(log_series_coefficient!(data, 1))
-    centre = beta_mst(0, p)
-    down = gamma_mst(0, p) * exp(log_series_coefficient!(data, -1))
+    up = alpha_mano_suzuki_takasugi(0, p) * exp(log_series_coefficient!(data, 1))
+    centre = beta_mano_suzuki_takasugi(0, p)
+    down = gamma_mano_suzuki_takasugi(0, p) * exp(log_series_coefficient!(data, -1))
     return Float64(abs(up + centre + down) /
         (abs(up) + abs(centre) + abs(down)))
 end
@@ -4310,9 +4304,9 @@ end
 # nu + d), taken from source: a'_k = a_{k+d} / a_d, and for its -nu' - 1
 # series a''_k = a'_{-k} (a_n^{-nu-1} = a_{-n}^{nu}). Indices beyond
 # +-nmax continue by the representation's own recurrence.
-function _amp_shared_data(source::MSTSeriesData, params::MSTParams, d::Int,
+function _amp_shared_data(source::ManoSuzukiTakasugiSeriesData, params::ManoSuzukiTakasugiParams, d::Int,
         nmax::Int)
-    data = MSTSeriesData(params)
+    data = ManoSuzukiTakasugiSeriesData(params)
     mirror = _amp_mirror_data(data)
     anchor = log_series_coefficient!(source, d)
     anchor_error = source.coeff_errors[d]
@@ -4335,10 +4329,10 @@ end
 # Amplitude logs from the sums over |n| <= nmax; `fast` builds the summand weights by
 # ratio recurrences.
 @noinline function _amp_logs(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     nmax::Int;
     fast::Bool=true,
-    data2::MSTSeriesData=_amp_mirror_data(data),
+    data2::ManoSuzukiTakasugiSeriesData=_amp_mirror_data(data),
 )
     fsum = _amp_coeff_sum(data, nmax)
     asum = fast ?
@@ -4362,7 +4356,7 @@ end
 
 # Amplitude logs at order nmax and at the check order check_nmax.
 @noinline function _amp_pair(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     nmax::Int,
     check_nmax::Int,
 )
@@ -4370,7 +4364,7 @@ end
         throw(ArgumentError("invalid MST amplitude check order."))
     p = data.params
     nu2 = -_nu_shift(p) - 1
-    data2 = MSTSeriesData(MSTParams(
+    data2 = ManoSuzukiTakasugiSeriesData(ManoSuzukiTakasugiParams(
         p.s, p.l, p.m, p.a, p.omega, p.lambda, nu2))
     fsum = _amp_coeff_pair(data, nmax, check_nmax)
     asum = _amp_aminus_pair(data, nmax, check_nmax)
@@ -4426,7 +4420,7 @@ _amp_ratio_errors(logs, branch::Symbol) = branch == :IN ?
         logs.up_ref_error + logs.up_trans_error)
 
 # Converts Teukolsky amplitude ratios to GSN ones with the ConversionFactors amplitudes.
-function _amp_gsn_pair(p::MSTParams, branch::Symbol, teuk)
+function _amp_gsn_pair(p::ManoSuzukiTakasugiParams, branch::Symbol, teuk)
     cf = _conversion_module()
     trans, inc, ref = if branch == :IN
         (
@@ -4515,17 +4509,17 @@ function _amp_pair(candidates)
             end
         end
     end
-    pair === nothing && throw(MSTCertificateError(
+    pair === nothing && throw(ManoSuzukiTakasugiCertificateError(
         :nia_amplitude_certificate,
         "analytic MST amplitude coherent pair is unavailable.",
     ))
     return pair, Float64(distance)
 end
 
-# Distance of a candidate from the same representation summed to MST_AMP_CHECK_NMAX.
+# Distance of a candidate from the same representation summed to MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX.
 function _amp_check(base, shared, candidate, branch)
     data, mirror = shared[candidate.shift]
-    logs = _amp_logs(data, MST_AMP_CHECK_NMAX; data2=mirror)
+    logs = _amp_logs(data, MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX; data2=mirror)
     teuk = _amp_teuk_pair(logs, branch)
     gsn = _amp_gsn_pair(base, branch, teuk)
     return (distance=Float64(_amp_distance(candidate.gsn, gsn)),
@@ -4536,8 +4530,8 @@ end
 # p while the step and the residual decrease: the solver stops at a fixed
 # residual, and the coefficients taken from this anchor carry nu's
 # remaining error. The Newton step left at the result is that error.
-function _amp_refine_nu(p::MSTParams)
-    equation = nu -> _mst_eq_value(
+function _amp_refine_nu(p::ManoSuzukiTakasugiParams)
+    equation = nu -> _mano_suzuki_takasugi_eq_value(
         nu - p.l, p.s, p.l, p.m, p.a, p.omega, p.lambda)
     h = exp2(-18) * max(1.0, abs(p.nu))
     current = p.nu
@@ -4559,20 +4553,20 @@ end
 # Relative change of a representation's amplitudes when nu (and with it
 # the shared coefficients) moves by its remaining Newton step.
 function _amp_nu_error(base, centered, source_shift, candidate, branch, step)
-    moved = MSTParams(base.s, base.l, base.m, base.a, base.omega,
+    moved = ManoSuzukiTakasugiParams(base.s, base.l, base.m, base.a, base.omega,
         base.lambda, base.nu - step)
     data, mirror = _amp_shared_data(
         _amp_data(moved, centered - step, source_shift),
         _amp_data(moved, centered - step, candidate.shift).params,
-        candidate.shift - source_shift, MST_AMP_NMAX)
-    logs = _amp_logs(data, MST_AMP_NMAX; data2=mirror)
+        candidate.shift - source_shift, MANO_SUZUKI_TAKASUGI_AMP_NMAX)
+    logs = _amp_logs(data, MANO_SUZUKI_TAKASUGI_AMP_NMAX; data2=mirror)
     return _amp_component_distance(candidate.gsn,
         _amp_gsn_pair(moved, branch, _amp_teuk_pair(logs, branch)))
 end
 
-# MSTSeriesData of the representation nu = centered + shift.
-function _amp_data(base::MSTParams, centered, shift)
-    return MSTSeriesData(MSTParams(
+# ManoSuzukiTakasugiSeriesData of the representation nu = centered + shift.
+function _amp_data(base::ManoSuzukiTakasugiParams, centered, shift)
+    return ManoSuzukiTakasugiSeriesData(ManoSuzukiTakasugiParams(
         base.s,
         base.l,
         base.m,
@@ -4584,16 +4578,16 @@ function _amp_data(base::MSTParams, centered, shift)
 end
 
 """
-    mst_nia_amplitudes(s, l, m, a, omega, lambda, branch; nu=nothing)
+    mano_suzuki_takasugi_negative_imaginary_axis_amplitudes(s, l, m, a, omega, lambda, branch; nu=nothing)
 
 Analytic MST asymptotic amplitudes of `branch` (`:IN` or `:UP`) certified across the
-representations nu + k, k in `MST_AMP_SHIFTS`, which share one coefficient set. The
+representations nu + k, k in `MANO_SUZUKI_TAKASUGI_AMP_SHIFTS`, which share one coefficient set. The
 medoid of the candidates is returned when spread, nearest agreement, truncation and
 condition pass; otherwise the closest coherent pair is tried, and an
-`MSTCertificateError` is thrown if it fails too. The result holds the Teukolsky and GSN
+`ManoSuzukiTakasugiCertificateError` is thrown if it fails too. The result holds the Teukolsky and GSN
 amplitude ratios (`teuk`, `gsn`), the transmission log and the certificate diagnostics.
 """
-@noinline function mst_nia_amplitudes(
+@noinline function mano_suzuki_takasugi_negative_imaginary_axis_amplitudes(
     s::Integer,
     l::Integer,
     m::Integer,
@@ -4605,36 +4599,36 @@ amplitude ratios (`teuk`, `gsn`), the transmission log and the certificate diagn
 )
     omegac = ComplexF64(omega)
     nu_value = nu === nothing ?
-        mst_nu(s, l, m, a, omegac, lambda) :
+        mano_suzuki_takasugi_nu(s, l, m, a, omegac, lambda) :
         ComplexF64(nu)
-    base = MSTParams(s, l, m, a, omegac, lambda, nu_value)
+    base = ManoSuzukiTakasugiParams(s, l, m, a, omegac, lambda, nu_value)
     centered = nu_value - round(Int, real(nu_value))
     # One coefficient set for all representations: that of the anchor
     # (a representation's or the solver's own nu) that satisfies its
     # recurrence best, with nu refined there, reindexed to each
     # representation's anchor. Recomputing a_n from an anchor in the tail
     # of |a_k| loses digits that the running bounds do not see.
-    sources = (MST_AMP_SHIFTS..., round(Int, real(nu_value)))
+    sources = (MANO_SUZUKI_TAKASUGI_AMP_SHIFTS..., round(Int, real(nu_value)))
     source_shift = sources[argmin(map(shift -> _amp_anchor_residual(
         _amp_data(base, centered, shift)), sources))]
     refinement = _amp_refine_nu(_amp_data(base, centered, source_shift).params)
     refined = refinement.nu
     nu_value += refined - (centered + source_shift)
-    base = MSTParams(s, l, m, a, omegac, lambda, nu_value)
+    base = ManoSuzukiTakasugiParams(s, l, m, a, omegac, lambda, nu_value)
     centered = refined - source_shift
     source = _amp_data(base, centered, source_shift)
     source_residual = _amp_anchor_residual(source)
     shared = Dict(shift => _amp_shared_data(source,
             _amp_data(base, centered, shift).params,
-            shift - source_shift, MST_AMP_NMAX)
-        for shift in MST_AMP_SHIFTS)
-    candidates = map(MST_AMP_SHIFTS) do shift
+            shift - source_shift, MANO_SUZUKI_TAKASUGI_AMP_NMAX)
+        for shift in MANO_SUZUKI_TAKASUGI_AMP_SHIFTS)
+    candidates = map(MANO_SUZUKI_TAKASUGI_AMP_SHIFTS) do shift
         data, mirror = shared[shift]
-        logs = _amp_logs(data, MST_AMP_NMAX; data2=mirror)
+        logs = _amp_logs(data, MANO_SUZUKI_TAKASUGI_AMP_NMAX; data2=mirror)
         teuk = _amp_teuk_pair(logs, branch)
         gsn = _amp_gsn_pair(base, branch, teuk)
         all(_finite_complex, (teuk..., gsn...)) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :nia_amplitude_nonfinite,
                 "nonfinite analytic MST amplitude candidate.",
             ))
@@ -4655,18 +4649,18 @@ amplitude ratios (`teuk`, `gsn`), the transmission log and the certificate diagn
     medoid_check = _amp_check(base, shared, medoid, branch)
     medoid_truncation = medoid_check.distance
     strict_accepted =
-        medoid.representation_spread <= MST_AMP_SPREAD_MAX &&
-        medoid.nearest_agreement <= MST_AMP_NEAREST_MAX &&
-        medoid_truncation <= MST_AMP_TRUNCATION_MAX &&
-        medoid.max_condition <= MST_AMP_CONDITION_MAX
+        medoid.representation_spread <= MANO_SUZUKI_TAKASUGI_AMP_SPREAD_MAX &&
+        medoid.nearest_agreement <= MANO_SUZUKI_TAKASUGI_AMP_NEAREST_MAX &&
+        medoid_truncation <= MANO_SUZUKI_TAKASUGI_AMP_TRUNCATION_MAX &&
+        medoid.max_condition <= MANO_SUZUKI_TAKASUGI_AMP_CONDITION_MAX
     if strict_accepted
         return merge(medoid, (
             truncation_agreement=medoid_truncation,
             component_agreement=max.(medoid.nearest_components,
                 medoid_check.components) .+ _amp_nu_error(base, centered,
                 source_shift, medoid, branch, refinement.step),
-            nmax=MST_AMP_NMAX,
-            check_nmax=MST_AMP_CHECK_NMAX,
+            nmax=MANO_SUZUKI_TAKASUGI_AMP_NMAX,
+            check_nmax=MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX,
             certificate_kind=:global_medoid,
             certificate_accepted=true,
         ))
@@ -4686,11 +4680,11 @@ amplitude ratios (`teuk`, `gsn`), the transmission log and the certificate diagn
     ) ? (first, second, first_check) : (second, first, second_check)
     truncation_agreement = selected_check.distance
     accepted =
-        pair_agreement <= MST_AMP_NEAREST_MAX &&
-        truncation_agreement <= MST_AMP_TRUNCATION_MAX &&
-        selected.max_condition <= MST_AMP_CONDITION_MAX
+        pair_agreement <= MANO_SUZUKI_TAKASUGI_AMP_NEAREST_MAX &&
+        truncation_agreement <= MANO_SUZUKI_TAKASUGI_AMP_TRUNCATION_MAX &&
+        selected.max_condition <= MANO_SUZUKI_TAKASUGI_AMP_CONDITION_MAX
     accepted ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_amplitude_certificate,
             "analytic MST amplitude certificate rejected: " *
             "spread=$(medoid.representation_spread), " *
@@ -4707,28 +4701,28 @@ amplitude ratios (`teuk`, `gsn`), the transmission log and the certificate diagn
             _amp_component_distance(selected.gsn, other.gsn),
             selected_check.components) .+ _amp_nu_error(base, centered,
             source_shift, selected, branch, refinement.step),
-        nmax=MST_AMP_NMAX,
-        check_nmax=MST_AMP_CHECK_NMAX,
+        nmax=MANO_SUZUKI_TAKASUGI_AMP_NMAX,
+        check_nmax=MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX,
         certificate_kind=:coherent_pair,
         certificate_accepted=true,
     ))
 end
 
-# Amplitudes at the principal nu with a truncation check at MST_AMP_CHECK_NMAX.
+# Amplitudes at the principal nu with a truncation check at MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX.
 @noinline function _principal_amplitudes(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     branch::Symbol,
 )
     # nu continued to its noise floor at its own anchor, and its remaining
-    # Newton step propagated into the error, as in mst_nia_amplitudes.
+    # Newton step propagated into the error, as in mano_suzuki_takasugi_negative_imaginary_axis_amplitudes.
     p = data.params
     refinement = _amp_refine_nu(p)
-    with_nu(nu) = MSTSeriesData(
-        MSTParams(p.s, p.l, p.m, p.a, p.omega, p.lambda, nu))
+    with_nu(nu) = ManoSuzukiTakasugiSeriesData(
+        ManoSuzukiTakasugiParams(p.s, p.l, p.m, p.a, p.omega, p.lambda, nu))
     data = with_nu(refinement.nu)
     base = data.params
     logs, check_logs =
-        _amp_pair(data, MST_AMP_NMAX, MST_AMP_CHECK_NMAX)
+        _amp_pair(data, MANO_SUZUKI_TAKASUGI_AMP_NMAX, MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX)
     teuk = _amp_teuk_pair(logs, branch)
     gsn = _amp_gsn_pair(base, branch, teuk)
     check_teuk = _amp_teuk_pair(check_logs, branch)
@@ -4736,7 +4730,7 @@ end
     truncation = Float64(_amp_distance(gsn, check_gsn))
     moved = with_nu(refinement.nu - refinement.step)
     moved_gsn = _amp_gsn_pair(moved.params, branch, _amp_teuk_pair(
-        _amp_logs(moved, MST_AMP_NMAX), branch))
+        _amp_logs(moved, MANO_SUZUKI_TAKASUGI_AMP_NMAX), branch))
     component_agreement = _amp_component_distance(gsn, check_gsn) .+
         _amp_component_distance(gsn, moved_gsn)
     condition = Float64(max(
@@ -4744,18 +4738,18 @@ end
         check_logs.max_condition,
     ))
     all(_finite_complex, (teuk..., gsn..., check_teuk..., check_gsn...)) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_amplitude_nonfinite,
             "nonfinite principal-nu analytic MST amplitude.",
         ))
-    truncation <= MST_AMP_TRUNCATION_MAX ||
-        throw(MSTCertificateError(
+    truncation <= MANO_SUZUKI_TAKASUGI_AMP_TRUNCATION_MAX ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_amplitude_certificate,
             "principal-nu analytic MST truncation rejected: " *
             "agreement=$(truncation).",
         ))
-    condition <= MST_AMP_CONDITION_MAX ||
-        throw(MSTCertificateError(
+    condition <= MANO_SUZUKI_TAKASUGI_AMP_CONDITION_MAX ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_amplitude_certificate,
             "principal-nu analytic MST condition rejected: " *
             "condition=$(condition).",
@@ -4776,8 +4770,8 @@ end
         component_agreement,
         max_condition=condition,
         gsn_error=_amp_ratio_errors(logs, branch),
-        nmax=MST_AMP_NMAX,
-        check_nmax=MST_AMP_CHECK_NMAX,
+        nmax=MANO_SUZUKI_TAKASUGI_AMP_NMAX,
+        check_nmax=MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX,
         certificate_kind=:principal_single_nu,
         certificate_accepted=true,
     )
@@ -4786,13 +4780,13 @@ end
 # Amplitudes as in _principal_amplitudes, with nu refined and the sums evaluated in
 # double-double.
 @noinline function _refined_amplitudes(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     branch::Symbol,
 )
     base = data.params
     offset, nu_residual = _dd_refine(base)
     nu = ComplexF64(base.l) + dc_value(offset)
-    refined = MSTSeriesData(MSTParams(
+    refined = ManoSuzukiTakasugiSeriesData(ManoSuzukiTakasugiParams(
         base.s,
         base.l,
         base.m,
@@ -4818,18 +4812,18 @@ end
         gsn...,
         check_teuk...,
         check_gsn...,
-    )) || throw(MSTCertificateError(
+    )) || throw(ManoSuzukiTakasugiCertificateError(
         :dd_amplitude_nonfinite,
         "nonfinite DD-refined MST amplitude.",
     ))
-    truncation <= MST_AMP_TRUNCATION_MAX ||
-        throw(MSTCertificateError(
+    truncation <= MANO_SUZUKI_TAKASUGI_AMP_TRUNCATION_MAX ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_amplitude_truncation,
             "DD-refined MST amplitude truncation rejected: " *
             "agreement=$truncation.",
         ))
-    condition <= MST_DD_CONDITION_MAX ||
-        throw(MSTCertificateError(
+    condition <= MANO_SUZUKI_TAKASUGI_DD_CONDITION_MAX ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_amplitude_condition,
             "DD-refined MST amplitude condition rejected: " *
             "condition=$condition.",
@@ -4854,35 +4848,35 @@ end
         component_agreement,
         max_condition=condition,
         gsn_error=_amp_ratio_errors(logs, branch),
-        nmax=MST_AMP_NMAX,
-        check_nmax=MST_AMP_CHECK_NMAX,
+        nmax=MANO_SUZUKI_TAKASUGI_AMP_NMAX,
+        check_nmax=MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX,
         certificate_kind=:principal_dd_refined,
         certificate_accepted=true,
     )
 end
 
 """
-    mst_principal_amplitudes(coefficients_or_params, branch)
+    mano_suzuki_takasugi_principal_amplitudes(coefficients_or_params, branch)
 
 Analytic MST asymptotic amplitudes of `branch` (`:IN` or `:UP`) at the principal nu of
-the mode, certified by a truncation and a condition check; throws `MSTCertificateError`
+the mode, certified by a truncation and a condition check; throws `ManoSuzukiTakasugiCertificateError`
 otherwise.
 """
-@noinline mst_principal_amplitudes(
+@noinline mano_suzuki_takasugi_principal_amplitudes(
     coefficients::CoefficientSet,
     branch::Symbol,
-) = _principal_amplitudes(_mst_data(coefficients), branch)
+) = _principal_amplitudes(_mano_suzuki_takasugi_data(coefficients), branch)
 
-@noinline mst_principal_amplitudes(
+@noinline mano_suzuki_takasugi_principal_amplitudes(
     params::GSNParameters,
     branch::Symbol,
-) = _principal_amplitudes(_mst_data(params), branch)
+) = _principal_amplitudes(_mano_suzuki_takasugi_data(params), branch)
 
 # Branch strength and amplitude ratio on the negative imaginary axis from given series
 # data, at one truncation order.
-function _nia_branch_strength(
-    data::MSTSeriesData;
-    nmax::Int=MST_NIA_SUM_MAX,
+function _negative_imaginary_axis_branch_strength(
+    data::ManoSuzukiTakasugiSeriesData;
+    nmax::Int=MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_SUM_MAX,
 )
     p = data.params
     omega = ComplexF64(p.omega)
@@ -4890,9 +4884,9 @@ function _nia_branch_strength(
         throw(ArgumentError(
             "MST NIA branch strength requires omega=-i*sigma with sigma>0."))
 
-    fsum = _nia_full_logsum(
+    fsum = _negative_imaginary_axis_full_logsum(
         n -> log_series_coefficient!(data, n), nmax)
-    aminus = _nia_aminus_sum(data, nmax)
+    aminus = _negative_imaginary_axis_aminus_sum(data, nmax)
     nu = _nu_shift(p)
     epsc = ComplexF64(p.epsilon)
 
@@ -4905,7 +4899,7 @@ function _nia_branch_strength(
         _lognorm_value(aminus)
     monodromy = -expm1(2pi * (epsc - I * nu))
     _finite_complex(monodromy) && !iszero(monodromy) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_monodromy,
             "nonfinite or zero MST NIA monodromy factor.",
         ))
@@ -4919,7 +4913,7 @@ function _nia_branch_strength(
     ratio = ComplexF64(exp(log_ratio))
     strength = ComplexF64(exp(log_strength))
     all(_finite_complex, (ratio, strength)) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_branch_strength,
             "nonfinite MST NIA branch strength.",
         ))
@@ -4939,15 +4933,15 @@ function _nia_branch_strength(
 end
 
 """
-    mst_nia_branch_strength(s, l, m, a, omega, lambda; nu=nothing)
+    mano_suzuki_takasugi_negative_imaginary_axis_branch_strength(s, l, m, a, omega, lambda; nu=nothing)
 
 Strength of the branch cut of the MST solution on the negative imaginary frequency axis,
 omega = -i sigma with sigma > 0, from series coefficients computed by double-double
 backward recurrence. The estimated error combines the sum error, the change between two
 truncation orders and the change under one-ulp perturbations of a, omega, lambda and nu;
-`certificate_accepted` is true when it is at most `MST_NIA_CERT_TOL`.
+`certificate_accepted` is true when it is at most `MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CERT_TOL`.
 """
-function mst_nia_branch_strength(
+function mano_suzuki_takasugi_negative_imaginary_axis_branch_strength(
     s::Integer,
     l::Integer,
     m::Integer,
@@ -4958,20 +4952,20 @@ function mst_nia_branch_strength(
 )
     omegac = ComplexF64(omega)
     nu_value = nu === nothing ?
-        mst_nu(s, l, m, a, omegac, lambda) :
+        mano_suzuki_takasugi_nu(s, l, m, a, omegac, lambda) :
         ComplexF64(nu)
     function strength_at(av, omegav, lambdav, nuv, cutoff, nmax)
-        params = MSTParams(
+        params = ManoSuzukiTakasugiParams(
             s, l, m, av, omegav, lambdav, nuv,
             ComplexF64(nuv) - ComplexF64(l))
-        return _nia_branch_strength(
-            _nia_series_data(params, cutoff); nmax)
+        return _negative_imaginary_axis_branch_strength(
+            _negative_imaginary_axis_series_data(params, cutoff); nmax)
     end
     fine = strength_at(
-        a, omegac, lambda, nu_value, MST_NIA_TAIL, MST_NIA_SUM_MAX)
+        a, omegac, lambda, nu_value, MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_TAIL, MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_SUM_MAX)
     coarse = strength_at(
         a, omegac, lambda, nu_value,
-        MST_NIA_CHECK_TAIL, MST_NIA_CHECK_SUM_MAX)
+        MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CHECK_TAIL, MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CHECK_SUM_MAX)
     scale = max(
         abs(fine.branch_strength),
         abs(coarse.branch_strength),
@@ -5010,9 +5004,9 @@ function mst_nia_branch_strength(
         candidate = try
             strength_at(
                 av, omegav, lambdav, nuv,
-                MST_NIA_CHECK_TAIL, MST_NIA_CHECK_SUM_MAX)
+                MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CHECK_TAIL, MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CHECK_SUM_MAX)
         catch error
-            error isa MSTCertificateError || rethrow()
+            error isa ManoSuzukiTakasugiCertificateError || rethrow()
             input_condition_error = Inf
             break
         end
@@ -5036,17 +5030,17 @@ function mst_nia_branch_strength(
         adjacent_error=Float64(adjacent_error),
         input_condition_error=Float64(input_condition_error),
         estimated_relerr=Float64(estimated_relerr),
-        certificate_accepted=estimated_relerr <= MST_NIA_CERT_TOL,
+        certificate_accepted=estimated_relerr <= MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CERT_TOL,
     ))
 end
 
 """
-    nia_strength_fast(s, l, m, a, omega, lambda; nu=nothing)
+    negative_imaginary_axis_strength_fast(s, l, m, a, omega, lambda; nu=nothing)
 
-Cheaper `mst_nia_branch_strength`: lower recurrence cutoffs and sum orders, and
+Cheaper `mano_suzuki_takasugi_negative_imaginary_axis_branch_strength`: lower recurrence cutoffs and sum orders, and
 an error estimate from two truncation orders only.
 """
-function nia_strength_fast(
+function negative_imaginary_axis_strength_fast(
     s::Integer,
     l::Integer,
     m::Integer,
@@ -5057,18 +5051,18 @@ function nia_strength_fast(
 )
     omegac = ComplexF64(omega)
     nu_value = nu === nothing ?
-        mst_nu(s, l, m, a, omegac, lambda) :
+        mano_suzuki_takasugi_nu(s, l, m, a, omegac, lambda) :
         ComplexF64(nu)
-    params = MSTParams(
+    params = ManoSuzukiTakasugiParams(
         s, l, m, a, omegac, lambda, nu_value,
         ComplexF64(nu_value) - ComplexF64(l))
-    fine = _nia_branch_strength(
-        _nia_series_data(params, MST_NIA_FAST_TAIL);
-        nmax=MST_NIA_FAST_SUM_MAX,
+    fine = _negative_imaginary_axis_branch_strength(
+        _negative_imaginary_axis_series_data(params, MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_FAST_TAIL);
+        nmax=MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_FAST_SUM_MAX,
     )
-    coarse = _nia_branch_strength(
-        _nia_series_data(params, MST_NIA_FAST_CHECK_TAIL);
-        nmax=MST_NIA_FAST_CHECK_SUM_MAX,
+    coarse = _negative_imaginary_axis_branch_strength(
+        _negative_imaginary_axis_series_data(params, MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_FAST_CHECK_TAIL);
+        nmax=MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_FAST_CHECK_SUM_MAX,
     )
     scale = max(
         abs(fine.branch_strength),
@@ -5085,20 +5079,20 @@ function nia_strength_fast(
     return merge(fine, (
         adjacent_error=Float64(adjacent_error),
         estimated_relerr=Float64(estimated_relerr),
-        certificate_accepted=estimated_relerr <= MST_NIA_CERT_TOL,
+        certificate_accepted=estimated_relerr <= MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_CERT_TOL,
     ))
 end
 
 """
-    mst_nia_jump(s, l, m, a, omega, lambda, unit_incidence, unit_reflection; nu=nothing, require_certificate=true)
+    mano_suzuki_takasugi_negative_imaginary_axis_jump(s, l, m, a, omega, lambda, unit_incidence, unit_reflection; nu=nothing, require_certificate=true)
 
 Jump coefficient across the branch cut on the negative imaginary frequency axis at
 omega = -i sigma (sigma > 0), from the branch strength q of
-`mst_nia_branch_strength` and the unit-transmission incidence and reflection
+`mano_suzuki_takasugi_negative_imaginary_axis_branch_strength` and the unit-transmission incidence and reflection
 amplitudes. Wronskians and the jump are carried in log-polar form. With
-`require_certificate`, an uncertified strength throws `MSTCertificateError`.
+`require_certificate`, an uncertified strength throws `ManoSuzukiTakasugiCertificateError`.
 """
-function mst_nia_jump(
+function mano_suzuki_takasugi_negative_imaginary_axis_jump(
     s::Integer,
     l::Integer,
     m::Integer,
@@ -5120,12 +5114,12 @@ function mst_nia_jump(
         throw(ArgumentError(
             "MST NIA jump requires finite unit-transmission amplitudes."))
 
-    strength = mst_nia_branch_strength(
+    strength = mano_suzuki_takasugi_negative_imaginary_axis_branch_strength(
         s, l, m, a, omegac, lambda;
         nu,
     )
     require_certificate && !strength.certificate_accepted &&
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_condition,
             "MST NIA jump rejected: estimated relative error=" *
             "$(strength.estimated_relerr), input condition=" *
@@ -5137,7 +5131,7 @@ function mst_nia_jump(
     function logpolar(value::ComplexF64)
         magnitude = abs(value)
         isfinite(magnitude) && !iszero(magnitude) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :nia_logpolar,
                 "zero or nonfinite MST NIA log-polar value.",
             ))
@@ -5156,7 +5150,7 @@ function mst_nia_jump(
             right.phase * exp(right.logabs - scale)
         magnitude = abs(total)
         isfinite(magnitude) && !iszero(magnitude) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :nia_wronskian_cancellation,
                 "zero or nonfinite MST NIA Wronskian sum.",
             ))
@@ -5209,7 +5203,7 @@ function mst_nia_jump(
     )
     green_jump = materialize(green_scaled)
     green_jump === nothing &&
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :nia_jump_range,
             "MST NIA jump lies outside the ComplexF64 range.",
         ))
@@ -5231,7 +5225,7 @@ function mst_nia_jump(
 end
 
 # Log-norm normalization of the outgoing branch from the A_- sum and its prefactor.
-function _outgoing_raw_factor(data::MSTSeriesData)
+function _outgoing_raw_factor(data::ManoSuzukiTakasugiSeriesData)
     p = data.params
     fsum = _sum_symmetric_logs() do n
         nc = ComplexF64(n)
@@ -5259,13 +5253,13 @@ end
 
 # The same normalization from fixed-order A_- sums (full and check order); throws when
 # truncation or conditioning exceed `tolerance`.
-function _outgoing_raw_fast(data::MSTSeriesData, tolerance::Float64)
+function _outgoing_raw_fast(data::ManoSuzukiTakasugiSeriesData, tolerance::Float64)
     full, check = _amp_aminus_pair(
-        data, MST_AMP_NMAX, MST_AMP_CHECK_NMAX)
+        data, MANO_SUZUKI_TAKASUGI_AMP_NMAX, MANO_SUZUKI_TAKASUGI_AMP_CHECK_NMAX)
     truncation = abs(exp(check.logvalue - full.logvalue) - 1)
     condition = max(full.condition, check.condition)
     estimated_relerr = max(truncation, eps(Float64) * condition)
-    estimated_relerr <= tolerance || throw(MSTCertificateError(
+    estimated_relerr <= tolerance || throw(ManoSuzukiTakasugiCertificateError(
         :outgoing_factor,
         "MST outgoing normalization rejected: truncation=$(truncation), " *
         "condition=$(condition).",
@@ -5285,14 +5279,14 @@ function _outgoing_raw_fast(data::MSTSeriesData, tolerance::Float64)
         ComplexF64(cis(imag(value))),
         Float64(real(value)),
         Float64(estimated_relerr),
-        -MST_AMP_NMAX,
-        MST_AMP_NMAX,
+        -MANO_SUZUKI_TAKASUGI_AMP_NMAX,
+        MANO_SUZUKI_TAKASUGI_AMP_NMAX,
     )
 end
 
 # Log factor taking the raw MST series of `branch` to unit normalization: the raw sum
 # times f3 or f4 over the conversion amplitude Binc or Bref.
-function _raw_unit_logfactor(data::MSTSeriesData, params, branch::Symbol, raw=nothing)
+function _raw_unit_logfactor(data::ManoSuzukiTakasugiSeriesData, params, branch::Symbol, raw=nothing)
     cf = _conversion_module()
     f3, f4 = _legacy_factors(params)
     raw, legacy, conversion = if branch == :in
@@ -5321,7 +5315,7 @@ end
 
 # n-th term of the hypergeometric (Type-1) physical-in series and its first two
 # x-derivatives, weighted by a_n / norm.
-function _type1_triplet(data::MSTSeriesData, n::Integer, x, norm::LogNormSum)
+function _type1_triplet(data::ManoSuzukiTakasugiSeriesData, n::Integer, x, norm::LogNormSum)
     p = data.params
     npnu = _npnu(p, n)
     a = npnu + 1 - 1im * p.tau
@@ -5336,33 +5330,33 @@ function _type1_triplet(data::MSTSeriesData, n::Integer, x, norm::LogNormSum)
     )
     log_weight = log_series_coefficient!(data, n) - norm.logabs -
         1im * angle(norm.phase)
-    return MSTTriplet(
+    return ManoSuzukiTakasugiTriplet(
         _scaled_product(log_weight, value),
         _scaled_product(log_weight, deriv),
         _scaled_product(log_weight, second),
     )
 end
 
-function _coefficient_error(data::MSTSeriesData, n::Integer)
+function _coefficient_error(data::ManoSuzukiTakasugiSeriesData, n::Integer)
     return lock(data.coefficient_lock) do
         get(data.coeff_errors, Int(n), Inf)
     end
 end
 
-@inline _type1_error(data::MSTSeriesData, n::Integer) =
+@inline _type1_error(data::ManoSuzukiTakasugiSeriesData, n::Integer) =
     min(Inf, _coefficient_error(data, n) + 8eps(Float64))
 
-const MST_DD_STATE_CHECK_NMAX = 160
-const MST_DD_REG_NMAX = 64
-const MST_DD_REG_CHECK_NMAX = 62
-const MST_DD_REG_SERIES_MAX = 4096
-const MST_DD_REG_TOL = 8eps(Float64)
-const MST_DD_REG_POLE_RADIUS = 0.125
+const MANO_SUZUKI_TAKASUGI_DD_STATE_CHECK_NMAX = 160
+const MANO_SUZUKI_TAKASUGI_DD_REG_NMAX = 64
+const MANO_SUZUKI_TAKASUGI_DD_REG_CHECK_NMAX = 62
+const MANO_SUZUKI_TAKASUGI_DD_REG_SERIES_MAX = 4096
+const MANO_SUZUKI_TAKASUGI_DD_REG_TOL = 8eps(Float64)
+const MANO_SUZUKI_TAKASUGI_DD_REG_POLE_RADIUS = 0.125
 
 # Double-double n-th Type-1 term: coefficient times
 # 2F1(n+nu+1-i tau, -n-nu-i tau; 1-s-i(epsilon+tau); x) and its first two derivatives.
 function _dd_type1_term(
-    p::MSTParams,
+    p::ManoSuzukiTakasugiParams,
     n::Int,
     x,
     coefficient::DDComplex,
@@ -5380,7 +5374,7 @@ function _dd_type1_term(
         HGF_2F1(a + 2, b + 2, c + 2, xc),
     )
     all(_finite_complex, (value, deriv, second)) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_physical_in_term,
             "nonfinite DD physical-in basis term at n=$n.",
         ))
@@ -5393,11 +5387,11 @@ end
 
 # Double-double physical-in sums normalized by sum a_n, at order nmax and check_nmax.
 function _dd_type1_pair(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     offset::DDComplex,
     x;
-    nmax::Int=MST_RESIDUAL_NMAX,
-    check_nmax::Int=MST_DD_STATE_CHECK_NMAX,
+    nmax::Int=MANO_SUZUKI_TAKASUGI_RESIDUAL_NMAX,
+    check_nmax::Int=MANO_SUZUKI_TAKASUGI_DD_STATE_CHECK_NMAX,
 )
     0 <= check_nmax <= nmax ||
         throw(ArgumentError("invalid DD physical-in check order."))
@@ -5454,14 +5448,14 @@ function _dd_type1_pair(
         end
         norm_value = dc_value(norm)
         _finite_complex(norm_value) && !iszero(norm_value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_physical_in_norm,
                 "nonfinite DD physical-in normalization.",
             ))
         values = ntuple(component -> begin
             value = dc_value(sums[component])
             _finite_complex(value) && !iszero(value) ||
-                throw(MSTCertificateError(
+                throw(ManoSuzukiTakasugiCertificateError(
                     :dd_physical_in_sum,
                     "nonfinite DD physical-in state sum.",
                 ))
@@ -5474,7 +5468,7 @@ function _dd_type1_pair(
                 abs(dc_value(sums[component])), 3)...,
         ))
         return (
-            state=MSTTriplet(values...),
+            state=ManoSuzukiTakasugiTriplet(values...),
             condition=Float64(condition),
         )
     end
@@ -5485,21 +5479,21 @@ end
     dc_add(value, DDComplex(shift))
 
 # Hypergeometric parameter c = 1 - s - i(epsilon + tau) of the Type-1 series.
-@inline function _dd_hyper_c(p::MSTParams)
+@inline function _dd_hyper_c(p::ManoSuzukiTakasugiParams)
     return dc_sub(
         DDComplex(1 - p.s),
         dc_imul(dc_add(DDComplex(p.epsilon), DDComplex(p.tau))),
     )
 end
 
-# True when c is within MST_DD_REG_POLE_RADIUS of a nonpositive integer, where the
+# True when c is within MANO_SUZUKI_TAKASUGI_DD_REG_POLE_RADIUS of a nonpositive integer, where the
 # regularized Type-1 series is used.
-@inline function _dd_regime(p::MSTParams)
+@inline function _dd_regime(p::ManoSuzukiTakasugiParams)
     c = dc_value(_dd_hyper_c(p))
     nearest = round(Int, -real(c))
     return nearest >= 0 &&
         real(c) <= 0.5 &&
-        abs(c + nearest) <= MST_DD_REG_POLE_RADIUS
+        abs(c + nearest) <= MANO_SUZUKI_TAKASUGI_DD_REG_POLE_RADIUS
 end
 
 # Double-double power series of the regularized 2F1(a, b; c; z) / Gamma(c). Near a
@@ -5528,7 +5522,7 @@ function _dd_reg_series(
         )
     end
     _finite_complex(dc_value(term)) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_regularized_type1,
             "nonfinite regularized Type-1 start term.",
         ))
@@ -5541,7 +5535,7 @@ function _dd_reg_series(
             z,
         )
         iszero(dc_value(denominator)) &&
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_regularized_type1,
                 "singular regularized Type-1 backward recurrence.",
             ))
@@ -5551,7 +5545,7 @@ function _dd_reg_series(
         )
         term = dc_div(numerator, denominator)
         _finite_complex(dc_value(term)) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_regularized_type1,
                 "nonfinite regularized Type-1 backward term.",
             ))
@@ -5569,7 +5563,7 @@ function _dd_reg_series(
     converged = false
     tail_bound = Inf
     iterations = start
-    for k in start:(MST_DD_REG_SERIES_MAX - 1)
+    for k in start:(MANO_SUZUKI_TAKASUGI_DD_REG_SERIES_MAX - 1)
         numerator = dc_mul(
             dc_mul(_dd_shift(a, k), _dd_shift(b, k)),
             z,
@@ -5579,7 +5573,7 @@ function _dd_reg_series(
             DDComplex(k + 1),
         )
         iszero(dc_value(denominator)) &&
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_regularized_type1,
                 "singular regularized Type-1 forward recurrence.",
             ))
@@ -5587,7 +5581,7 @@ function _dd_reg_series(
         term = dc_mul(term, ratio)
         term_value = dc_value(term)
         _finite_complex(term_value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_regularized_type1,
                 "nonfinite regularized Type-1 forward term.",
             ))
@@ -5599,13 +5593,13 @@ function _dd_reg_series(
         if iterations >= start + 24 && ratio_abs < 0.9
             tail_bound = abs(term_value) /
                 max(1 - ratio_abs, eps(Float64))
-            if tail_bound <= MST_DD_REG_TOL * total_abs
+            if tail_bound <= MANO_SUZUKI_TAKASUGI_DD_REG_TOL * total_abs
                 converged = true
                 break
             end
         end
     end
-    converged || throw(MSTCertificateError(
+    converged || throw(ManoSuzukiTakasugiCertificateError(
         :dd_regularized_type1,
         "regularized Type-1 series did not converge.",
     ))
@@ -5630,7 +5624,7 @@ function _dd_reg_2f1(
     z_value = dc_value(z)
     transformed_value = ComplexF64(z_value / (z_value - 1))
     abs(transformed_value) <= 0.5 + 8eps(Float64) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_regularized_type1,
             "regularized Type-1 Pfaff argument is outside its domain.",
         ))
@@ -5650,7 +5644,7 @@ function _dd_reg_2f1(
     )
     value = dc_mul(prefactor, series.value)
     _finite_complex(dc_value(value)) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_regularized_type1,
             "nonfinite regularized Type-1 value.",
         ))
@@ -5659,7 +5653,7 @@ end
 
 # Regularized 2F1 of the n-th Type-1 term and its first two x-derivatives.
 function _dd_reg_triplet(
-    p::MSTParams,
+    p::ManoSuzukiTakasugiParams,
     offset::DDComplex,
     n::Int,
     x,
@@ -5717,11 +5711,11 @@ end
 
 # Regularized Type-1 physical-in sums times Gamma(c), at order nmax and check_nmax.
 function _dd_reg_pair(
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     offset::DDComplex,
     x;
-    nmax::Int=MST_DD_REG_NMAX,
-    check_nmax::Int=MST_DD_REG_CHECK_NMAX,
+    nmax::Int=MANO_SUZUKI_TAKASUGI_DD_REG_NMAX,
+    check_nmax::Int=MANO_SUZUKI_TAKASUGI_DD_REG_CHECK_NMAX,
 )
     0 <= check_nmax <= nmax ||
         throw(ArgumentError("invalid regularized Type-1 check order."))
@@ -5804,7 +5798,7 @@ function _dd_reg_pair(
         end
         norm_value = dc_value(norm)
         _finite_complex(norm_value) && !iszero(norm_value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_regularized_type1,
                 "nonfinite regularized Type-1 normalization.",
             ))
@@ -5816,7 +5810,7 @@ function _dd_reg_pair(
         values = ntuple(component -> begin
             value = dc_value(dd_state[component])
             _finite_complex(value) ||
-                throw(MSTCertificateError(
+                throw(ManoSuzukiTakasugiCertificateError(
                     :dd_regularized_type1,
                     "nonfinite regularized Type-1 state sum.",
                 ))
@@ -5831,7 +5825,7 @@ function _dd_reg_pair(
                     floatmin(Float64)), 3)...,
         ))
         return (
-            state=MSTTriplet(values...),
+            state=ManoSuzukiTakasugiTriplet(values...),
             dd_state=(
                 value=dd_state[1],
                 deriv=dd_state[2],
@@ -5915,7 +5909,7 @@ function _dd_convert(
     X_value = dc_value(X)
     dXdx_value = dc_value(dXdx)
     all(_finite_complex, (X_value, dXdx_value)) ||
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_regularized_type1,
             "nonfinite regularized Type-1 GSN state.",
         ))
@@ -5939,7 +5933,7 @@ end
 # Regularized Type-1 version of _dd_pin_state.
 function _dd_reg_pin(
     coefficients::CoefficientSet,
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     offset::DDComplex,
     x,
     r,
@@ -5951,8 +5945,8 @@ function _dd_reg_pin(
         data.params, mst_coordinate, full.state)
     check_residual = _p_residual(
         data.params, mst_coordinate, check.state)
-    max(residual, check_residual) <= MST_RESIDUAL_TOL ||
-        throw(MSTCertificateError(
+    max(residual, check_residual) <= MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_physical_in_residual,
             "regularized DD physical-in residual rejected: " *
             "full=$residual, check=$check_residual.",
@@ -5975,8 +5969,8 @@ function _dd_reg_pin(
         (full_gsn.X, full_gsn.dXdx),
         (check_gsn.X, check_gsn.dXdx),
     ))
-    truncation <= MST_AMP_TRUNCATION_MAX ||
-        throw(MSTCertificateError(
+    truncation <= MANO_SUZUKI_TAKASUGI_AMP_TRUNCATION_MAX ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_physical_in_truncation,
             "regularized DD physical-in truncation rejected: " *
             "agreement=$truncation.",
@@ -5987,13 +5981,13 @@ function _dd_reg_pin(
         full_gsn.condition,
         check_gsn.condition,
     )
-    condition <= MST_DD_CONDITION_MAX ||
-        throw(MSTCertificateError(
+    condition <= MANO_SUZUKI_TAKASUGI_DD_CONDITION_MAX ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_physical_in_condition,
             "regularized DD physical-in condition rejected: " *
             "condition=$condition.",
         ))
-    roundoff = (2MST_DD_REG_NMAX + 1) *
+    roundoff = (2MANO_SUZUKI_TAKASUGI_DD_REG_NMAX + 1) *
         eps(Float64)^2 * condition
     return (
         X=full_gsn.X,
@@ -6017,7 +6011,7 @@ end
 # near a pole of Gamma(c)), with residual, truncation and condition checks.
 function _dd_pin_state(
     coefficients::CoefficientSet,
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     offset::DDComplex,
     direct_x::Real;
     scale,
@@ -6026,7 +6020,7 @@ function _dd_pin_state(
     0.0 < x < 1.0 || throw(DomainError(x,
         "DD physical-in evaluation requires x in (0, 1)."))
     r = _x_to_r(coefficients.params, x)
-    mst_coordinate = mst_x(data.params, r)
+    mst_coordinate = mano_suzuki_takasugi_x(data.params, r)
     _dd_regime(data.params) && return _dd_reg_pin(
         coefficients,
         data,
@@ -6042,8 +6036,8 @@ function _dd_pin_state(
         data.params, mst_coordinate, full.state)
     check_residual = _p_residual(
         data.params, mst_coordinate, check.state)
-    max(residual, check_residual) <= MST_RESIDUAL_TOL ||
-        throw(MSTCertificateError(
+    max(residual, check_residual) <= MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_physical_in_residual,
             "DD physical-in residual rejected: " *
             "full=$residual, check=$check_residual.",
@@ -6071,18 +6065,18 @@ function _dd_pin_state(
     truncation = Float64(_amp_distance(
         (X, dXdx), (check_X, check_dXdx)))
     condition = max(full.condition, check.condition)
-    truncation <= MST_AMP_TRUNCATION_MAX ||
-        throw(MSTCertificateError(
+    truncation <= MANO_SUZUKI_TAKASUGI_AMP_TRUNCATION_MAX ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_physical_in_truncation,
             "DD physical-in truncation rejected: " *
             "agreement=$truncation.",
         ))
-    condition <= MST_DD_CONDITION_MAX ||
-        throw(MSTCertificateError(
+    condition <= MANO_SUZUKI_TAKASUGI_DD_CONDITION_MAX ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :dd_physical_in_condition,
             "DD physical-in condition rejected: condition=$condition.",
         ))
-    roundoff = (2MST_RESIDUAL_NMAX + 1) *
+    roundoff = (2MANO_SUZUKI_TAKASUGI_RESIDUAL_NMAX + 1) *
         eps(Float64)^2 * condition
     return (
         X=ComplexF64(X),
@@ -6102,22 +6096,22 @@ end
 
 # Physical-in P and dP/dx at r from the budgeted Type-1 series normalized by `norm`,
 # with a radial-equation residual check.
-function _mst_pin_result(data::MSTSeriesData, r, norm::LogNormSum)
-    x = mst_x(data.params, r)
-    budget = _mst_budget(
+function _mano_suzuki_takasugi_pin_result(data::ManoSuzukiTakasugiSeriesData, r, norm::LogNormSum)
+    x = mano_suzuki_takasugi_x(data.params, r)
+    budget = _mano_suzuki_takasugi_budget(
         n -> _type1_triplet(data, n, x, norm),
         n -> _type1_error(data, n);
-        reltol=MST_REL_ERROR,
-        budget_tol=MST_RESIDUAL_TOL,
-        nmax=MST_RESIDUAL_NMAX,
+        reltol=MANO_SUZUKI_TAKASUGI_REL_ERROR,
+        budget_tol=MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL,
+        nmax=MANO_SUZUKI_TAKASUGI_RESIDUAL_NMAX,
     )
-    budget.status == :OK || throw(MSTCertificateError(
+    budget.status == :OK || throw(ManoSuzukiTakasugiCertificateError(
         :physical_in_sum,
         "MST physical-in sum rejected: status=$(budget.status), " *
         "error=$(budget.estimated_relerr), condition=$(budget.condition)",
     ))
     residual = _p_residual(data.params, x, budget.sum)
-    residual <= MST_RESIDUAL_TOL || throw(MSTCertificateError(
+    residual <= MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL || throw(ManoSuzukiTakasugiCertificateError(
         :physical_in_residual,
         "MST physical-in residual rejected: residual=$(residual), " *
         "error=$(budget.estimated_relerr)",
@@ -6136,36 +6130,26 @@ function _mst_pin_result(data::MSTSeriesData, r, norm::LogNormSum)
     )
 end
 
-function _mst_pin_p(data::MSTSeriesData, r, norm::LogNormSum)
-    result = _mst_pin_result(data, r, norm)
+function _mano_suzuki_takasugi_pin_p(data::ManoSuzukiTakasugiSeriesData, r, norm::LogNormSum)
+    result = _mano_suzuki_takasugi_pin_result(data, r, norm)
     return result.P, result.Px, result.estimated_relerr, result.residual
 end
 
-function _mst_state_at(coefficients::CoefficientSet, branch::Symbol, direct_x::Float64)
-    params = coefficients.params
-    nu_offset = _mst_nu_offset(
+# ManoSuzukiTakasugiSeriesData at the solved nu of the mode.
+function _mano_suzuki_takasugi_data(params::GSNParameters)
+    nu_offset = _mano_suzuki_takasugi_nu_offset(
         params.s, params.l, params.m, params.a, params.omega, params.lambda)
     nu_value = ComplexF64(params.l) + nu_offset
-    data = MSTSeriesData(MSTParams(params.s, params.l, params.m, params.a, params.omega,
-        params.lambda, nu_value, nu_offset))
-    return _mst_state_at(coefficients, data, branch, direct_x)
-end
-
-# MSTSeriesData at the solved nu of the mode.
-function _mst_data(params::GSNParameters)
-    nu_offset = _mst_nu_offset(
-        params.s, params.l, params.m, params.a, params.omega, params.lambda)
-    nu_value = ComplexF64(params.l) + nu_offset
-    return MSTSeriesData(MSTParams(params.s, params.l, params.m, params.a, params.omega,
+    return ManoSuzukiTakasugiSeriesData(ManoSuzukiTakasugiParams(params.s, params.l, params.m, params.a, params.omega,
         params.lambda, nu_value, nu_offset))
 end
 
-_mst_data(coefficients::CoefficientSet) =
-    _mst_data(coefficients.params)
+_mano_suzuki_takasugi_data(coefficients::CoefficientSet) =
+    _mano_suzuki_takasugi_data(coefficients.params)
 
-function _mst_state_at(
+function _mano_suzuki_takasugi_state_at(
     coefficients::CoefficientSet,
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     branch::Symbol,
     direct_x::Number,
     transform=nothing,
@@ -6174,7 +6158,7 @@ function _mst_state_at(
     factor=nothing;
     radius=nothing,
 )
-    return _mst_state_at_params(
+    return _mano_suzuki_takasugi_state_at_params(
         coefficients.params,
         data,
         branch,
@@ -6189,9 +6173,9 @@ end
 
 # Unit-normalized GSN state (X, dX/dx, relative error) of :in or :out at direct_x; the
 # optional arguments reuse a converter, sequence, budget and normalization factor.
-function _mst_state_at_params(
+function _mano_suzuki_takasugi_state_at_params(
     params::GSNParameters,
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     branch::Symbol,
     direct_x::Number,
     transform=nothing,
@@ -6202,8 +6186,8 @@ function _mst_state_at_params(
 )
     r = radius === nothing ? _x_to_r(params, direct_x) : radius
     P, Px, err, log_scale = branch == :in ?
-        _mst_in_p_pair(data, r, sequence, budget) :
-        _mst_out_p_pair(data, r, sequence, budget)
+        _mano_suzuki_takasugi_in_p_pair(data, r, sequence, budget) :
+        _mano_suzuki_takasugi_out_p_pair(data, r, sequence, budget)
     matrix = transform === nothing ? _p_converter(params)(r) : transform
     X, dXdx = _p_to_gsn_dx(params, P, Px, direct_x, matrix; radius)
     factor = factor === nothing ? _raw_unit_logfactor(data, params, branch) : factor
@@ -6214,18 +6198,18 @@ function _mst_state_at_params(
         _scaled_product(unit_log_scale, phase * dXdx), Float64(total_error)
 end
 
-const MST_RESIDUAL_TOL = 1.0e-13
-const MST_RESIDUAL_NMAX = 180
-const MST_BOUNDARY_ITER = 80
-const MST_BISECTION_ITER = 2
-const MST_BISECTION_SCORE_RATIO = 10.0
-const MST_Y_SAFETY = 0.8
-const MST_SEED_Y_CAP = 1.0e4
-const MST_TAU_PREFLIGHT = parse(Float64,
-    get(ENV, "ISEM_MST_TAU_PREFLIGHT", "1.0e2"))
-const MST_TAU_SEED_PRODUCT = 2.0
+const MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL = 1.0e-13
+const MANO_SUZUKI_TAKASUGI_RESIDUAL_NMAX = 180
+const MANO_SUZUKI_TAKASUGI_BOUNDARY_ITER = 80
+const MANO_SUZUKI_TAKASUGI_BISECTION_ITER = 2
+const MANO_SUZUKI_TAKASUGI_BISECTION_SCORE_RATIO = 10.0
+const MANO_SUZUKI_TAKASUGI_Y_SAFETY = 0.8
+const MANO_SUZUKI_TAKASUGI_SEED_Y_CAP = 1.0e4
+const MANO_SUZUKI_TAKASUGI_TAU_PREFLIGHT = parse(Float64,
+    get(ENV, "ISEM_MANO_SUZUKI_TAKASUGI_TAU_PREFLIGHT", "1.0e2"))
+const MANO_SUZUKI_TAKASUGI_TAU_SEED_PRODUCT = 2.0
 
-struct MSTResidual
+struct ManoSuzukiTakasugiResidual
     residual::Float64
     tail::Float64
     nmin::Int
@@ -6233,12 +6217,12 @@ struct MSTResidual
     status::String
 end
 
-_finite_triplet(t::MSTTriplet) =
+_finite_triplet(t::ManoSuzukiTakasugiTriplet) =
     _finite_complex(t.value) && _finite_complex(t.deriv) && _finite_complex(t.second)
 
 # Coefficients q1, q2 of x(1 - x) P'' + q1 P' + q2 P = 0, the equation checked by
 # _p_residual.
-function _p_q_coefficients(p::MSTParams, x)
+function _p_q_coefficients(p::ManoSuzukiTakasugiParams, x)
     s = ComplexF64(p.s)
     epsc = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
@@ -6254,7 +6238,7 @@ function _p_q_coefficients(p::MSTParams, x)
 end
 
 # Relative residual of that equation for a (P, P', P'') triplet.
-function _p_residual(p::MSTParams, x, triplet::MSTTriplet)
+function _p_residual(p::ManoSuzukiTakasugiParams, x, triplet::ManoSuzukiTakasugiTriplet)
     xc = ComplexF64(x)
     q1, q2 = _p_q_coefficients(p, xc)
     p2 = xc * (1 - xc)
@@ -6265,7 +6249,7 @@ function _p_residual(p::MSTParams, x, triplet::MSTTriplet)
 end
 
 # Common log scale of the infinity-out terms, taken from the n = 0 term.
-function _out_term_log_scale(data::MSTSeriesData, x, sequence)
+function _out_term_log_scale(data::ManoSuzukiTakasugiSeriesData, x, sequence)
     p = data.params
     epsc = ComplexF64(p.epsilon)
     state = _h_state(sequence, 0)
@@ -6284,7 +6268,7 @@ end
 
 # n-th term of the infinity-out (infinity-in below) series and its first two
 # x-derivatives, built from the U-function state h_n.
-function _out_term_triplet(data::MSTSeriesData, n::Integer, x,
+function _out_term_triplet(data::ManoSuzukiTakasugiSeriesData, n::Integer, x,
         sequence=nothing, common_log_scale::Float64=0.0)
     p = data.params
     epsc = ComplexF64(p.epsilon)
@@ -6299,10 +6283,10 @@ function _out_term_triplet(data::MSTSeriesData, n::Integer, x,
     value = _scaled_product(scale_log, sign * state.value)
     deriv = _scaled_product(scale_log, sign * dc_dx * state.deriv)
     second = _scaled_product(scale_log, sign * dc_dx^2 * state.second)
-    return MSTTriplet(ComplexF64(value), ComplexF64(deriv), ComplexF64(second))
+    return ManoSuzukiTakasugiTriplet(ComplexF64(value), ComplexF64(deriv), ComplexF64(second))
 end
 
-function _in_term_triplet(data::MSTSeriesData, n::Integer, x, sequence=nothing)
+function _in_term_triplet(data::ManoSuzukiTakasugiSeriesData, n::Integer, x, sequence=nothing)
     p = data.params
     epsc = ComplexF64(p.epsilon)
     delta = 2 * p.nu_offset
@@ -6326,10 +6310,10 @@ function _in_term_triplet(data::MSTSeriesData, n::Integer, x, sequence=nothing)
         zp^2 * (state.second + 2 * actual_a * state.deriv / z +
             actual_a * (actual_a - 1) * state.value / z^2),
     )
-    return MSTTriplet(ComplexF64(value), ComplexF64(deriv), ComplexF64(second))
+    return ManoSuzukiTakasugiTriplet(ComplexF64(value), ComplexF64(deriv), ComplexF64(second))
 end
 
-function _jh_log_derivatives(p::MSTParams, x)
+function _jh_log_derivatives(p::ManoSuzukiTakasugiParams, x)
     epsc = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
     tau = ComplexF64(p.tau)
@@ -6343,7 +6327,7 @@ function _jh_log_derivatives(p::MSTParams, x)
     return L, Lp
 end
 
-function _out_log_transform(p::MSTParams, x)
+function _out_log_transform(p::ManoSuzukiTakasugiParams, x)
     epsc = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
     tau = ComplexF64(p.tau)
@@ -6360,19 +6344,19 @@ end
 
 # P, P' and P'' of the infinity-out (infinity-in below) solution from the series
 # triplet and the log-derivative of its prefactor.
-function _out_p_triplet(data::MSTSeriesData, r, series::MSTTriplet)
+function _out_p_triplet(data::ManoSuzukiTakasugiSeriesData, r, series::ManoSuzukiTakasugiTriplet)
     p = data.params
-    x = mst_x(p, r)
+    x = mano_suzuki_takasugi_x(p, r)
     Lg, Lgp = _out_log_transform(p, x)
     P = series.value
     Px = series.deriv + Lg * series.value
     Pxx = series.second + 2 * Lg * series.deriv + (Lg^2 + Lgp) * series.value
-    return MSTTriplet(ComplexF64(P), ComplexF64(Px), ComplexF64(Pxx))
+    return ManoSuzukiTakasugiTriplet(ComplexF64(P), ComplexF64(Px), ComplexF64(Pxx))
 end
 
-function _in_p_triplet(data::MSTSeriesData, r, series::MSTTriplet)
+function _in_p_triplet(data::ManoSuzukiTakasugiSeriesData, r, series::ManoSuzukiTakasugiTriplet)
     p = data.params
-    x = mst_x(p, r)
+    x = mano_suzuki_takasugi_x(p, r)
     exponent = -1im * p.epsilon + p.s + 1im * p.tau - 1
     one_minus_x = 1 - ComplexF64(x)
     L = -exponent / one_minus_x
@@ -6380,24 +6364,24 @@ function _in_p_triplet(data::MSTSeriesData, r, series::MSTTriplet)
     P = series.value
     Px = series.deriv + L * series.value
     Pxx = series.second + 2 * L * series.deriv + (L^2 + Lp) * series.value
-    return MSTTriplet(ComplexF64(P), ComplexF64(Px), ComplexF64(Pxx))
+    return ManoSuzukiTakasugiTriplet(ComplexF64(P), ComplexF64(Px), ComplexF64(Pxx))
 end
 
 # Budgeted series sum at r and the radial-equation residual of its transform.
-function _budget_residual(data::MSTSeriesData, termfun, transformfun, r, sequence;
+function _budget_residual(data::ManoSuzukiTakasugiSeriesData, termfun, transformfun, r, sequence;
         log_scale::Float64=0.0)
     p = data.params
-    x = mst_x(p, r)
-    budget = _mst_budget(
+    x = mano_suzuki_takasugi_x(p, r)
+    budget = _mano_suzuki_takasugi_budget(
         n -> termfun(data, n, x),
         n -> _term_error(data, sequence, n);
-        reltol=MST_REL_ERROR,
-        budget_tol=MST_RESIDUAL_TOL,
-        nmax=MST_RESIDUAL_NMAX,
+        reltol=MANO_SUZUKI_TAKASUGI_REL_ERROR,
+        budget_tol=MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL,
+        nmax=MANO_SUZUKI_TAKASUGI_RESIDUAL_NMAX,
         log_scale=log_scale,
     )
     _finite_triplet(budget.sum) ||
-        return MSTResidual(Inf, Inf, budget.nmin, budget.nmax,
+        return ManoSuzukiTakasugiResidual(Inf, Inf, budget.nmin, budget.nmax,
             "BUDGET_$(budget.status)"), budget
     scale = max(
         abs(budget.sum.value),
@@ -6405,20 +6389,20 @@ function _budget_residual(data::MSTSeriesData, termfun, transformfun, r, sequenc
         abs(budget.sum.second),
         floatmin(Float64),
     )
-    scaled = MSTTriplet(
+    scaled = ManoSuzukiTakasugiTriplet(
         budget.sum.value / scale,
         budget.sum.deriv / scale,
         budget.sum.second / scale,
     )
     P = transformfun(scaled)
     _finite_triplet(P) ||
-        return MSTResidual(Inf, budget.estimated_relerr,
+        return ManoSuzukiTakasugiResidual(Inf, budget.estimated_relerr,
             budget.nmin, budget.nmax, "NONFINITE_TRANSFORM"), budget
     residual = _p_residual(p, x, P)
     status =
         budget.status != :OK ? "BUDGET_$(budget.status)" :
-        residual <= MST_RESIDUAL_TOL ? "OK" : "NO_RESIDUAL_PASS"
-    return MSTResidual(
+        residual <= MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL ? "OK" : "NO_RESIDUAL_PASS"
+    return ManoSuzukiTakasugiResidual(
         residual,
         budget.estimated_relerr,
         budget.nmin,
@@ -6427,18 +6411,18 @@ function _budget_residual(data::MSTSeriesData, termfun, transformfun, r, sequenc
     ), budget
 end
 
-@inline _residual_ok(result::MSTResidual) =
+@inline _residual_ok(result::ManoSuzukiTakasugiResidual) =
     result.status == "OK" || result.status == "NOT_REQUIRED"
 
-@inline function _residual_score(result::MSTResidual)
+@inline function _residual_score(result::ManoSuzukiTakasugiResidual)
     result.status == "NOT_REQUIRED" && return 0.0
     return max(result.residual, result.tail)
 end
 
 # Sum and residual check of the :in or :out series at r; an error gives an Inf residual.
-function _branch_check(data::MSTSeriesData, branch::Symbol, r)
+function _branch_check(data::ManoSuzukiTakasugiSeriesData, branch::Symbol, r)
     try
-        x = mst_x(data.params, r)
+        x = mano_suzuki_takasugi_x(data.params, r)
         if branch == :out
             sequence = _out_sequence(data, x)
             log_scale = _out_term_log_scale(data, x, sequence)
@@ -6459,16 +6443,16 @@ function _branch_check(data::MSTSeriesData, branch::Symbol, r)
     catch
     end
     return (
-        residual=MSTResidual(Inf, Inf, 0, 0, "ERROR"),
+        residual=ManoSuzukiTakasugiResidual(Inf, Inf, 0, 0, "ERROR"),
         sequence=nothing,
         budget=nothing,
     )
 end
 
 # Residual checks of the requested branches at x = 1 - |omega| y.
-function _mst_residual_at_y(
+function _mano_suzuki_takasugi_residual_at_y(
     coefficients::CoefficientSet,
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     y::Float64,
     branches=(:in, :out),
 )
@@ -6476,7 +6460,7 @@ function _mst_residual_at_y(
     direct_x = 1.0 - abs(params.omega) * y
     0.0 < direct_x < 1.0 || error("MST seed x outside (0, 1)")
     r = _x_to_r(params, direct_x)
-    skipped = MSTResidual(0.0, 0.0, 0, 0, "NOT_REQUIRED")
+    skipped = ManoSuzukiTakasugiResidual(0.0, 0.0, 0, 0, "NOT_REQUIRED")
     skipped_check = (residual=skipped, sequence=nothing, budget=nothing)
     in_check = :in in branches ? _branch_check(data, :in, r) : skipped_check
     out_check = :out in branches ? _branch_check(data, :out, r) : skipped_check
@@ -6485,7 +6469,7 @@ function _mst_residual_at_y(
     score = max(_residual_score(rin), _residual_score(rout))
     finite = isfinite(score) && isfinite(rin.tail) && isfinite(rout.tail)
     valid = finite && _residual_ok(rin) && _residual_ok(rout) &&
-        score <= MST_RESIDUAL_TOL
+        score <= MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL
     return (
         valid=valid,
         finite=finite,
@@ -6502,14 +6486,14 @@ function _mst_residual_at_y(
 end
 
 # Factor by which the trial seed y shrinks (independent of the score).
-_mst_shrink(score) = sqrt(10.0)
+_mano_suzuki_takasugi_shrink(score) = sqrt(10.0)
 
 # Seed point for the MST series, in y = (1 - x) / |omega|: tries a capped fraction of the
 # matching y, shrinks y until all branch residuals pass, refines the boundary by
 # geometric bisection, and returns the seed with its cached sequences and budgets.
-function _mst_residual_seed_x(
+function _mano_suzuki_takasugi_residual_seed_x(
     coefficients::CoefficientSet,
-    data::MSTSeriesData,
+    data::ManoSuzukiTakasugiSeriesData,
     match_x::Float64,
     branches=(:in, :out),
 )
@@ -6541,15 +6525,15 @@ function _mst_residual_seed_x(
         status="INVALID_MATCH",
     )
 
-    candidate_y = MST_Y_SAFETY * min(y_start, MST_SEED_Y_CAP)
+    candidate_y = MANO_SUZUKI_TAKASUGI_Y_SAFETY * min(y_start, MANO_SUZUKI_TAKASUGI_SEED_Y_CAP)
     tau = abs(data.params.tau)
-    if tau > MST_TAU_PREFLIGHT
+    if tau > MANO_SUZUKI_TAKASUGI_TAU_PREFLIGHT
         candidate_y = min(candidate_y,
-            MST_TAU_SEED_PRODUCT / (omega * tau))
+            MANO_SUZUKI_TAKASUGI_TAU_SEED_PRODUCT / (omega * tau))
     end
     candidate_y = max(100eps(Float64), candidate_y)
     candidate = try
-        _mst_residual_at_y(coefficients, data, candidate_y, branches)
+        _mano_suzuki_takasugi_residual_at_y(coefficients, data, candidate_y, branches)
     catch
         nothing
     end
@@ -6577,11 +6561,11 @@ function _mst_residual_seed_x(
     safe_score = Inf
     safe = nothing
     evaluations = 1
-    y = candidate_y / _mst_shrink(unsafe_score)
-    for _ in 2:MST_BOUNDARY_ITER
+    y = candidate_y / _mano_suzuki_takasugi_shrink(unsafe_score)
+    for _ in 2:MANO_SUZUKI_TAKASUGI_BOUNDARY_ITER
         evaluations += 1
         ev = try
-            _mst_residual_at_y(coefficients, data, y, branches)
+            _mano_suzuki_takasugi_residual_at_y(coefficients, data, y, branches)
         catch
             nothing
         end
@@ -6594,7 +6578,7 @@ function _mst_residual_seed_x(
         score = ev === nothing ? Inf : ev.score
         y_unsafe = y
         unsafe_score = score
-        y /= _mst_shrink(score)
+        y /= _mano_suzuki_takasugi_shrink(score)
         y <= 100eps(Float64) && break
     end
     safe === nothing && return (
@@ -6612,13 +6596,13 @@ function _mst_residual_seed_x(
         status="NO_SAFE_SEED",
     )
     refine_boundary = !isfinite(unsafe_score) ||
-        unsafe_score <= MST_BISECTION_SCORE_RATIO * MST_RESIDUAL_TOL
+        unsafe_score <= MANO_SUZUKI_TAKASUGI_BISECTION_SCORE_RATIO * MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL
     if isfinite(y_unsafe) && refine_boundary
-        for _ in 1:MST_BISECTION_ITER
+        for _ in 1:MANO_SUZUKI_TAKASUGI_BISECTION_ITER
             mid = sqrt(y_safe * y_unsafe)
             evaluations += 1
             ev = try
-                _mst_residual_at_y(coefficients, data, mid, branches)
+                _mano_suzuki_takasugi_residual_at_y(coefficients, data, mid, branches)
             catch
                 nothing
             end
@@ -6632,10 +6616,10 @@ function _mst_residual_seed_x(
             end
         end
     end
-    y_seed = max(100eps(Float64), MST_Y_SAFETY * y_safe)
+    y_seed = max(100eps(Float64), MANO_SUZUKI_TAKASUGI_Y_SAFETY * y_safe)
     evaluations += 1
     ev = try
-        _mst_residual_at_y(coefficients, data, y_seed, branches)
+        _mano_suzuki_takasugi_residual_at_y(coefficients, data, y_seed, branches)
     catch
         nothing
     end
@@ -6660,19 +6644,19 @@ function _mst_residual_seed_x(
 end
 
 """
-    build_mst_plan(coefficients, match_x; branches=(:in, :out))
+    build_mano_suzuki_takasugi_plan(coefficients, match_x; branches=(:in, :out))
 
 Plan for MST infinity states of `branches` near `match_x`: the series data, a seed point
 where the series pass their residual checks (`selection`), the P-to-GSN converter, the
 physical-in normalization and the raw-to-unit factors of each branch.
 """
-function build_mst_plan(
+function build_mano_suzuki_takasugi_plan(
     coefficients::CoefficientSet,
     match_x::Float64;
     branches=(:in, :out),
 )
-    data = _mst_data(coefficients)
-    selection = _mst_residual_seed_x(coefficients, data, match_x, branches)
+    data = _mano_suzuki_takasugi_data(coefficients)
+    selection = _mano_suzuki_takasugi_residual_seed_x(coefficients, data, match_x, branches)
     pin_norm = :in in branches ? _incoming_raw_factor(data) : nothing
     in_factor = :in in branches ?
         _raw_unit_logfactor(data, coefficients.params, :in, pin_norm) : nothing
@@ -6694,12 +6678,12 @@ function build_mst_plan(
 end
 
 """
-    build_mst_eval_plan(plan; pin_scale=nothing, out_scale=nothing, logscaled=false, handoff_x=nothing)
+    build_mano_suzuki_takasugi_eval_plan(plan; pin_scale=nothing, out_scale=nothing, logscaled=false, handoff_x=nothing)
 
-The fields of a `build_mst_plan` result needed for evaluation, with optional scales,
+The fields of a `build_mano_suzuki_takasugi_plan` result needed for evaluation, with optional scales,
 a log-scaling flag, and `handoff_x` replacing the seed point.
 """
-build_mst_eval_plan(
+build_mano_suzuki_takasugi_eval_plan(
     plan;
     pin_scale=nothing,
     out_scale=nothing,
@@ -6717,7 +6701,7 @@ build_mst_eval_plan(
     logscaled=Bool(logscaled),
 )
 
-@inline function _normalized_mst_branch(branch::Symbol)
+@inline function _normalized_mano_suzuki_takasugi_branch(branch::Symbol)
     return branch in (:in, :ingoing, :IN, :down, :DOWN) ? :in :
         branch in (:out, :outgoing, :UP, :up) ? :out :
         throw(ArgumentError("MST infinity branch must be :in or :out."))
@@ -6725,7 +6709,7 @@ end
 
 # Log-scaled MST state of a normalized branch at x with its relative error; `sequence`
 # and `budget` reuse cached work.
-function _mst_logscaled_state(
+function _mano_suzuki_takasugi_logscaled_state(
     coefficients::CoefficientSet,
     plan,
     normalized::Symbol,
@@ -6739,8 +6723,8 @@ function _mst_logscaled_state(
         error("MST evaluation plan does not contain branch $(normalized).")
     r = radius === nothing ? _x_to_r(coefficients.params, x) : radius
     P, Px, estimated_relerr, series_log_scale = normalized == :in ?
-        _mst_in_p_pair(plan.data, r, sequence, budget) :
-        _mst_out_p_pair(plan.data, r, sequence, budget)
+        _mano_suzuki_takasugi_in_p_pair(plan.data, r, sequence, budget) :
+        _mano_suzuki_takasugi_out_p_pair(plan.data, r, sequence, budget)
     X, dXdx = _p_to_gsn_dx(
         coefficients, P, Px, x, plan.converter(r); radius)
     state = logscaled_state(
@@ -6754,17 +6738,17 @@ function _mst_logscaled_state(
 end
 
 """
-    mst_principal_plan(coefficients; branches=(:in, :out))
+    mano_suzuki_takasugi_principal_plan(coefficients; branches=(:in, :out))
 
 Plan for MST states at the principal nu: series data, P-to-GSN converter and the
 raw-to-unit factors of `branches`.
 """
-function mst_principal_plan(
+function mano_suzuki_takasugi_principal_plan(
     coefficients::CoefficientSet;
     branches=(:in, :out),
 )
-    normalized = Tuple(_normalized_mst_branch(branch) for branch in branches)
-    data = _mst_data(coefficients)
+    normalized = Tuple(_normalized_mano_suzuki_takasugi_branch(branch) for branch in branches)
+    data = _mano_suzuki_takasugi_data(coefficients)
     in_factor = :in in normalized ?
         _raw_unit_logfactor(data, coefficients.params, :in) : nothing
     out_factor = :out in normalized ?
@@ -6779,25 +6763,25 @@ function mst_principal_plan(
 end
 
 """
-    mst_principal_state(coefficients, plan, branch, direct_x)
+    mano_suzuki_takasugi_principal_state(coefficients, plan, branch, direct_x)
 
 MST state of `branch` at a real or complex `direct_x` away from 0 and 1, from a
-`mst_principal_plan`. Returns `(X, dXdx, log_scale, estimated_relerr)`.
+`mano_suzuki_takasugi_principal_plan`. Returns `(X, dXdx, log_scale, estimated_relerr)`.
 """
-function mst_principal_state(
+function mano_suzuki_takasugi_principal_state(
     coefficients::CoefficientSet,
     plan,
     branch::Symbol,
     direct_x::Number,
 )
-    normalized = _normalized_mst_branch(branch)
+    normalized = _normalized_mano_suzuki_takasugi_branch(branch)
     normalized in plan.branches ||
         error("principal MST plan does not contain branch $(normalized).")
     x = ComplexF64(direct_x)
     _finite_complex(x) && !iszero(x) && !iszero(1 - x) ||
         throw(DomainError(x,
             "principal MST evaluation requires a finite x away from 0 and 1."))
-    state, estimated_relerr = _mst_logscaled_state(
+    state, estimated_relerr = _mano_suzuki_takasugi_logscaled_state(
         coefficients, plan, normalized, x)
     materialized = materialize_logscaled_state(state)
     return (
@@ -6809,13 +6793,13 @@ function mst_principal_state(
 end
 
 """
-    MSTPhysicalPlan
+    ManoSuzukiTakasugiPhysicalPlan
 
-Plan returned by `mst_physical_plan`: coefficient set, MST series data, branch
+Plan returned by `mano_suzuki_takasugi_physical_plan`: coefficient set, MST series data, branch
 (`:IN` or `:UP`), certified amplitudes, P-to-GSN converter, normalization factors, the
 double-double nu offset (or `nothing`) and the amplitude representation.
 """
-struct MSTPhysicalPlan{C,D,A,F,P,S,O,R}
+struct ManoSuzukiTakasugiPhysicalPlan{C,D,A,F,P,S,O,R}
     coefficients::C
     data::D
     branch::Symbol
@@ -6829,23 +6813,23 @@ struct MSTPhysicalPlan{C,D,A,F,P,S,O,R}
 end
 
 @inline function _physical_branch(branch::Symbol)
-    normalized = _normalized_mst_branch(branch)
+    normalized = _normalized_mano_suzuki_takasugi_branch(branch)
     return normalized == :in ? :IN : :UP
 end
 
-# MSTSeriesData with a_n for |n| <= MST_N_MAX from the double-double ratios at `offset`.
-function _dd_state_data(params::MSTParams, offset::DDComplex)
+# ManoSuzukiTakasugiSeriesData with a_n for |n| <= MANO_SUZUKI_TAKASUGI_N_MAX from the double-double ratios at `offset`.
+function _dd_state_data(params::ManoSuzukiTakasugiParams, offset::DDComplex)
     positive, negative = _dd_ratios(
         params,
         offset;
-        cutoff=MST_NIA_TAIL,
-        nmax=MST_N_MAX,
+        cutoff=MANO_SUZUKI_TAKASUGI_NEGATIVE_IMAGINARY_AXIS_TAIL,
+        nmax=MANO_SUZUKI_TAKASUGI_N_MAX,
     )
-    data = MSTSeriesData(params)
-    for n in 1:MST_N_MAX
+    data = ManoSuzukiTakasugiSeriesData(params)
+    for n in 1:MANO_SUZUKI_TAKASUGI_N_MAX
         value = dc_value(positive[n])
         _finite_complex(value) && !iszero(value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_physical_state,
                 "nonfinite positive DD MST state ratio at n=$n.",
             ))
@@ -6854,10 +6838,10 @@ function _dd_state_data(params::MSTParams, offset::DDComplex)
         data.cf_ok[n] = true
         data.coeff_errors[n] = data.coeff_errors[n - 1] + 2eps(Float64)
     end
-    for n in 1:MST_N_MAX
+    for n in 1:MANO_SUZUKI_TAKASUGI_N_MAX
         value = dc_value(negative[n])
         _finite_complex(value) && !iszero(value) ||
-            throw(MSTCertificateError(
+            throw(ManoSuzukiTakasugiCertificateError(
                 :dd_physical_state,
                 "nonfinite negative DD MST state ratio at n=$(-n).",
             ))
@@ -6870,9 +6854,9 @@ function _dd_state_data(params::MSTParams, offset::DDComplex)
 end
 
 # Certified amplitudes of `branch` from the first representation that passes: principal
-# nu, double-double refined nu, then shifted representations (mst_nia_amplitudes).
+# nu, double-double refined nu, then shifted representations (mano_suzuki_takasugi_negative_imaginary_axis_amplitudes).
 # Returns (series data, amplitudes, DD offset or nothing, representation).
-function _physical_amplitude_plan(data::MSTSeriesData, branch::Symbol)
+function _physical_amplitude_plan(data::ManoSuzukiTakasugiSeriesData, branch::Symbol)
     errors = String[]
     try
         result = _principal_amplitudes(data, branch)
@@ -6886,7 +6870,7 @@ function _physical_amplitude_plan(data::MSTSeriesData, branch::Symbol)
         result = _refined_amplitudes(data, branch)
         base = data.params
         offset = result.nu_offset_dd
-        params = MSTParams(
+        params = ManoSuzukiTakasugiParams(
             base.s,
             base.l,
             base.m,
@@ -6897,7 +6881,7 @@ function _physical_amplitude_plan(data::MSTSeriesData, branch::Symbol)
             dc_value(offset),
         )
         selected = branch == :UP ?
-            _dd_state_data(params, offset) : MSTSeriesData(params)
+            _dd_state_data(params, offset) : ManoSuzukiTakasugiSeriesData(params)
         return selected, result, offset, :dd_refined
     catch error
         error isa InterruptException && rethrow()
@@ -6906,7 +6890,7 @@ function _physical_amplitude_plan(data::MSTSeriesData, branch::Symbol)
 
     try
         base = data.params
-        result = mst_nia_amplitudes(
+        result = mano_suzuki_takasugi_negative_imaginary_axis_amplitudes(
             base.s,
             base.l,
             base.m,
@@ -6924,7 +6908,7 @@ function _physical_amplitude_plan(data::MSTSeriesData, branch::Symbol)
         push!(errors, "coherent_shift=$(sprint(showerror, error))")
     end
 
-    throw(MSTCertificateError(
+    throw(ManoSuzukiTakasugiCertificateError(
         :physical_plan,
         "no certified physical MST representation: $(join(errors, "; "))",
     ))
@@ -6950,18 +6934,18 @@ function _physical_transmission_factor(result, params, branch::Symbol)
 end
 
 """
-    mst_physical_plan(coefficients, branch)
+    mano_suzuki_takasugi_physical_plan(coefficients, branch)
 
 Plan for the physical IN (`branch` `:in`) or UP (`:out`) MST solution, with certified
-asymptotic amplitudes and normalization factors; see `mst_physical_state` and
-`mst_physical_amplitudes`.
+asymptotic amplitudes and normalization factors; see `mano_suzuki_takasugi_physical_state` and
+`mano_suzuki_takasugi_physical_amplitudes`.
 """
-function mst_physical_plan(
+function mano_suzuki_takasugi_physical_plan(
     coefficients::CoefficientSet,
     branch::Symbol,
 )
     physical = _physical_branch(branch)
-    source = _mst_data(coefficients)
+    source = _mano_suzuki_takasugi_data(coefficients)
     data, amplitudes, offset, representation =
         _physical_amplitude_plan(source, physical)
     pin_norm = physical == :IN && offset === nothing ?
@@ -6972,7 +6956,7 @@ function mst_physical_plan(
     out_factor = physical == :UP ?
         _physical_transmission_factor(
             amplitudes, coefficients.params, physical) : nothing
-    return MSTPhysicalPlan(
+    return ManoSuzukiTakasugiPhysicalPlan(
         coefficients,
         data,
         physical,
@@ -6987,15 +6971,15 @@ function mst_physical_plan(
 end
 
 """
-    mst_physical_state(plan, direct_x)
+    mano_suzuki_takasugi_physical_state(plan, direct_x)
 
 GSN state `(X, dXdx)` of the plan's physical solution at `direct_x` in (0, 1): IN from
 the hypergeometric (Type-1) series, in double-double when the plan holds a refined nu;
 UP from the U-function series. Also returns the estimated error, residual, truncation,
 condition and series range.
 """
-function mst_physical_state(
-    plan::MSTPhysicalPlan,
+function mano_suzuki_takasugi_physical_state(
+    plan::ManoSuzukiTakasugiPhysicalPlan,
     direct_x::Real,
 )
     x = Float64(direct_x)
@@ -7015,7 +6999,7 @@ function mst_physical_state(
                 scale=plan.pin_scale,
             )
             order = state.representation == :regularized_type1 ?
-                MST_DD_REG_NMAX : MST_RESIDUAL_NMAX
+                MANO_SUZUKI_TAKASUGI_DD_REG_NMAX : MANO_SUZUKI_TAKASUGI_RESIDUAL_NMAX
             return merge(state, (
                 tail=Float64(state.truncation),
                 nmin=-order,
@@ -7024,7 +7008,7 @@ function mst_physical_state(
                 amplitude_representation=plan.representation,
             ))
         end
-        result = _mst_pin_result(plan.data, r, plan.pin_norm)
+        result = _mano_suzuki_takasugi_pin_result(plan.data, r, plan.pin_norm)
         X, dXdx = _p_to_gsn_dx(
             coefficients,
             result.P,
@@ -7034,7 +7018,7 @@ function mst_physical_state(
         )
         X = ComplexF64(plan.pin_scale * X)
         dXdx = ComplexF64(plan.pin_scale * dXdx)
-        all(_finite_complex, (X, dXdx)) || throw(MSTCertificateError(
+        all(_finite_complex, (X, dXdx)) || throw(ManoSuzukiTakasugiCertificateError(
             :physical_in_state,
             "physical-IN MST state is nonfinite.",
         ))
@@ -7057,13 +7041,13 @@ function mst_physical_state(
     check = _branch_check(plan.data, :out, r)
     residual = check.residual
     _residual_ok(residual) &&
-        residual.residual <= MST_RESIDUAL_TOL ||
-        throw(MSTCertificateError(
+        residual.residual <= MANO_SUZUKI_TAKASUGI_RESIDUAL_TOL ||
+        throw(ManoSuzukiTakasugiCertificateError(
             :physical_up_state,
             "physical-UP MST state rejected: status=$(residual.status), " *
             "residual=$(residual.residual), tail=$(residual.tail).",
         ))
-    X, dXdx, estimated_relerr = _mst_state_at_params(
+    X, dXdx, estimated_relerr = _mano_suzuki_takasugi_state_at_params(
         params,
         plan.data,
         :out,
@@ -7073,7 +7057,7 @@ function mst_physical_state(
         check.budget,
         plan.out_factor,
     )
-    all(_finite_complex, (X, dXdx)) || throw(MSTCertificateError(
+    all(_finite_complex, (X, dXdx)) || throw(ManoSuzukiTakasugiCertificateError(
         :physical_up_state,
         "physical-UP MST state is nonfinite.",
     ))
@@ -7103,12 +7087,12 @@ end
 end
 
 """
-    mst_physical_amplitudes(plan)
+    mano_suzuki_takasugi_physical_amplitudes(plan)
 
 Asymptotic amplitudes of the plan's branch at unit transmission (GSN and Teukolsky
 incidence and reflection), the raw Teukolsky logs, nu, and the certificate diagnostics.
 """
-function mst_physical_amplitudes(plan::MSTPhysicalPlan)
+function mano_suzuki_takasugi_physical_amplitudes(plan::ManoSuzukiTakasugiPhysicalPlan)
     result = plan.amplitudes
     transmission_log = ComplexF64(result.transmission_log)
     teuk = (ComplexF64(result.teuk[1]), ComplexF64(result.teuk[2]))
@@ -7143,12 +7127,12 @@ function mst_physical_amplitudes(plan::MSTPhysicalPlan)
 end
 
 """
-    mst_monodromy_state(params, direct_x; tolerance=1e-11, nu=nothing)
+    mano_suzuki_takasugi_monodromy_state(params, direct_x; tolerance=1e-11, nu=nothing)
 
-Infinity-out MST state at `direct_x` in (0, 1) with nu from `mst_nu_complex` (or the
+Infinity-out MST state at `direct_x` in (0, 1) with nu from `mano_suzuki_takasugi_nu_complex` (or the
 given `nu`), certified at `tolerance`. Returns `(X, dXdx, estimated_relerr, nu, condition)`.
 """
-function mst_monodromy_state(
+function mano_suzuki_takasugi_monodromy_state(
     params::GSNParameters,
     direct_x::Real;
     tolerance::Float64=1.0e-11,
@@ -7161,7 +7145,7 @@ function mst_monodromy_state(
     0.0 < x < 1.0 || throw(DomainError(x,
         "MST Monodromy state requires x in (0, 1)."))
     nu_value = nu === nothing ?
-        mst_nu_complex(
+        mano_suzuki_takasugi_nu_complex(
             params.s,
             params.l,
             params.m,
@@ -7169,7 +7153,7 @@ function mst_monodromy_state(
             params.omega,
             params.lambda,
         ) : ComplexF64(nu)
-    data = MSTSeriesData(MSTParams(
+    data = ManoSuzukiTakasugiSeriesData(ManoSuzukiTakasugiParams(
         params.s,
         params.l,
         params.m,
@@ -7179,10 +7163,10 @@ function mst_monodromy_state(
         nu_value,
     ))
     r = _x_to_r(params, x)
-    mst_coordinate = mst_x(data.params, r)
+    mst_coordinate = mano_suzuki_takasugi_x(data.params, r)
     sequence = _out_sequence(data, mst_coordinate)
     log_scale = _out_term_log_scale(data, mst_coordinate, sequence)
-    budget = _mst_budget(
+    budget = _mano_suzuki_takasugi_budget(
         n -> _out_term_triplet(
             data, n, mst_coordinate, sequence, log_scale),
         n -> _term_error(data, sequence, n);
@@ -7190,12 +7174,12 @@ function mst_monodromy_state(
         budget_tol=tolerance,
         log_scale,
     )
-    budget.status == :OK || throw(MSTCertificateError(
+    budget.status == :OK || throw(ManoSuzukiTakasugiCertificateError(
         :monodromy_state,
         "MST Monodromy state rejected: status=$(budget.status), " *
         "error=$(budget.estimated_relerr), condition=$(budget.condition).",
     ))
-    X, dXdx, estimated_relerr = _mst_state_at_params(
+    X, dXdx, estimated_relerr = _mano_suzuki_takasugi_state_at_params(
         params,
         data,
         :out,
@@ -7215,15 +7199,15 @@ function mst_monodromy_state(
 end
 
 """
-    mst_anchor(coefficients_or_params, branch, direct_x; nu=nothing, tolerance=nothing, fallback_tolerance=nothing)
+    mano_suzuki_takasugi_anchor(coefficients_or_params, branch, direct_x; nu=nothing, tolerance=nothing, fallback_tolerance=nothing)
 
 MST state `(X, dXdx)` of `branch` at `direct_x` in (0, 1). With `tolerance` (at most 1e-8)
 the series budget and the radial-equation residual must meet it; `fallback_tolerance`
 also accepts a sum limited by rounding, state or tail error up to that bound
-(`relaxed_sum = true`). `nu` overrides the solved nu. Throws `MSTCertificateError` when
+(`relaxed_sum = true`). `nu` overrides the solved nu. Throws `ManoSuzukiTakasugiCertificateError` when
 rejected.
 """
-function mst_anchor(
+function mano_suzuki_takasugi_anchor(
     coefficients::CoefficientSet,
     branch::Symbol,
     direct_x::Real;
@@ -7231,22 +7215,22 @@ function mst_anchor(
     tolerance=nothing,
     fallback_tolerance=nothing,
 )
-    normalized = _normalized_mst_branch(branch)
+    normalized = _normalized_mano_suzuki_takasugi_branch(branch)
     x = Float64(direct_x)
     0.0 < x < 1.0 || throw(DomainError(x,
         "MST anchor requires x in (0, 1)."))
     data = if nu === nothing
-        _mst_data(coefficients)
+        _mano_suzuki_takasugi_data(coefficients)
     else
         p = coefficients.params
-        MSTSeriesData(MSTParams(
+        ManoSuzukiTakasugiSeriesData(ManoSuzukiTakasugiParams(
             p.s, p.l, p.m, p.a, p.omega, p.lambda, ComplexF64(nu)))
     end
     if tolerance === nothing
         fallback_tolerance === nothing || throw(ArgumentError(
             "MST anchor fallback tolerance requires a primary tolerance."))
         value, derivative, estimated_relerr =
-            _mst_state_at(coefficients, data, normalized, x)
+            _mano_suzuki_takasugi_state_at(coefficients, data, normalized, x)
         return (
             X=ComplexF64(value),
             dXdx=ComplexF64(derivative),
@@ -7268,7 +7252,7 @@ function mst_anchor(
         value
     end
     r = _x_to_r(coefficients.params, x)
-    point = mst_x(data.params, r)
+    point = mano_suzuki_takasugi_x(data.params, r)
     if normalized == :out
         sequence = _out_sequence(data, point)
         log_scale = _out_term_log_scale(data, point, sequence)
@@ -7281,12 +7265,12 @@ function mst_anchor(
         termfun = n -> _in_term_triplet(data, n, point, sequence)
         transformfun = series -> _in_p_triplet(data, r, series)
     end
-    budget = _mst_budget(
+    budget = _mano_suzuki_takasugi_budget(
         termfun,
         n -> _term_error(data, sequence, n);
-        reltol=MST_REL_ERROR,
+        reltol=MANO_SUZUKI_TAKASUGI_REL_ERROR,
         budget_tol=tol,
-        nmax=MST_RESIDUAL_NMAX,
+        nmax=MANO_SUZUKI_TAKASUGI_RESIDUAL_NMAX,
         log_scale,
     )
     relaxed_sum = if budget.status == :OK
@@ -7297,7 +7281,7 @@ function mst_anchor(
             budget.estimated_relerr <= fallback_tol
         true
     else
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :anchor_sum,
             "MST anchor sum rejected: status=$(budget.status), " *
             "error=$(budget.estimated_relerr), condition=$(budget.condition).",
@@ -7309,14 +7293,14 @@ function mst_anchor(
         abs(budget.sum.second),
         floatmin(Float64),
     )
-    normalized_sum = MSTTriplet(
+    normalized_sum = ManoSuzukiTakasugiTriplet(
         budget.sum.value / scale,
         budget.sum.deriv / scale,
         budget.sum.second / scale,
     )
     residual = _p_residual(data.params, point, transformfun(normalized_sum))
     certificate_tol = relaxed_sum ? fallback_tol : tol
-    residual <= certificate_tol || throw(MSTCertificateError(
+    residual <= certificate_tol || throw(ManoSuzukiTakasugiCertificateError(
         :anchor_residual,
         "MST anchor residual rejected: residual=$(residual), " *
         "error=$(budget.estimated_relerr).",
@@ -7328,7 +7312,7 @@ function mst_anchor(
             :out,
             _outgoing_raw_fast(data, certificate_tol),
         ) : nothing
-    value, derivative, estimated_relerr = _mst_state_at(
+    value, derivative, estimated_relerr = _mano_suzuki_takasugi_state_at(
         coefficients,
         data,
         normalized,
@@ -7352,7 +7336,7 @@ function mst_anchor(
 end
 
 # Same as above for GSNParameters.
-function mst_anchor(
+function mano_suzuki_takasugi_anchor(
     params::GSNParameters,
     branch::Symbol,
     direct_x::Real;
@@ -7360,14 +7344,14 @@ function mst_anchor(
     tolerance=nothing,
     fallback_tolerance=nothing,
 )
-    normalized = _normalized_mst_branch(branch)
+    normalized = _normalized_mano_suzuki_takasugi_branch(branch)
     x = Float64(direct_x)
     0.0 < x < 1.0 || throw(DomainError(x,
         "MST anchor requires x in (0, 1)."))
     data = if nu === nothing
-        _mst_data(params)
+        _mano_suzuki_takasugi_data(params)
     else
-        MSTSeriesData(MSTParams(
+        ManoSuzukiTakasugiSeriesData(ManoSuzukiTakasugiParams(
             params.s,
             params.l,
             params.m,
@@ -7381,7 +7365,7 @@ function mst_anchor(
         fallback_tolerance === nothing || throw(ArgumentError(
             "MST anchor fallback tolerance requires a primary tolerance."))
         value, derivative, estimated_relerr =
-            _mst_state_at_params(params, data, normalized, x)
+            _mano_suzuki_takasugi_state_at_params(params, data, normalized, x)
         return (
             X=ComplexF64(value),
             dXdx=ComplexF64(derivative),
@@ -7403,7 +7387,7 @@ function mst_anchor(
         value
     end
     r = _x_to_r(params, x)
-    point = mst_x(data.params, r)
+    point = mano_suzuki_takasugi_x(data.params, r)
     if normalized == :out
         sequence = _out_sequence(data, point)
         log_scale = _out_term_log_scale(data, point, sequence)
@@ -7416,12 +7400,12 @@ function mst_anchor(
         termfun = n -> _in_term_triplet(data, n, point, sequence)
         transformfun = series -> _in_p_triplet(data, r, series)
     end
-    budget = _mst_budget(
+    budget = _mano_suzuki_takasugi_budget(
         termfun,
         n -> _term_error(data, sequence, n);
-        reltol=MST_REL_ERROR,
+        reltol=MANO_SUZUKI_TAKASUGI_REL_ERROR,
         budget_tol=tol,
-        nmax=MST_RESIDUAL_NMAX,
+        nmax=MANO_SUZUKI_TAKASUGI_RESIDUAL_NMAX,
         log_scale,
     )
     relaxed_sum = if budget.status == :OK
@@ -7432,7 +7416,7 @@ function mst_anchor(
             budget.estimated_relerr <= fallback_tol
         true
     else
-        throw(MSTCertificateError(
+        throw(ManoSuzukiTakasugiCertificateError(
             :anchor_sum,
             "MST anchor sum rejected: status=$(budget.status), " *
             "error=$(budget.estimated_relerr), condition=$(budget.condition).",
@@ -7444,14 +7428,14 @@ function mst_anchor(
         abs(budget.sum.second),
         floatmin(Float64),
     )
-    normalized_sum = MSTTriplet(
+    normalized_sum = ManoSuzukiTakasugiTriplet(
         budget.sum.value / scale,
         budget.sum.deriv / scale,
         budget.sum.second / scale,
     )
     residual = _p_residual(data.params, point, transformfun(normalized_sum))
     certificate_tol = relaxed_sum ? fallback_tol : tol
-    residual <= certificate_tol || throw(MSTCertificateError(
+    residual <= certificate_tol || throw(ManoSuzukiTakasugiCertificateError(
         :anchor_residual,
         "MST anchor residual rejected: residual=$(residual), " *
         "error=$(budget.estimated_relerr).",
@@ -7463,7 +7447,7 @@ function mst_anchor(
             :out,
             _outgoing_raw_fast(data, certificate_tol),
         ) : nothing
-    value, derivative, estimated_relerr = _mst_state_at_params(
+    value, derivative, estimated_relerr = _mano_suzuki_takasugi_state_at_params(
         params,
         data,
         normalized,
@@ -7487,20 +7471,20 @@ function mst_anchor(
 end
 
 """
-    mst_logscaled_seed(coefficients, plan, branch)
+    mano_suzuki_takasugi_logscaled_seed(coefficients, plan, branch)
 
 Log-scaled MST state of `branch` at the plan's seed point, reusing the plan's cached
 sequence and budget; returns `(state, estimated_relerr)`.
 """
-function mst_logscaled_seed(
+function mano_suzuki_takasugi_logscaled_seed(
     coefficients::CoefficientSet,
     plan,
     branch::Symbol,
 )
-    normalized = _normalized_mst_branch(branch)
+    normalized = _normalized_mano_suzuki_takasugi_branch(branch)
     sequence = normalized == :in ? plan.in_sequence : plan.out_sequence
     budget = normalized == :in ? plan.in_budget : plan.out_budget
-    return _mst_logscaled_state(
+    return _mano_suzuki_takasugi_logscaled_state(
         coefficients,
         plan,
         normalized,
@@ -7511,32 +7495,32 @@ function mst_logscaled_seed(
 end
 
 """
-    mst_logscaled_state(coefficients, plan, branch, direct_x; radius=nothing)
+    mano_suzuki_takasugi_logscaled_state(coefficients, plan, branch, direct_x; radius=nothing)
 
 MST state of `branch` at `direct_x` in (0, 1) as a `LogScaledState`, with its
 estimated relative error.
 """
-function mst_logscaled_state(
+function mano_suzuki_takasugi_logscaled_state(
     coefficients::CoefficientSet,
     plan,
     branch::Symbol,
     direct_x::Real;
     radius=nothing,
 )
-    normalized = _normalized_mst_branch(branch)
+    normalized = _normalized_mano_suzuki_takasugi_branch(branch)
     x = Float64(direct_x)
     0.0 < x < 1.0 || throw(DomainError(x,
         "MST log-scaled evaluation requires x in (0, 1)."))
-    return _mst_logscaled_state(coefficients, plan, normalized, x; radius)
+    return _mano_suzuki_takasugi_logscaled_state(coefficients, plan, normalized, x; radius)
 end
 
 """
-    mst_scaled_state(coefficients, plan, branch, direct_x; scale, radius=nothing)
+    mano_suzuki_takasugi_scaled_state(coefficients, plan, branch, direct_x; scale, radius=nothing)
 
-`mst_logscaled_state` materialized with `scale`; returns
+`mano_suzuki_takasugi_logscaled_state` materialized with `scale`; returns
 `(X, dXdx, estimated_relerr)`.
 """
-function mst_scaled_state(
+function mano_suzuki_takasugi_scaled_state(
     coefficients::CoefficientSet,
     plan,
     branch::Symbol,
@@ -7544,7 +7528,7 @@ function mst_scaled_state(
     scale,
     radius=nothing,
 )
-    state, estimated_relerr = mst_logscaled_state(
+    state, estimated_relerr = mano_suzuki_takasugi_logscaled_state(
         coefficients, plan, branch, direct_x; radius)
     materialized = materialize_logscaled_state(state; scale=scale)
     return (
@@ -7555,13 +7539,13 @@ function mst_scaled_state(
 end
 
 """
-    mst_pin_state(coefficients, plan, direct_x; scale=nothing, radius=nothing)
+    mano_suzuki_takasugi_pin_state(coefficients, plan, direct_x; scale=nothing, radius=nothing)
 
 Physical-in MST state at `direct_x` in (0, 1) from the hypergeometric series with the
 plan's normalization, times `scale` (default the plan's `pin_scale`, else 1). Returns
 `(X, dXdx, estimated_relerr, residual)`.
 """
-function mst_pin_state(
+function mano_suzuki_takasugi_pin_state(
     coefficients::CoefficientSet,
     plan,
     direct_x::Real;
@@ -7574,7 +7558,7 @@ function mst_pin_state(
     plan.pin_norm === nothing &&
         error("MST evaluation plan does not contain the physical-in normalization.")
     r = radius === nothing ? _x_to_r(coefficients.params, x) : Float64(radius)
-    P, Px, estimated_relerr, residual = _mst_pin_p(
+    P, Px, estimated_relerr, residual = _mano_suzuki_takasugi_pin_p(
         plan.data, r, plan.pin_norm)
     X, dXdx = _p_to_gsn_dx(
         coefficients, P, Px, x, plan.converter(r); radius)
@@ -7591,12 +7575,12 @@ function mst_pin_state(
 end
 
 """
-    mst_route_state(coefficients, plan, branch, direct_x; radius=nothing)
+    mano_suzuki_takasugi_route_state(coefficients, plan, branch, direct_x; radius=nothing)
 
 Unit-normalized MST state of `branch` (`:in` or `:out`) at `direct_x` in (0, 1) from a
-`build_mst_plan`; returns `(X, dXdx, estimated_relerr)`.
+`build_mano_suzuki_takasugi_plan`; returns `(X, dXdx, estimated_relerr)`.
 """
-function mst_route_state(
+function mano_suzuki_takasugi_route_state(
     coefficients::CoefficientSet,
     plan,
     branch::Symbol,
@@ -7613,7 +7597,7 @@ function mst_route_state(
     factor === nothing && error("MST evaluation plan does not contain branch $(normalized).")
     r = radius === nothing ? _x_to_r(coefficients.params, x) : radius
     transform = plan.converter(r)
-    value, derivative, error_estimate = _mst_state_at(
+    value, derivative, error_estimate = _mano_suzuki_takasugi_state_at(
         coefficients,
         plan.data,
         normalized,
@@ -7629,7 +7613,7 @@ end
 
 # Low-frequency expansion of nu - l to order epsilon^2
 # (Sasaki & Tagoshi, Living Rev. Relativ. 6, 6 (2003)).
-function _mst_guess_offset(s, l, epsilon)
+function _mano_suzuki_takasugi_guess_offset(s, l, epsilon)
     lf = Float64(l)
     sf = Float64(s)
     correction = -2 - sf^2 / (lf * (lf + 1)) +
@@ -7639,34 +7623,31 @@ function _mst_guess_offset(s, l, epsilon)
 end
 
 """
-    mst_guess(s, l, epsilon)
+    mano_suzuki_takasugi_guess(s, l, epsilon)
 
 Low-frequency estimate of the MST nu, l + O(epsilon^2).
 """
-mst_guess(s, l, epsilon) = Float64(l) + _mst_guess_offset(s, l, epsilon)
+mano_suzuki_takasugi_guess(s, l, epsilon) = Float64(l) + _mano_suzuki_takasugi_guess_offset(s, l, epsilon)
 
 # MST equation beta_0 + alpha_0 R_1 + gamma_0 L_(-1) at nu = l + nu_offset; nu is a root.
-function _mst_eq_value(nu_offset, s, l, m, a, omega, lambda)
+function _mano_suzuki_takasugi_eq_value(nu_offset, s, l, m, a, omega, lambda)
     nu_value = ComplexF64(l) + ComplexF64(nu_offset)
-    p = MSTParams(s, l, m, a, omega, lambda, nu_value, nu_offset)
+    p = ManoSuzukiTakasugiParams(s, l, m, a, omega, lambda, nu_value, nu_offset)
     r1 = rn_cf(1, p)
     lm1 = ln_cf(-1, p)
-    value = beta_mst(0, p) + alpha_mst(0, p) * r1.value + gamma_mst(0, p) * lm1.value
+    value = beta_mano_suzuki_takasugi(0, p) + alpha_mano_suzuki_takasugi(0, p) * r1.value + gamma_mano_suzuki_takasugi(0, p) * lm1.value
     (!isfinite(real(value)) || !isfinite(imag(value))) &&
         error("nonfinite MST nu equation at nu-l=$nu_offset")
     return ComplexF64(value)
 end
 
-_mst_eq_offset(nu_offset, s, l, m, a, omega, lambda) =
-    real(_mst_eq_value(nu_offset, s, l, m, a, omega, lambda))
+_mano_suzuki_takasugi_eq_offset(nu_offset, s, l, m, a, omega, lambda) =
+    real(_mano_suzuki_takasugi_eq_value(nu_offset, s, l, m, a, omega, lambda))
 
-mst_eq(nu_real, s, l, m, a, omega, lambda) =
-    _mst_eq_offset(ComplexF64(nu_real) - ComplexF64(l), s, l, m, a, omega, lambda)
-
-# nu - l for real omega: the guess when negligible; mst_nu_complex when the monodromy
+# nu - l for real omega: the guess when negligible; mano_suzuki_takasugi_nu_complex when the monodromy
 # trace leaves [-1, 1]; otherwise the real root, bracketed around the guess and refined
 # by regula falsi with bisection safeguards (secant iteration without a bracket).
-function _mst_nu_offset(
+function _mano_suzuki_takasugi_nu_offset(
     s,
     l,
     m,
@@ -7678,7 +7659,7 @@ function _mst_nu_offset(
 )
     epsilon = 2.0 * Float64(omega)
     iszero(epsilon) && return ComplexF64(0)
-    center = _mst_guess_offset(s, l, epsilon)
+    center = _mano_suzuki_takasugi_guess_offset(s, l, epsilon)
     if !iszero(center) &&
             abs(center) <= 64eps(Float64) * max(1.0, abs(l))
         return ComplexF64(center)
@@ -7689,24 +7670,24 @@ function _mst_nu_offset(
     trace = _monodromy_trace_data(s, m, a, ComplexF64(omega), lambda)
     # An unresolved excess at +/-1 cannot establish a complex-nu branch.
     abs(real(trace.value)) - 1 <= trace.resolution ||
-        return mst_nu_complex(s, l, m, a, omega, lambda) - l
+        return mano_suzuki_takasugi_nu_complex(s, l, m, a, omega, lambda) - l
 
-    fcenter = _mst_eq_offset(center, s, l, m, a, omega, lambda)
+    fcenter = _mano_suzuki_takasugi_eq_offset(center, s, l, m, a, omega, lambda)
     iszero(fcenter) && return ComplexF64(center)
 
     step = max(0.02 * max(abs(center), epsilon^2), eps(Float64) * max(1.0, abs(l)))
     left = center - step
     right = center + step
-    fleft = _mst_eq_offset(left, s, l, m, a, omega, lambda)
-    fright = _mst_eq_offset(right, s, l, m, a, omega, lambda)
+    fleft = _mano_suzuki_takasugi_eq_offset(left, s, l, m, a, omega, lambda)
+    fright = _mano_suzuki_takasugi_eq_offset(right, s, l, m, a, omega, lambda)
 
     for _ in 1:24
         (iszero(fleft) || iszero(fright) || signbit(fleft) != signbit(fright)) && break
         step *= 2
         left = center - step
         right = center + step
-        fleft = _mst_eq_offset(left, s, l, m, a, omega, lambda)
-        fright = _mst_eq_offset(right, s, l, m, a, omega, lambda)
+        fleft = _mano_suzuki_takasugi_eq_offset(left, s, l, m, a, omega, lambda)
+        fright = _mano_suzuki_takasugi_eq_offset(right, s, l, m, a, omega, lambda)
     end
 
     if iszero(fleft)
@@ -7724,7 +7705,7 @@ function _mst_nu_offset(
                 trial = left + (right - left) / 2
             end
             (trial == left || trial == right) && return ComplexF64(best_x)
-            ftrial = _mst_eq_offset(trial, s, l, m, a, omega, lambda)
+            ftrial = _mano_suzuki_takasugi_eq_offset(trial, s, l, m, a, omega, lambda)
             if abs(ftrial) < abs(best_f)
                 best_x, best_f = trial, ftrial
             end
@@ -7752,7 +7733,7 @@ function _mst_nu_offset(
         !iszero(denom) || break
         x2 = x1 - f1 * (x1 - x0) / denom
         isfinite(x2) || break
-        f2 = _mst_eq_offset(x2, s, l, m, a, omega, lambda)
+        f2 = _mano_suzuki_takasugi_eq_offset(x2, s, l, m, a, omega, lambda)
         if x2 == x1 || abs(x2 - x1) <= max(tol * max(abs(x2), floatmin(Float64)), 8eps(x2))
             return ComplexF64(x2)
         end
@@ -7763,7 +7744,7 @@ function _mst_nu_offset(
 end
 
 # nu - l for complex omega by damped Newton iteration from the low-frequency guess.
-function _mst_nu_offset(
+function _mano_suzuki_takasugi_nu_offset(
     s,
     l,
     m,
@@ -7775,11 +7756,11 @@ function _mst_nu_offset(
 )
     epsilon = 2.0 * ComplexF64(omega)
     iszero(epsilon) && return ComplexF64(0)
-    iszero(imag(epsilon)) && return _mst_nu_offset(
+    iszero(imag(epsilon)) && return _mano_suzuki_takasugi_nu_offset(
         s, l, m, a, real(omega), lambda; maxiter, tol)
 
-    current = ComplexF64(_mst_guess_offset(s, l, epsilon))
-    value = _mst_eq_value(current, s, l, m, a, omega, lambda)
+    current = ComplexF64(_mano_suzuki_takasugi_guess_offset(s, l, epsilon))
+    value = _mano_suzuki_takasugi_eq_value(current, s, l, m, a, omega, lambda)
     scale = max(abs(ComplexF64(lambda)), abs(l * (l + 1)), 1.0)
     best = current
     best_residual = abs(value) / scale
@@ -7787,8 +7768,8 @@ function _mst_nu_offset(
 
     for _ in 1:maxiter
         h = max(1.0e-7, sqrt(eps(Float64)) * max(1.0, abs(current)))
-        plus = _mst_eq_value(current + h, s, l, m, a, omega, lambda)
-        minus = _mst_eq_value(current - h, s, l, m, a, omega, lambda)
+        plus = _mano_suzuki_takasugi_eq_value(current + h, s, l, m, a, omega, lambda)
+        minus = _mano_suzuki_takasugi_eq_value(current - h, s, l, m, a, omega, lambda)
         derivative = (plus - minus) / (2h)
         _finite_complex(derivative) && !iszero(derivative) || break
 
@@ -7799,7 +7780,7 @@ function _mst_nu_offset(
         for damping in 0:10
             factor = exp2(-damping)
             candidate = current - factor * step
-            candidate_value = _mst_eq_value(
+            candidate_value = _mano_suzuki_takasugi_eq_value(
                 candidate, s, l, m, a, omega, lambda)
             if abs(candidate_value) < abs(value)
                 trial = candidate
@@ -7820,7 +7801,7 @@ function _mst_nu_offset(
         abs(step) <= tol * max(1.0, abs(current)) && break
     end
 
-    best_residual <= 32tol || throw(MSTCertificateError(
+    best_residual <= 32tol || throw(ManoSuzukiTakasugiCertificateError(
         :complex_nu,
         "complex MST nu solve rejected: residual=$(best_residual), " *
         "nu_offset=$(best), omega=$(omega)",
@@ -7828,7 +7809,7 @@ function _mst_nu_offset(
     return best
 end
 
-struct MSTMonodromyParams
+struct ManoSuzukiTakasugiMonodromyParams
     a::ComplexF64
     gamma::ComplexF64
     delta::ComplexF64
@@ -7851,24 +7832,24 @@ function _monodromy_params(s, m, a, omega, lambda)
         im * (2s - 1) * epsilon * kappa -
         lambda - tau * (im + tau)
     )
-    return MSTMonodromyParams(
+    return ManoSuzukiTakasugiMonodromyParams(
         ach, gamma_ch, delta_ch, epsilon_ch, qch)
 end
 
-mutable struct MSTMonodromySeries
+mutable struct ManoSuzukiTakasugiMonodromySeries
     coefficients::Vector{ComplexF64}
     previous::ComplexF64
     current::ComplexF64
 end
 
-MSTMonodromySeries() = MSTMonodromySeries(ComplexF64[1], 0.0im, 1.0+0.0im)
+ManoSuzukiTakasugiMonodromySeries() = ManoSuzukiTakasugiMonodromySeries(ComplexF64[1], 0.0im, 1.0+0.0im)
 
 # Extends in place the kind-1 or kind-2 series coefficients used by _monodromy_stokes
 # up to order nmax.
 function _monodromy_series!(
-    series::MSTMonodromySeries,
+    series::ManoSuzukiTakasugiMonodromySeries,
     kind::Int,
-    params::MSTMonodromyParams,
+    params::ManoSuzukiTakasugiMonodromyParams,
     nmax::Int,
 )
     coefficients = series.coefficients
@@ -7915,7 +7896,7 @@ function _monodromy_series!(
             weight = cn - 1 + m2 - m1
         end
         current = pref2 * ratio + pref1
-        iszero(current) && throw(MSTCertificateError(
+        iszero(current) && throw(ManoSuzukiTakasugiCertificateError(
             :complex_nu_monodromy,
             "zero complex-monodromy series normalization.",
         ))
@@ -7931,13 +7912,13 @@ function _monodromy_series!(
     return coefficients
 end
 
-_monodromy_series(kind::Int, params::MSTMonodromyParams, nmax::Int) =
-    _monodromy_series!(MSTMonodromySeries(),kind,params,nmax)
+_monodromy_series(kind::Int, params::ManoSuzukiTakasugiMonodromyParams, nmax::Int) =
+    _monodromy_series!(ManoSuzukiTakasugiMonodromySeries(),kind,params,nmax)
 
 # Stokes-multiplier term added to cos(2 pi mu) in _monodromy_trace_data, from the two
 # series truncated at nmax.
 function _monodromy_stokes(
-    params::MSTMonodromyParams,
+    params::ManoSuzukiTakasugiMonodromyParams,
     nmax::Int,
     first::Vector{ComplexF64}=_monodromy_series(1,params,nmax),
     second::Vector{ComplexF64}=_monodromy_series(2,params,nmax),
@@ -7955,7 +7936,7 @@ function _monodromy_stokes(
     second_sum = sum(
         (-1.0)^j * second[j + 1] for j in 0:split)
     product = first_sum * second_sum
-    iszero(product) && throw(MSTCertificateError(
+    iszero(product) && throw(ManoSuzukiTakasugiCertificateError(
         :complex_nu_monodromy,
         "zero complex-monodromy weighted sum.",
     ))
@@ -7963,8 +7944,8 @@ function _monodromy_stokes(
         (2first_gamma * second_gamma * product)
 end
 
-# cos(2 pi nu) from the monodromy of the confluent Heun equation, and the
-# centred mu it is measured against.
+# cos(2 pi nu) from the monodromy of the confluent Heun equation, with the
+# resolution (rounding plus series drift) to which that value is known.
 function _monodromy_trace_data(s, m, a, omega, lambda)
     params = _monodromy_params(s, m, a, omega, lambda)
     epsilon = 2omega
@@ -7975,13 +7956,13 @@ function _monodromy_trace_data(s, m, a, omega, lambda)
     previous = 0.0 + 0.0im
     stokes = 0.0 + 0.0im
     drift = Inf
-    first = MSTMonodromySeries()
-    second = MSTMonodromySeries()
+    first = ManoSuzukiTakasugiMonodromySeries()
+    second = ManoSuzukiTakasugiMonodromySeries()
     for nmax in 50:50:500
         _monodromy_series!(first,1,params,nmax)
         _monodromy_series!(second,2,params,nmax)
         stokes = _monodromy_stokes(params, nmax, first.coefficients, second.coefficients)
-        _finite_complex(stokes) || throw(MSTCertificateError(
+        _finite_complex(stokes) || throw(ManoSuzukiTakasugiCertificateError(
             :complex_nu_monodromy,
             "nonfinite complex-monodromy multiplier.",
         ))
@@ -7991,7 +7972,7 @@ function _monodromy_trace_data(s, m, a, omega, lambda)
         nmax > 50 && drift <= 1.0e-11 && break
         previous = stokes
     end
-    drift <= 1.0e-8 || throw(MSTCertificateError(
+    drift <= 1.0e-8 || throw(ManoSuzukiTakasugiCertificateError(
         :complex_nu_monodromy,
         "complex-monodromy series rejected: drift=$drift.",
     ))
@@ -8094,13 +8075,13 @@ function _refine_nu(
 end
 
 """
-    mst_nu_complex(s, l, m, a, omega, lambda; tol=3.2e-13)
+    mano_suzuki_takasugi_nu_complex(s, l, m, a, omega, lambda; tol=3.2e-13)
 
 MST nu seeded from cos(2 pi nu) given by the monodromy of the confluent Heun equation
 and refined by damped Newton steps on the MST equation, trying several integer shifts of
-the seed. Throws `MSTCertificateError` when no shift reaches `tol`.
+the seed. Throws `ManoSuzukiTakasugiCertificateError` when no shift reaches `tol`.
 """
-function mst_nu_complex(
+function mano_suzuki_takasugi_nu_complex(
     s,
     l,
     m,
@@ -8113,7 +8094,7 @@ function mst_nu_complex(
     !iszero(omegac) ||
         throw(ArgumentError("MST nu requires a nonzero frequency."))
     seed = _monodromy_seed(s, m, a, omegac, lambda)
-    equation = nu -> _mst_eq_value(
+    equation = nu -> _mano_suzuki_takasugi_eq_value(
         ComplexF64(nu) - ComplexF64(l),
         s, l, m, a, omegac, lambda)
     scale = max(
@@ -8129,22 +8110,22 @@ function mst_nu_complex(
         candidate.residual < best.residual && (best = candidate)
         best.residual <= tol && return best.nu
     end
-    throw(MSTCertificateError(
+    throw(ManoSuzukiTakasugiCertificateError(
         :complex_nu_refinement,
         "complex MST nu refinement rejected: residual=$(best.residual).",
     ))
 end
 
 """
-    mst_nu(s, l, m, a, omega, lambda; maxiter=60, tol=1e-13)
+    mano_suzuki_takasugi_nu(s, l, m, a, omega, lambda; maxiter=60, tol=1e-13)
 
 Renormalized angular momentum nu of the MST formalism for the mode (s, l, m), spin `a`,
 frequency `omega` and eigenvalue `lambda`, as `l + (nu - l)`. Real frequencies use a
-bracketed real root (or `mst_nu_complex` when nu is complex); complex frequencies use
+bracketed real root (or `mano_suzuki_takasugi_nu_complex` when nu is complex); complex frequencies use
 damped Newton iteration.
 """
-function mst_nu(s, l, m, a, omega, lambda; maxiter::Int=60, tol::Float64=1.0e-13)
-    offset = _mst_nu_offset(s, l, m, a, omega, lambda; maxiter=maxiter, tol=tol)
+function mano_suzuki_takasugi_nu(s, l, m, a, omega, lambda; maxiter::Int=60, tol::Float64=1.0e-13)
+    offset = _mano_suzuki_takasugi_nu_offset(s, l, m, a, omega, lambda; maxiter=maxiter, tol=tol)
     return ComplexF64(l) + offset
 end
 

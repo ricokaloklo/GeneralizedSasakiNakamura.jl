@@ -5,19 +5,26 @@ export PublicSubmission, PublicModeOwner, PublicSubmissionCancelled
 export create_public_submission, ensure_public_submission, with_public_submission
 export submission_orbit!, submission_master!, submission_geometry!
 export with_submission_mode, with_submission_operation, request_submission_cancel!, release_public_submission!
-export spawn_submission_task!, submission_snapshot
+export spawn_submission_task!
 
+# Thrown when a mode, operation or task asks for admission after the submission closed admission; `reason` is the
+# cancel reason.
 struct PublicSubmissionCancelled <: Exception
     reason::String
 end
 Base.showerror(io::IO, e::PublicSubmissionCancelled) = print(io, "Submission admission closed: ", e.reason)
 
+# Per-mode handle passed to lifecycle observers: the mode's private cache, its (s, l, m, n, k) tag and whether the
+# cache has been cleared.
 mutable struct PublicModeOwner
     cache::Any
     mode::Any
     closed::Bool
 end
 
+# One orbit's shared read-only trajectory, master sample and geometry, plus the admission, cancellation, resource and
+# task bookkeeping of a point-particle submission. Create with create_public_submission, run work through
+# with_submission_operation / with_submission_mode, and release with release_public_submission!.
 mutable struct PublicSubmission
     parameters::Tuple
     family::Symbol
@@ -596,23 +603,5 @@ function _with_public_scope(f, scope, owned::Bool)
                 primary_error === nothing ? rethrow() : throw(CompositeException(Any[primary_error, cleanup_error]))
             end
         end
-    end
-end
-
-# Counters and flags describing the submission state (for diagnostics and tests).
-function submission_snapshot(scope::PublicSubmission)
-    return lock(scope.lock) do
-        (family = string(scope.family), admission_closed = scope.admission_closed,
-            cancel_requested = scope.cancel_requested, active_modes = scope.active_modes,
-            active_operations = scope.active_operations,
-            modes_admitted = scope.modes_admitted, modes_cleared = scope.modes_cleared,
-            tasks_admitted = scope.tasks_admitted, tasks_joined = scope.tasks_joined,
-            registered_tasks = length(scope.registered_tasks), released = scope.released,
-            accepted_tasks = length(scope.accepted_tasks),
-            observer_callbacks = length(scope.observer_depth),
-            alternate_masters = length(scope.alternate_masters), alternate_geometries = length(scope.alternate_geometries),
-            geometry_released = scope.geometry === nothing && isempty(scope.alternate_geometries),
-            master_released = scope.master === nothing && isempty(scope.alternate_masters),
-            orbit_released = scope.orbit === nothing)
     end
 end

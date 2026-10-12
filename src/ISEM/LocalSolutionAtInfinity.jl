@@ -5,16 +5,13 @@ using ..OrdinaryPointExpansion:
     endpoint_ab_series,
     endpoint_power_lookup,
     denom_ok,
-    poly_pair,
     poly_triple,
-    poly_value,
     series_issue
 
 export infinity_exponents
-export infinity_coefficients!, infinity_coefficients
 export infinity_guarded
-export infinity_local_solution, inf_in_coeffs, inf_out_coeffs
-export infinity_series_value, infinity_series_pair, infinity_series_triple
+export infinity_local_solution
+export infinity_series_triple
 
 _param_kappa(params) = hasproperty(params, :kappa) ? getproperty(params, :kappa) : cos(getproperty(params, :nu))
 
@@ -78,37 +75,6 @@ function _infinity_coefficients!(
         end
     end
     return order, :none
-end
-
-function infinity_coefficients!(
-    coeffs::Vector{ComplexF64},
-    a_power,
-    b_power,
-    rho,
-    sigma,
-    order::Integer,
-)
-    _infinity_coefficients!(coeffs, a_power, b_power, rho, sigma, order, false)
-    return coeffs
-end
-
-function infinity_coefficients(a_power, b_power, rho, sigma, order::Integer)
-    coeffs = Vector{ComplexF64}(undef, order + 1)
-    return infinity_coefficients!(coeffs, a_power, b_power, rho, sigma, order)
-end
-
-function infinity_coefficients(
-    a_coeffs::Vector{ComplexF64},
-    b_coeffs::Vector{ComplexF64},
-    rho,
-    sigma,
-    order::Integer;
-    a_first_power::Integer=-1,
-    b_first_power::Integer=-4,
-)
-    a_power = endpoint_power_lookup(a_coeffs, a_first_power)
-    b_power = endpoint_power_lookup(b_coeffs, b_first_power)
-    return infinity_coefficients(a_power, b_power, rho, sigma, order)
 end
 
 function infinity_guarded(
@@ -200,26 +166,8 @@ function infinity_local_solution(
     )
 end
 
-inf_out_coeffs(coefficients::CoefficientSet, order::Integer) =
-    infinity_local_solution(coefficients, :out, order).coefficients
-
-inf_in_coeffs(coefficients::CoefficientSet, order::Integer) =
-    infinity_local_solution(coefficients, :in, order).coefficients
-
-# exp(sigma / y) y^rho times the series. The _pair and _triple versions return
-# derivatives with respect to x = 1 - y.
-function infinity_series_value(coeffs, rho, sigma, y)
-    return exp(sigma / y) * y^rho * poly_value(coeffs, y)
-end
-
-function infinity_series_pair(coeffs, rho, sigma, y)
-    series, dseries = poly_pair(coeffs, y)
-    prefactor = exp(sigma / y) * y^rho
-    value = prefactor * series
-    derivative_y = prefactor * (dseries + (-sigma / y^2 + rho / y) * series)
-    return value, -derivative_y
-end
-
+# exp(sigma / y) y^rho times the series, with its first and second derivatives
+# with respect to x = 1 - y.
 function infinity_series_triple(coeffs, rho, sigma, y)
     series, dseries, ddseries = poly_triple(coeffs, y)
     prefactor = exp(sigma / y) * y^rho

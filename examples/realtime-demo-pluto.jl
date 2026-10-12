@@ -16,9 +16,6 @@ macro bind(def, element)
     #! format: on
 end
 
-# ╔═╡ 1f0d7d7a-55a1-4a32-9a9f-2a4e0a30b101
-nothing
-
 # ╔═╡ 5c4e0dc0-34b9-4e52-9c0f-d5f1f640a3b2
 begin
     using GeneralizedSasakiNakamura
@@ -437,7 +434,6 @@ end
 md""
 
 # ╔═╡ Cell order:
-# ╠═1f0d7d7a-55a1-4a32-9a9f-2a4e0a30b101
 # ╠═5c4e0dc0-34b9-4e52-9c0f-d5f1f640a3b2
 # ╟─4d30ec04-4ab2-4a89-9ff9-b6e2fd5119d0
 # ╠═728bf380-6bb2-4012-8e7e-97ce7c4d7b42

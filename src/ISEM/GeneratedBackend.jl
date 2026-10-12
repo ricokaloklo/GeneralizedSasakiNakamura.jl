@@ -84,6 +84,9 @@ const _LOADED_KEYS = Set(first.(collect(_GENERATED_TABLES)))
 
 generated_backend_loaded() = !isempty(_LOADED_KEYS)
 
+# Check that every table selected by ISEM_GENERATED_SPINS / ISEM_GENERATED_BASES
+# was included when the package loaded; the tables are included eagerly above,
+# so nothing is loaded here. Throws if a selected sector is missing.
 function preload_coefficient_tables!()
     for s in _GENERATED_SPINS, basis in _GENERATED_BASES
         _ensure_generated_loaded!(s, basis)
@@ -100,6 +103,9 @@ function _spin_tag(s::Integer)
     throw(ArgumentError("ISEM GSN generated coefficients support s = -2, -1, 0, 1, 2."))
 end
 
+# Lengths of the A-numerator, A-denominator, B-numerator and B-denominator blocks
+# of a generated value vector, per group (:H horizon, :I infinity, :O ordinary);
+# the s = 0 tables are shorter.
 function _layout_for(s::Integer, group::Symbol)
     if s == 0
         group == :H && return _PQLayout(11, 11, 11, 13)
@@ -170,9 +176,9 @@ function _ordinary_module_symbol(s::Integer, basis::Symbol)
 end
 
 # Each generated table is looked up by name (a dynamic call), so a solve
-# compiles only the tables for its spin and basis. The tables convert their arguments to
-# these types themselves; converting first lets real and complex frequencies
-# share one compiled method per table.
+# compiles only the tables for its spin and basis. Callers convert the arguments
+# to ComplexF64/Float64 before the call, so real and complex frequencies share
+# one compiled method per table.
 _generated_function(name::Symbol, table::Symbol) =
     getfield(getfield(@__MODULE__, table), name)
 
@@ -252,6 +258,10 @@ function _construct_coefficients_loaded(params, s::Integer, lambda, m, nu, omega
     )
 end
 
+# Build the CoefficientSet for `params` (or for `s, lambda, m, nu, omega`) from the
+# generated tables: endpoint bases :hc / :ic and the ordinary basis from
+# `controls.ordinary_basis` (see `_ordinary_basis`). Registered as the default
+# coefficient backend in ISEM.jl.
 function generated_coefficients(params::GSNParameters; controls=nothing)
     return _construct_coefficients(
         params,

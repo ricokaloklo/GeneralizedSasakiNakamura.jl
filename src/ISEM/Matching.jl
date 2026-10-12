@@ -35,12 +35,12 @@ using ..Iteration:
     _INFINITY_ENDPOINT_TARGET
 using ..Eikonal: EikonalPatch, eikonal_preflight
 using ..NearExtreme: near_extreme_prepare, near_extreme_selected
-using ..MSTInfinity: MSTCertificateError, abel_denominator
-using ..MSTInfinity: build_mst_eval_plan, mst_infinity_basis
-using ..MSTInfinity: mst_infinity_pair, build_mst_plan, mst_route_state
-using ..MSTInfinity: mst_logscaled_seed, mst_pin_state
-using ..MSTInfinity: mst_scaled_state
-using ..MSTInfinity: _pin_unit_scale
+using ..ManoSuzukiTakasugiInfinity: ManoSuzukiTakasugiCertificateError, abel_denominator
+using ..ManoSuzukiTakasugiInfinity: build_mano_suzuki_takasugi_eval_plan, mano_suzuki_takasugi_infinity_basis
+using ..ManoSuzukiTakasugiInfinity: mano_suzuki_takasugi_infinity_pair, build_mano_suzuki_takasugi_plan, mano_suzuki_takasugi_route_state
+using ..ManoSuzukiTakasugiInfinity: mano_suzuki_takasugi_logscaled_seed, mano_suzuki_takasugi_pin_state
+using ..ManoSuzukiTakasugiInfinity: mano_suzuki_takasugi_scaled_state
+using ..ManoSuzukiTakasugiInfinity: _pin_unit_scale
 using ..Parameters:
     GSNControls,
     GSNParameters,
@@ -64,6 +64,8 @@ const LOW_FREQUENCY_AXISYMMETRIC_MATCH_X = 0.99
 const ORDINARY_IN_MATCH_X = 0.7
 const ORDINARY_UP_MATCH_X = 0.3
 const BRIDGE_CONDITION_LIMIT = 1.0e12
+# Diagnostic switch: ISEM_PHYSICAL_BRIDGE=0 disables the physical bridge (_needs_bridge)
+# and the small-frequency endpoint bridge, so routes evaluate the matched bases directly.
 const PHYSICAL_BRIDGE = get(ENV, "ISEM_PHYSICAL_BRIDGE", "1") != "0"
 const PUBLIC_EVALUATION_ENDPOINT_X = 0.999995
 const MATCHING_SCALE_LOG_MARGIN = 32.0
@@ -127,81 +129,6 @@ function Base.getproperty(route::ConjugatedRoute, name::Symbol)
     name === :params && return getfield(route, :params)
     return getproperty(getfield(route, :route), name)
 end
-
-Route(
-    branch,
-    params,
-    controls,
-    coefficients,
-    match_x,
-    infinity_endpoint_y,
-    infinity_out_order,
-    infinity_in_order,
-    incidence,
-    reflection,
-    horizon_in,
-    horizon_out,
-    infinity_out,
-    infinity_in,
-) = Route(
-    branch,
-    params,
-    controls,
-    coefficients,
-    match_x,
-    infinity_endpoint_y,
-    infinity_out_order,
-    infinity_in_order,
-    incidence,
-    reflection,
-    1.0,
-    horizon_in,
-    horizon_out,
-    infinity_out,
-    infinity_in,
-    nothing,
-    nothing,
-    nothing,
-    nothing,
-)
-
-Route(
-    branch,
-    params,
-    controls,
-    coefficients,
-    match_x,
-    infinity_endpoint_y,
-    infinity_out_order,
-    infinity_in_order,
-    incidence,
-    reflection,
-    horizon_in,
-    horizon_out,
-    infinity_out,
-    infinity_in,
-    bridge,
-) = Route(
-    branch,
-    params,
-    controls,
-    coefficients,
-    match_x,
-    infinity_endpoint_y,
-    infinity_out_order,
-    infinity_in_order,
-    incidence,
-    reflection,
-    1.0,
-    horizon_in,
-    horizon_out,
-    infinity_out,
-    infinity_in,
-    bridge,
-    nothing,
-    nothing,
-    nothing,
-)
 
 """
     RoutePlan
@@ -331,16 +258,6 @@ function _with_ordinary_defaults(
         ctrl.frequency_selection,
         :ordinary_branch_match,
     )
-end
-
-# Coefficients (c1, c2) with c1 basis1 + c2 basis2 = target in value and
-# derivative (Cramer's rule with the numerical Wronskian).
-function _connection_coefficients(target, basis1, basis2)
-    det = basis1.X * basis2.dXdx - basis2.X * basis1.dXdx
-    iszero(det) && error("singular ISEM GSN matching system")
-    c1 = (target.X * basis2.dXdx - basis2.X * target.dXdx) / det
-    c2 = (basis1.X * target.dXdx - target.X * basis1.dXdx) / det
-    return c1, c2
 end
 
 @inline _finite_complex(value) =
@@ -764,7 +681,7 @@ end
 
 @inline function _small_frequency_expansion_auto_fallback(ctrl::GSNControls, err)
     return ctrl.frequency_selection.small_frequency_expansion_request == :auto &&
-        err isa MSTCertificateError
+        err isa ManoSuzukiTakasugiCertificateError
 end
 
 # Wronskian of the two bases at match_x: the Abel denominator, or for the
@@ -833,7 +750,7 @@ function _infinity_basis(
     mst_plan=nothing,
 )
     if ctrl.small_frequency_expansion
-        return mst_infinity_basis(
+        return mano_suzuki_takasugi_infinity_basis(
             coefficients,
             branch,
             match_x;
@@ -846,7 +763,7 @@ function _infinity_basis(
         match_x=match_x, selection=selection, scratch=scratch)
 end
 
-function _logscaled_mst_basis(
+function _logscaled_mano_suzuki_takasugi_basis(
     coefficients,
     branch::Symbol,
     match_x::Float64,
@@ -856,7 +773,7 @@ function _logscaled_mst_basis(
 )
     normalized = branch == :in ? :in : :out
     kind = normalized == :in ? :infinity_in : :infinity_out
-    seed, _ = mst_logscaled_seed(
+    seed, _ = mano_suzuki_takasugi_logscaled_seed(
         coefficients, mst_plan, normalized)
     return iterate_logscaled_from_state(
         coefficients,
@@ -869,16 +786,16 @@ function _logscaled_mst_basis(
     )
 end
 
-function _logscaled_mst_pair(
+function _logscaled_mano_suzuki_takasugi_pair(
     coefficients,
     match_x::Float64,
     ctrl,
     scratch,
     mst_plan,
 )
-    incoming = _logscaled_mst_basis(
+    incoming = _logscaled_mano_suzuki_takasugi_basis(
         coefficients, :in, match_x, ctrl, scratch, mst_plan)
-    outgoing = _logscaled_mst_basis(
+    outgoing = _logscaled_mano_suzuki_takasugi_basis(
         coefficients, :out, match_x, ctrl, scratch, mst_plan)
     return incoming, outgoing
 end
@@ -915,7 +832,7 @@ end
 # MST evaluation plan for a log-scaled route: fix the MST pin (IN) or outgoing
 # (UP) normalization against the physical state at a handoff point and check
 # the agreement to SMALL_FREQUENCY_EXPANSION_ENDPOINT_HANDOFF_TOLERANCE.
-function _logscaled_mst_eval_plan(
+function _logscaled_mano_suzuki_takasugi_eval_plan(
     coefficients,
     route_branch,
     mst_plan,
@@ -959,16 +876,16 @@ function _logscaled_mst_eval_plan(
         )
     end
     if route_branch == :IN
-        candidate = mst_pin_state(
+        candidate = mano_suzuki_takasugi_pin_state(
             coefficients, mst_plan, handoff_x; scale=1)
         pin_scale = _fit_state_scale(physical, candidate)
         pin_scale === nothing &&
             error("ISEM GSN physical-in MST handoff scale is unavailable")
-        aligned = mst_pin_state(
+        aligned = mano_suzuki_takasugi_pin_state(
             coefficients, mst_plan, handoff_x; scale=pin_scale)
         _state_error(physical, aligned) <= SMALL_FREQUENCY_EXPANSION_ENDPOINT_HANDOFF_TOLERANCE ||
             error("ISEM GSN physical-in MST handoff failed validation")
-        return build_mst_eval_plan(
+        return build_mano_suzuki_takasugi_eval_plan(
             mst_plan;
             pin_scale=pin_scale,
             logscaled=true,
@@ -977,14 +894,14 @@ function _logscaled_mst_eval_plan(
     end
 
     aligned = if use_logscaled_basis
-        seed, estimated_relerr = mst_logscaled_seed(
+        seed, estimated_relerr = mano_suzuki_takasugi_logscaled_seed(
             coefficients, mst_plan, :out)
         materialized = materialize_logscaled_state(
             seed; scale=solution_scale)
         (X=materialized.X, dXdx=materialized.dXdx,
             estimated_relerr=estimated_relerr)
     else
-        mst_scaled_state(
+        mano_suzuki_takasugi_scaled_state(
             coefficients,
             mst_plan,
             :out,
@@ -994,7 +911,7 @@ function _logscaled_mst_eval_plan(
     end
     _state_error(physical, aligned) <= SMALL_FREQUENCY_EXPANSION_ENDPOINT_HANDOFF_TOLERANCE ||
         error("ISEM GSN outgoing MST handoff failed validation")
-    return build_mst_eval_plan(
+    return build_mano_suzuki_takasugi_eval_plan(
         mst_plan;
         out_scale=solution_scale,
         logscaled=true,
@@ -1044,6 +961,10 @@ function _match_impl(
         coefficients, route_branch, base_ctrl, ctrl, Val(ctrl.small_frequency_expansion))
 end
 
+# Core of match_route: propagates the horizon and infinity bases to match_x, solves
+# the connection system, attaches the bridge, endpoint and MST evaluation plans, and
+# re-enters _match_impl with ordinary controls when an MST certificate fails under
+# sfe=:auto.
 function _match_body(
     coefficients::CoefficientSet,
     route_branch,
@@ -1065,7 +986,7 @@ function _match_body(
     mst_branches = route_branch == :IN ? (:in, :out) : (:out,)
     mst_plan = if UseSmallFrequencyExpansion
         try
-            build_mst_plan(coefficients, match_x; branches=mst_branches)
+            build_mano_suzuki_takasugi_plan(coefficients, match_x; branches=mst_branches)
         catch err
             _small_frequency_expansion_auto_fallback(base_ctrl, err) || rethrow()
             fallback = _ordinary_fallback(
@@ -1089,7 +1010,7 @@ function _match_body(
         h_in = iterate_from_zero(coefficients, :in; controls=ctrl, match_x=match_x, scratch=scratch)
         i_in, i_out, logscaled_mst = if UseSmallFrequencyExpansion
             try
-                incoming, outgoing = mst_infinity_pair(
+                incoming, outgoing = mano_suzuki_takasugi_infinity_pair(
                     coefficients,
                     :in,
                     :out,
@@ -1100,7 +1021,7 @@ function _match_body(
                 )
                 (incoming, outgoing, false)
             catch err
-                if err isa MSTCertificateError
+                if err isa ManoSuzukiTakasugiCertificateError
                     _small_frequency_expansion_auto_fallback(base_ctrl, err) || rethrow()
                     fallback = _ordinary_fallback(
                         base_ctrl, :small_frequency_expansion_infinity_in_tail_fallback)
@@ -1108,7 +1029,7 @@ function _match_body(
                         coefficients, route_branch, fallback)
                 end
                 try
-                    incoming, outgoing = _logscaled_mst_pair(
+                    incoming, outgoing = _logscaled_mano_suzuki_takasugi_pair(
                         coefficients, match_x, ctrl, scratch, mst_plan)
                     (incoming, outgoing, true)
                 catch robust_err
@@ -1177,7 +1098,7 @@ function _match_body(
             nothing
         else
             try
-                logscaled_mst ? _logscaled_mst_eval_plan(
+                logscaled_mst ? _logscaled_mano_suzuki_takasugi_eval_plan(
                     coefficients,
                     :IN,
                     mst_plan,
@@ -1186,7 +1107,7 @@ function _match_body(
                     incidence,
                     reflection,
                     solution_scale,
-                ) : build_mst_eval_plan(mst_plan)
+                ) : build_mano_suzuki_takasugi_eval_plan(mst_plan)
             catch err
                 if logscaled_mst &&
                         _public_exterior_covered(bridge, endpoint_plan)
@@ -1234,7 +1155,7 @@ function _match_body(
                 false,
             )
         catch err
-            if err isa MSTCertificateError
+            if err isa ManoSuzukiTakasugiCertificateError
                 _small_frequency_expansion_auto_fallback(base_ctrl, err) || rethrow()
                 fallback = _ordinary_fallback(
                     base_ctrl, :small_frequency_expansion_infinity_in_tail_fallback)
@@ -1242,7 +1163,7 @@ function _match_body(
                     coefficients, route_branch, fallback)
             end
             try
-                (_logscaled_mst_basis(
+                (_logscaled_mano_suzuki_takasugi_basis(
                     coefficients, :out, match_x, ctrl, scratch, mst_plan),
                     true,
                 )
@@ -1333,7 +1254,7 @@ function _match_body(
         nothing
     else
         try
-            logscaled_mst ? _logscaled_mst_eval_plan(
+            logscaled_mst ? _logscaled_mano_suzuki_takasugi_eval_plan(
                 coefficients,
                 :UP,
                 mst_plan,
@@ -1343,7 +1264,7 @@ function _match_body(
                 reflection,
                 solution_scale,
                 i_out,
-            ) : build_mst_eval_plan(mst_plan)
+            ) : build_mano_suzuki_takasugi_eval_plan(mst_plan)
         catch err
             if logscaled_mst
                 _public_exterior_covered(endpoint_bridge, endpoint_plan) ?
@@ -1503,14 +1424,14 @@ function _endpoint_plan_state(route::Route, x; radius=nothing)
     )
 end
 
-@inline _logscaled_mst_eval(plan) = plan !== nothing &&
+@inline _logscaled_mano_suzuki_takasugi_eval(plan) = plan !== nothing &&
     hasproperty(plan, :logscaled) && plan.logscaled
 
-function _physical_mst_out_state(route::Route, x; radius=nothing)
-    if _logscaled_mst_eval(route.mst_plan)
+function _physical_mano_suzuki_takasugi_out_state(route::Route, x; radius=nothing)
+    if _logscaled_mano_suzuki_takasugi_eval(route.mst_plan)
         route.mst_plan.out_scale === nothing &&
             error("missing ISEM GSN log-scaled outgoing normalization")
-        return mst_scaled_state(
+        return mano_suzuki_takasugi_scaled_state(
             route.coefficients,
             route.mst_plan,
             :out,
@@ -1519,7 +1440,7 @@ function _physical_mst_out_state(route::Route, x; radius=nothing)
             radius,
         )
     end
-    state = mst_route_state(
+    state = mano_suzuki_takasugi_route_state(
         route.coefficients, route.mst_plan, :out, x; radius)
     return (
         X=route.solution_scale * state.X,
@@ -1528,13 +1449,13 @@ function _physical_mst_out_state(route::Route, x; radius=nothing)
     )
 end
 
-function _mst_combined_in_state(route::Route, x; radius=nothing)
+function _mano_suzuki_takasugi_combined_in_state(route::Route, x; radius=nothing)
     if x <= route.mst_plan.seed_x
-        return mst_pin_state(route.coefficients, route.mst_plan, x;
+        return mano_suzuki_takasugi_pin_state(route.coefficients, route.mst_plan, x;
             scale=route.solution_scale * _pin_unit_scale(route.params), radius)
     end
-    incoming = mst_route_state(route.coefficients, route.mst_plan, :in, x; radius)
-    outgoing = mst_route_state(route.coefficients, route.mst_plan, :out, x; radius)
+    incoming = mano_suzuki_takasugi_route_state(route.coefficients, route.mst_plan, :in, x; radius)
+    outgoing = mano_suzuki_takasugi_route_state(route.coefficients, route.mst_plan, :out, x; radius)
     xi, xo = route.incidence * incoming.X, route.reflection * outgoing.X
     di, do_ = route.incidence * incoming.dXdx, route.reflection * outgoing.dXdx
     value, derivative = xi + xo, di + do_
@@ -1542,7 +1463,7 @@ function _mst_combined_in_state(route::Route, x; radius=nothing)
     # much larger infinity solutions when that subtraction loses precision.
     if eps(Float64) * (abs(xi) + abs(xo)) > route.controls.tolerance * abs(value) ||
             eps(Float64) * (abs(di) + abs(do_)) > route.controls.tolerance * abs(derivative)
-        return mst_pin_state(route.coefficients, route.mst_plan, x;
+        return mano_suzuki_takasugi_pin_state(route.coefficients, route.mst_plan, x;
             scale=route.solution_scale * _pin_unit_scale(route.params), radius)
     end
     return (X=value, dXdx=derivative)
@@ -1550,7 +1471,7 @@ end
 
 # Whether a point of a route with an MST plan is evaluated from the MST
 # representation instead of the propagated bases, bridges or endpoint plan.
-function _mst_evaluation_region(route::Route, x)
+function _mano_suzuki_takasugi_evaluation_region(route::Route, x)
     route.mst_plan === nothing && return false
     if route.branch == :UP
         if x > route.match_x
@@ -1598,17 +1519,17 @@ function evaluate_route(route::Route, x)
             return _endpoint_plan_state(route, x).X
         end
         if route.mst_plan !== nothing
-            if _logscaled_mst_eval(route.mst_plan)
-                return mst_pin_state(
+            if _logscaled_mano_suzuki_takasugi_eval(route.mst_plan)
+                return mano_suzuki_takasugi_pin_state(
                     route.coefficients, route.mst_plan, x).X
             end
-            return _mst_combined_in_state(route, x).X
+            return _mano_suzuki_takasugi_combined_in_state(route, x).X
         end
         return route.incidence * basis_value(_required_basis(route.infinity_in, "infinity_in"), x) +
             route.reflection * basis_value(_required_basis(route.infinity_out, "infinity_out"), x)
     end
-    if _mst_evaluation_region(route, x)
-        return _physical_mst_out_state(route, x).X
+    if _mano_suzuki_takasugi_evaluation_region(route, x)
+        return _physical_mano_suzuki_takasugi_out_state(route, x).X
     end
     if x <= route.match_x
         route.bridge !== nothing && _bridge_covers(route.bridge, x) &&
@@ -1661,12 +1582,12 @@ function route_state(route::Route, x; radius=nothing)
             return _endpoint_plan_state(route, x; radius)
         end
         if route.mst_plan !== nothing
-            if _logscaled_mst_eval(route.mst_plan)
-                state = mst_pin_state(
+            if _logscaled_mano_suzuki_takasugi_eval(route.mst_plan)
+                state = mano_suzuki_takasugi_pin_state(
                     route.coefficients, route.mst_plan, x; radius)
                 return (X=state.X, dXdx=state.dXdx)
             end
-            return _mst_combined_in_state(route, x; radius)
+            return _mano_suzuki_takasugi_combined_in_state(route, x; radius)
         end
         vin, din = basis_state(_required_basis(route.infinity_in, "infinity_in"), x)
         vout, dout = basis_state(_required_basis(route.infinity_out, "infinity_out"), x)
@@ -1675,8 +1596,8 @@ function route_state(route::Route, x; radius=nothing)
             dXdx=route.incidence * din + route.reflection * dout,
         )
     end
-    if _mst_evaluation_region(route, x)
-        return _physical_mst_out_state(route, x; radius)
+    if _mano_suzuki_takasugi_evaluation_region(route, x)
+        return _physical_mano_suzuki_takasugi_out_state(route, x; radius)
     end
     if x <= route.match_x
         if route.bridge !== nothing && _bridge_covers(route.bridge, x)

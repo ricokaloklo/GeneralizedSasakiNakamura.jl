@@ -59,8 +59,7 @@ solver only after an explicit construction failure; `method = "ISEM"` selects it
 strictly with no fallback, while `linear` and `Riccati` select the legacy ODE solvers.
 In v0.10.0 this GSN-based solver replaces the Teukolsky-based ISEM of v0.9.0,
 whose `rhom` and `TSinInf`/`TSoutInf`/`TSinHor`/`TSoutHor` controls and negative
-`xm` coordinate are gone; the `sfe`/`lfe` keywords are now spelled
-`small_frequency_expansion`/`large_frequency_expansion`.
+`xm` coordinate are gone.
 
 ```@raw html
 <p align="center">
@@ -117,7 +116,23 @@ Rin, Rup = Teukolsky_radial(s, l, m, a, omega)
 ```
 That's it! If you run this on Julia REPL, it should give you something like this
 ```
-(TeukolskyRadialFunction(mode=Mode(s=-2, l=2, m=2, a=0.7, omega=0.5, lambda=1.6966094016353415), boundary_condition=IN), TeukolskyRadialFunction(mode=Mode(s=-2, l=2, m=2, a=0.7, omega=0.5, lambda=1.6966094016353415), boundary_condition=UP))
+(
+TeukolskyRadialFunction(
+    mode = Mode(s = -2, l = 2, m = 2, a = 0.7, omega = 0.5, lambda = 1.6966094016353415),
+    boundary_condition = IN,
+    transmission_amplitude = 1.0 + 0.0im,
+    incidence_amplitude = 6.536587661184236 - 4.941203897065118im,
+    reflection_amplitude = -0.1282466191290958 - 0.4404813349644446im,
+    normalization_convention = UNIT_TEUKOLSKY_TRANS
+),
+TeukolskyRadialFunction(
+    mode = Mode(s = -2, l = 2, m = 2, a = 0.7, omega = 0.5, lambda = 1.6966094016353415),
+    boundary_condition = UP,
+    transmission_amplitude = 1.0 + 0.0im,
+    incidence_amplitude = -1.1698840333865992 - 2.5455723340434875im,
+    reflection_amplitude = 2.5169908586317717 - 8.644964686261376im,
+    normalization_convention = UNIT_TEUKOLSKY_TRANS
+))
 ```
 In Julia REPL, you can check out all the asymptotic amplitudes at a glimpse using something like
 ```julia
@@ -186,7 +201,7 @@ TeukolskyPointParticleMode(
     energy_flux_inf = 1.0917330113048546e-6,
     angular_momentum_flux_inf = 3.324033375494718e-5,
     Carter_const_flux_inf = 5.890504443058139e-5,
-    method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_small_frequency_expansion = false, N = 256, K = 64, truncation_floor = 1.0e-16),
+    method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_sfe = false, N = 256, K = 64, truncation_floor = 1.0e-16),
 )
 ```
 To access for example the amplitude at infinity
@@ -210,7 +225,7 @@ TeukolskyPointParticleMode(
     energy_flux_hor = -2.843814878429853e-9,
     angular_momentum_flux_hor = -8.658651402627282e-8,
     Carter_const_flux_hor = -1.5343956812851395e-7,
-    method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_small_frequency_expansion = false, N = 256, K = 64, truncation_floor = 1.0e-16),
+    method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_sfe = false, N = 256, K = 64, truncation_floor = 1.0e-16),
 )
 ```
 To access for example the amplitude at the horizon

@@ -1,8 +1,6 @@
 module LargeFrequencyExpansion
 
 export LargeFrequencyExpansionPlan, large_frequency_expansion_plan, large_frequency_expansion_ab!, large_frequency_expansion_ab_fast!
-export large_frequency_expansion_carrier_ab!, large_frequency_expansion_log_series!
-export large_frequency_expansion_carrier_phase, large_frequency_expansion_carrier_rate, large_frequency_expansion_table_stats
 
 # Large-frequency-expansion ordinary-point coefficients. A binary table stores each
 # coefficient as a weighted sum of monomials in (lambda, m, omega, sin nu, cos nu);
@@ -32,6 +30,11 @@ end
 
 DDComplex(value::Number) = DDComplex(ComplexF64(value), 0.0 + 0.0im)
 
+# One (s, basis) coefficient table: each of the coefficient_count coefficients is a
+# sparse polynomial in (lambda, m, omega, sin nu, cos nu) given by exponents,
+# monomial_indices and weights (terms delimited by coefficient_offsets), and
+# polynomial_offsets/polynomial_indices group the coefficients into the
+# output_count P/Q polynomials in 1 - x0.
 struct LargeFrequencyExpansionTable
     s::Int
     basis::Symbol
@@ -45,6 +48,9 @@ struct LargeFrequencyExpansionTable
     output_count::Int
 end
 
+# Plan built by `large_frequency_expansion_plan`: the table coefficients evaluated
+# at the current parameters plus the work buffers used by
+# `large_frequency_expansion_ab!`.
 mutable struct LargeFrequencyExpansionPlan
     table::LargeFrequencyExpansionTable
     coefficients::Vector{DDComplex}
@@ -70,11 +76,6 @@ end
 @inline function dd_normalize(high::Float64, low::Float64)
     value, error = two_sum(high, low)
     return DDReal(value, error)
-end
-
-@inline function dd_add(left::DDReal, right::DDReal)
-    high, error = two_sum(left.high, right.high)
-    return dd_normalize(high, left.low + right.low + error)
 end
 
 @inline function dd_mul(left::DDReal, right::DDReal)
@@ -217,6 +218,8 @@ function read_table(io)
         coefficient_count, output_count)
 end
 
+# File layout: magic "DGNLFE1\0", UInt32 version (1), UInt32 table count, then
+# the table records; the result is keyed by (s, basis).
 function load_tables(path)
     isfile(path) || error("ISEM large-frequency-expansion table file is missing: $path")
     tables = Dict{Tuple{Int,Symbol},LargeFrequencyExpansionTable}()
@@ -236,20 +239,6 @@ function load_tables(path)
 end
 
 const TABLES = load_tables(TABLE_PATH)
-
-function large_frequency_expansion_table_stats()
-    return map(sort!(collect(keys(TABLES)))) do key
-        table = TABLES[key]
-        (
-            s=table.s,
-            basis=table.basis,
-            coefficients=table.coefficient_count,
-            monomials=length(table.exponents),
-            terms=length(table.weights),
-            outputs=table.output_count,
-        )
-    end
-end
 
 function real_powers(value, maximum_power)
     powers = Vector{DDReal}(undef, maximum_power + 1)
@@ -380,6 +369,8 @@ function rational_fast!(out, values, numerator_start, numerator_length,
     return out
 end
 
+# Lengths of the four consecutive blocks of the P/Q vector (A numerator,
+# A denominator, B numerator, B denominator) for spin s.
 function large_frequency_expansion_layout(s::Integer)
     s == 0 && return (10, 11, 9, 13)
     s in (-2, -1, 1, 2) && return (10, 11, 15, 19)
@@ -434,161 +425,6 @@ function large_frequency_expansion_ab_fast!(a_out, b_out, plan::LargeFrequencyEx
     rational_fast!(b_out, plan.fast_pq,
         bp_start, bp_len, bq_start, bq_len, order_int)
     return order_int + 1, order_int + 1
-end
-
-@inline function _log_ratio(numerator, denominator)
-    delta = (numerator - denominator) / denominator
-    return abs(delta) <= 0.5 ? log1p(delta) :
-        log(numerator) - log(denominator)
-end
-
-# Integral of large_frequency_expansion_carrier_rate from start_x to destination_x, in closed form.
-function large_frequency_expansion_carrier_phase(params, sign, start_x, destination_x)
-    kappa = params.kappa
-    rplus = 1 + kappa
-    horizon = (2 * params.omega * rplus - params.a * params.m) /
-        (2 * kappa)
-    delta_r = 2 * kappa * (destination_x - start_x) /
-        ((1 - destination_x) * (1 - start_x))
-    return sign * (
-        params.omega * delta_r +
-        horizon * _log_ratio(destination_x, start_x) -
-        2 * params.omega * _log_ratio(
-            1 - destination_x, 1 - start_x)
-    )
-end
-
-# WKB phase rate in x: sign * (2 kappa omega / y^2 + 2 omega / y + nu_h / x),
-# with y = 1 - x and nu_h the horizon exponent scale.
-function large_frequency_expansion_carrier_rate(params, sign, x)
-    y = 1 - x
-    horizon = (2 * params.omega * (1 + params.kappa) -
-        params.a * params.m) / (2 * params.kappa)
-    return sign * (
-        2 * params.kappa * params.omega / y^2 +
-        2 * params.omega / y + horizon / x)
-end
-
-# Taylor coefficients of large_frequency_expansion_carrier_rate about x0 (one order higher than A, B).
-function carrier_series!(plan::LargeFrequencyExpansionPlan, params, x0, order, sign)
-    order + 2 <= length(plan.carrier) ||
-        throw(ArgumentError("large-frequency-expansion carrier buffer is too short"))
-    inverse_x = DDReal(inv(Float64(x0)))
-    inverse_y = DDReal(inv(1.0 - Float64(x0)))
-    xpower = inverse_x
-    ypower = inverse_y
-    first_scale = 2 * Float64(params.kappa) * Float64(params.omega)
-    second_scale = 2 * Float64(params.omega)
-    horizon = (2 * Float64(params.omega) *
-        (1 + Float64(params.kappa)) -
-        Float64(params.a) * Float64(params.m)) /
-        (2 * Float64(params.kappa))
-    @inbounds for n in 0:(order + 1)
-        ypower2 = dd_mul(ypower, inverse_y)
-        first = dd_mul(DDReal(first_scale * (n + 1)), ypower2)
-        second = dd_mul(DDReal(second_scale), ypower)
-        alternating = isodd(n) ? -horizon : horizon
-        third = dd_mul(DDReal(alternating), xpower)
-        value = dd_add(dd_add(first, second), third)
-        plan.carrier[n + 1] = DDComplex(
-            ComplexF64(sign * value.high),
-            ComplexF64(sign * value.low),
-        )
-        xpower = dd_mul(xpower, inverse_x)
-        ypower = dd_mul(ypower, inverse_y)
-    end
-    return plan.carrier
-end
-
-# A and B series for the envelope W in X = exp(i int c dx) W, with c the carrier
-# rate: A + 2 i c and B + i c' - c^2 + i A c.
-function carrier_coefficients!(plan::LargeFrequencyExpansionPlan, params, x0, order, sign)
-    order_int = Int(order)
-    order_int + 1 <= length(plan.avec) ||
-        throw(ArgumentError("large-frequency-expansion plan order is too short"))
-    pq = evaluate_pq!(plan, x0)
-    ap_len, aq_len, bp_len, bq_len = large_frequency_expansion_layout(plan.table.s)
-    aq_start = ap_len + 1
-    bp_start = aq_start + aq_len
-    bq_start = bp_start + bp_len
-    rational_series!(plan.avec,
-        @view(pq[1:ap_len]), @view(pq[aq_start:(aq_start + aq_len - 1)]),
-        order_int)
-    rational_series!(plan.bvec,
-        @view(pq[bp_start:(bp_start + bp_len - 1)]),
-        @view(pq[bq_start:(bq_start + bq_len - 1)]), order_int)
-    carrier = carrier_series!(plan, params, x0, order_int, sign)
-    @inbounds for n in 0:order_int
-        square = DDComplex(0)
-        product = DDComplex(0)
-        for k in 0:n
-            square = dc_add(square,
-                dc_mul(carrier[k + 1], carrier[n - k + 1]))
-            product = dc_add(product,
-                dc_mul(plan.avec[k + 1], carrier[n - k + 1]))
-        end
-        derivative = dc_scale(carrier[n + 2], Float64(n + 1))
-        transformed_b = dc_add(plan.bvec[n + 1], dc_imul(derivative))
-        transformed_b = dc_sub(transformed_b, square)
-        transformed_b = dc_add(transformed_b, dc_imul(product))
-        plan.transformed_b[n + 1] = transformed_b
-    end
-    @inbounds for n in 0:order_int
-        plan.transformed_a[n + 1] = dc_add(plan.avec[n + 1],
-            dc_scale(dc_imul(carrier[n + 1]), 2.0))
-    end
-    return plan.transformed_a, plan.transformed_b
-end
-
-function large_frequency_expansion_carrier_ab!(a_out, b_out, plan::LargeFrequencyExpansionPlan, params,
-        x0, order::Integer, sign)
-    order_int = Int(order)
-    order_int + 1 <= length(a_out) ||
-        throw(ArgumentError("A output is too short"))
-    order_int + 1 <= length(b_out) ||
-        throw(ArgumentError("B output is too short"))
-    transformed_a, transformed_b = carrier_coefficients!(
-        plan, params, x0, order_int, sign)
-    @inbounds for index in 1:(order_int + 1)
-        a_out[index] = dc_value(transformed_a[index])
-        b_out[index] = dc_value(transformed_b[index])
-    end
-    return order_int + 1, order_int + 1
-end
-
-# Series of the Riccati variable w = W'/W of the carrier envelope (from w0) and of
-# its integral ell = log W - log W(x0).
-function large_frequency_expansion_log_series!(w_out, ell_out, plan::LargeFrequencyExpansionPlan, params,
-        x0, order::Integer, sign, w0)
-    order_int = Int(order)
-    order_int + 1 <= length(w_out) ||
-        throw(ArgumentError("log-derivative output is too short"))
-    order_int + 2 <= length(ell_out) ||
-        throw(ArgumentError("log-envelope output is too short"))
-    transformed_a, transformed_b = carrier_coefficients!(
-        plan, params, x0, order_int, sign)
-    wcoeffs = plan.wvec
-    ellcoeffs = plan.ellvec
-    wcoeffs[1] = DDComplex(w0)
-    @inbounds for n in 0:(order_int - 1)
-        rhs = transformed_b[n + 1]
-        for k in 0:n
-            rhs = dc_add(rhs,
-                dc_mul(wcoeffs[k + 1], wcoeffs[n - k + 1]))
-            rhs = dc_add(rhs,
-                dc_mul(transformed_a[k + 1], wcoeffs[n - k + 1]))
-        end
-        wcoeffs[n + 2] = dc_scale(rhs, -1.0 / Float64(n + 1))
-    end
-    ellcoeffs[1] = DDComplex(0)
-    @inbounds for n in 0:order_int
-        ellcoeffs[n + 2] = dc_scale(
-            wcoeffs[n + 1], 1.0 / Float64(n + 1))
-        w_out[n + 1] = dc_value(wcoeffs[n + 1])
-        ell_out[n + 2] = dc_value(ellcoeffs[n + 2])
-    end
-    ell_out[1] = 0
-    return order_int + 1, order_int + 2
 end
 
 end

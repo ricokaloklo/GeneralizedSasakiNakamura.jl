@@ -12,7 +12,7 @@ using ..Solutions
 
 export is_exact_extremal_spin, extremal_horizon_detuning
 export extremal_teukolsky_horizon_coefficients
-export extremal_teukolsky_horizon_state, extremal_synchronous_exponents
+export extremal_teukolsky_horizon_state
 export extremal_gsn_horizon_state, extremal_horizon_normalization
 export solve_extremal_gsn
 
@@ -95,18 +95,6 @@ function extremal_teukolsky_horizon_coefficients(
         end
     end
     return (alpha=alpha, beta=beta, coefficients=coefficients)
-end
-
-"""
-    extremal_synchronous_exponents(s, lambda, omega)
-
-Power-law exponents `k` of the horizon solutions at the synchronous frequency, the roots of
-`k^2 + (2s + 1) k + 4omega^2 - lambda = 0`.
-"""
-function extremal_synchronous_exponents(s::Int, lambda, omega)
-    discriminant = (2s + 1)^2 - 4 * (4omega^2 - lambda)
-    root = sqrt(complex(discriminant))
-    return ((-(2s + 1) + root) / 2, (-(2s + 1) - root) / 2)
 end
 
 # Value and h derivative of sum coefficients[n] h^(n-1).

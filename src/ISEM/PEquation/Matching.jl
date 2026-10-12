@@ -121,6 +121,8 @@ function _Pin_contour(s, l, m, a, omega, rhom = _rhom, xm = nothing, N = _Trunca
     end
 
     rho_list_zero_in_rho, P_zero_in_rho = build_zero_in_rho(rhom)
+    # All bases are matched at rhom_effective = max(rhom, horizon seed radius); a
+    # horizon series that stopped short of it is rebuilt up to it.
     rhom_effective = max(Float64(rhom), rho_list_zero_in_rho[1])
     if rho_list_zero_in_rho[end] < rhom_effective
         rho_list_zero_in_rho, P_zero_in_rho = build_zero_in_rho(rhom_effective)
@@ -206,6 +208,8 @@ function _Pup_contour(s, l, m, a, omega, rhom = _rhom, xm = nothing, N = _Trunca
 
     rho_list_zero_in_rho, P_zero_in_rho = build_zero_in_rho(rhom)
     rho_list_zero_out_rho, P_zero_out_rho = build_zero_out_rho(rhom)
+    # All bases are matched at rhom_effective = max(rhom, horizon seed radii); a
+    # horizon series that stopped short of it is rebuilt up to it.
     rhom_effective = max(Float64(rhom), rho_list_zero_in_rho[1], rho_list_zero_out_rho[1])
     if rho_list_zero_in_rho[end] < rhom_effective
         rho_list_zero_in_rho, P_zero_in_rho = build_zero_in_rho(rhom_effective)

@@ -12,7 +12,6 @@ include("SubmissionScope.jl")
 export recommended_mode_grid_sizes
 export circular_mode_flux
 export circular_mode_summation
-export eccentric_mode_flux
 export eccentric_mode_summation
 export inclined_mode_flux
 export inclined_mode_summation
@@ -50,6 +49,9 @@ end
     return ConvolutionIntegrals._eccentric_fourier_min_sample(base, Nmax, n)
 end
 
+# Cost heuristic behind tail_levin = :auto: a mode with |n| >= nmin switches to adaptive Levin only when the
+# uniform trapezoid grid it would need has at least 4096 radial points and is at least 8x (eccentric) or, in N*K,
+# 16x (generic) the adaptive-Levin work.
 @inline function _ecc_levin_auto(n::Int, N0::Int, Nmax::Int,
         local_n::Int, max_depth::Int, nmin::Int)
     abs(n) >= nmin || return false
@@ -230,11 +232,6 @@ function _mode_flux_cache_family(e, x)
     return circular ? (equatorial ? :circular : :inclined) : (equatorial ? :eccentric : :generic)
 end
 
-# Near-zero but nonzero e is routed through its own e = 0 orbit and must not share the raw-e geometry.
-function _mode_flux_share_geometry(e)
-    return !(!isequal(e, 0.0) && isapprox(e, 0.0; atol = 1e-12))
-end
-
 # Snapshot the parent under its existing lock; invoke user code outside the lock.
 function _mode_flux_parent_stop_requested(scope)
     cancelled, callback = lock(scope.lock) do
@@ -274,50 +271,6 @@ function circular_mode_flux(a, p, l, m; submission = nothing, x=1.0, stop_reques
     return _with_public_scope(scope, owned) do
         with_submission_operation(scope) do
             _circular_mode_flux_scoped(scope, a, p, l, m; x = x)
-        end
-    end
-end
-
-function _eccentric_mode_flux_scoped(scope, a, p, e, l, m, n; x=1.0)
-    family = _mode_flux_cache_family(e, x)
-    share_geometry = _mode_flux_share_geometry(e)
-    N = recommended_mode_grid_sizes(m, n, 0).N
-    if l == abs(m)
-        N *= 4
-    end
-    if l == abs(m) + 1
-        N *= 2
-    end
-    flux_inf = with_submission_mode(scope; family = family, share_geometry = share_geometry, mode = (-2, l, m, n, 0)) do mode_cache
-        ConvolutionIntegrals.convolution_integral_trapezoidal_isem(a, p, e, x, -2, l, m, n, 0; N = N, cache = mode_cache, Nmax = scope.Nmax, Kmax = scope.Kmax, trajectory = submission_orbit!(scope))
-    end
-    flux_hor = with_submission_mode(scope; family = family, share_geometry = share_geometry, mode = (2, l, m, n, 0)) do mode_cache
-        ConvolutionIntegrals.convolution_integral_trapezoidal_isem(a, p, e, x, 2, l, m, n, 0; N = N, cache = mode_cache, Nmax = scope.Nmax, Kmax = scope.Kmax, trajectory = submission_orbit!(scope))
-    end
-    return (
-        l = l,
-        m = m,
-        n = n,
-        k = 0,
-        infinity = (
-            energy_flux = flux_inf["EnergyFlux"],
-            angular_momentum_flux = flux_inf["AngularMomentumFlux"],
-            carter_constant_flux = flux_inf["CarterConstantFlux"],
-        ),
-        horizon = (
-            energy_flux = flux_hor["EnergyFlux"],
-            angular_momentum_flux = flux_hor["AngularMomentumFlux"],
-            carter_constant_flux = flux_hor["CarterConstantFlux"],
-        ),
-    )
-end
-
-# Infinity and horizon fluxes of the eccentric equatorial mode (l, m, n), in a submission scope.
-function eccentric_mode_flux(a, p, e, l, m, n; submission = nothing, x=1.0, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing, Nmax = submission === nothing ? 2^14 : submission.Nmax, Kmax = submission === nothing ? 2^12 : submission.Kmax)
-    scope, owned = ensure_public_submission(submission, a, p, e, x; Nmax, Kmax, stop_requested, lifecycle_observer, geometry_observer)
-    return _with_public_scope(scope, owned) do
-        with_submission_operation(scope) do
-            _eccentric_mode_flux_scoped(scope, a, p, e, l, m, n; x = x)
         end
     end
 end
@@ -729,7 +682,6 @@ function _eccentric_mode_summation_scoped(scope, a, p, e; x=1.0, N = 64, N0 = N,
         branch_mode_floor_inf[] = _adaptive_branch_mode_floor(total_infinity_energy, tol, mode_abs_floor)
         n_threshold = _mode_cutoff_threshold(tol * abs(total_infinity_energy), branch_mode_floor_inf[])
         below_count_n = abs(shell_n_infinity_energy) <= n_threshold ? below_count_n + 1 : 0
-        # Each mode's private phase/factor dictionaries are cleared in its finally.
         if below_count_n >= minimum_consecutive + 1
             n_reached_inf = n
             break
@@ -849,7 +801,6 @@ function _eccentric_mode_summation_scoped(scope, a, p, e; x=1.0, N = 64, N0 = N,
         branch_mode_floor_hor[] = _adaptive_branch_mode_floor(total_horizon_energy, tol, mode_abs_floor)
         n_threshold = _mode_cutoff_threshold(tol * abs(total_horizon_energy), branch_mode_floor_hor[])
         below_count_n = abs(shell_n_horizon_energy) <= n_threshold ? below_count_n + 1 : 0
-        # Each mode's private phase/factor dictionaries are cleared in its finally.
         if below_count_n >= minimum_consecutive + 1
             n_reached_hor = n
             break

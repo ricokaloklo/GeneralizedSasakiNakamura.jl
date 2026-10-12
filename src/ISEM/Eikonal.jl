@@ -1,3 +1,6 @@
+# Eikonal (WKB-type) patches for the GSN equation X'' + A X' + B X = 0: each patch
+# carries short Taylor series of the phase, amplitude and 1/xi correction terms, so
+# that one step covers many oscillations of X(x).
 module Eikonal
 
 using ..CoefficientTables: CoefficientSet
@@ -15,6 +18,9 @@ export eikonal_value, eikonal_state
 export EIKONAL_TERMS, EIKONAL_ORDER, LARGE_FREQUENCY_EXPANSION_EIKONAL_ORDER
 export reset_eikonal_profile!, eikonal_profile
 
+# EIKONAL_TERMS: number of 1/xi correction terms in the plus/minus series.
+# EIKONAL_ORDER and LARGE_FREQUENCY_EXPANSION_EIKONAL_ORDER: Taylor order of the
+# A, B expansions per patch on the ordinary and large-frequency routes.
 const EIKONAL_TERMS = 8
 const EIKONAL_ORDER = 24
 const LARGE_FREQUENCY_EXPANSION_EIKONAL_ORDER = 24
@@ -25,6 +31,9 @@ const EIKONAL_SPLIT_LIMIT = 1e-10 + 256eps(Float64)
 const EIKONAL_MAX_STEP = 0.1
 const EIKONAL_RADIUS_SAFETY = 0.8
 const EIKONAL_STEP_GROWTH = 1.55
+# Opt-in via ISEM_EIKONAL_PARTIAL_STALL=1: with allow_partial, eikonal_split stops
+# and returns the patches so far once an accepted step falls below
+# EIKONAL_PARTIAL_STALL_RATIO times the step cap.
 const EIKONAL_PARTIAL_STALL =
     get(ENV, "ISEM_EIKONAL_PARTIAL_STALL", "0") != "0"
 const EIKONAL_PARTIAL_STALL_RATIO = sqrt(eps(Float64))
@@ -33,7 +42,8 @@ const EIKONAL_SMALL_FREQUENCY_EXPANSION_COMPRESSION_MIN = 8192.0
 const EIKONAL_ROUTE_COMPRESSION_MIN = 192.0
 const EIKONAL_IN_PHASE_MIN = 5.0
 # Optional counters of accepted and rejected eikonal steps, compiled in only when
-# ISEM_EIKONAL_PROFILE=1 is set at load time (read with `eikonal_profile`).
+# ISEM_EIKONAL_PROFILE=1 is set at load time (read with `eikonal_profile`, clear
+# with `reset_eikonal_profile!`).
 const EIKONAL_PROFILE = get(ENV, "ISEM_EIKONAL_PROFILE", "0") == "1"
 const _PROFILE_ACCEPTED = Threads.Atomic{Int}(0)
 const _PROFILE_REJECTED = Threads.Atomic{Int}(0)
@@ -131,6 +141,8 @@ struct EikonalPatch
     scale::Float64
 end
 
+# Series built by `_eikonal_plan!` at one expansion point. `EikonalKernel` below
+# is the same plan plus the constants cplus, cminus matched to a state.
 struct EikonalPlan
     A::Vector{ComplexF64}
     B::Vector{ComplexF64}
@@ -142,6 +154,8 @@ struct EikonalPlan
     minus::Vector{ComplexF64}
 end
 
+# Preallocated length-(order + 1) work buffers for building eikonal plans;
+# `EikonalScratch(order)` fixes the Taylor order.
 struct EikonalScratch
     f::Vector{ComplexF64}
     ft::Vector{ComplexF64}
@@ -184,6 +198,8 @@ struct EikonalKernel
     cminus::ComplexF64
 end
 
+# Verdict of `eikonal_preflight`: `candidate`, the `reason` symbol, and the
+# angular and phase compression and |m|/l it was based on.
 struct EikonalSelection
     candidate::Bool
     reason::Symbol
@@ -1466,6 +1482,8 @@ function _patch_kernel(patch::EikonalPatch)
     )
 end
 
+# Solution value of the patch at x, including the stored scale;
+# `eikonal_state` returns the value and the x-derivative.
 function eikonal_value(patch::EikonalPatch, x)
     h = x - patch.center_x
     kernel = _patch_kernel(patch)

@@ -93,10 +93,10 @@
 
     @testset "Real-frequency MST branch" begin
         direct = GSN.ISEM
-        mst = direct.MSTInfinity
+        mst = direct.ManoSuzukiTakasugiInfinity
         parameters = direct.gsn_parameters(-2, 3, 3, 0.9, 1.0)
-        nu = mst._mst_data(parameters).params.nu
-        amplitudes = mst.mst_principal_amplitudes(parameters, :IN)
+        nu = mst._mano_suzuki_takasugi_data(parameters).params.nu
+        amplitudes = mst.mano_suzuki_takasugi_principal_amplitudes(parameters, :IN)
         @test abs(imag(nu)) ≈ 1.2619741165113905 atol=1e-10 rtol=0
         @test amplitudes.teuk[1] ≈
             0.5043157658448172 - 0.24588840385554175im rtol=1e-10

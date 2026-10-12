@@ -44,7 +44,8 @@ function _zero_radiative_mode(ω, trajectory; reason = "")
 end
 
 
-# Run f() with the task-local flag :GSN_Y_RADIAL_INFO set to `info`.
+# Run f() with the task-local flag :GSN_Y_RADIAL_INFO set to `info`. No radial solver reads this flag, so the
+# `info` keyword of Teukolsky_pointparticle_flux has no effect.
 function with_y_radial_info(f, info::Bool)
     return task_local_storage(f, :GSN_Y_RADIAL_INFO, info)
 end
@@ -1027,6 +1028,9 @@ function prewarm_generic_adaptive_levin_segments!(cache::GenericM2FluxCache, KG_
     return cache
 end
 
+# Per-m cache for the generic trapezoidal integrand: the azimuthal phases exp(-i m Δφ) on the radial and polar
+# grids, the horizon log-phase exp(-i a m log((r-r+)/(r-r-))/(2κ)) and per-mode scratch vectors, layered on the
+# m-independent orbit geometry (shared through the geometry owner when one is attached, see _cached_m2_mcache!).
 function _generic_m2_m_cache(KG_samp::Dict, m::Int, geometry::GenericM2Geometry = _generic_m2_geometry(KG_samp))
     r = geometry.r
     N = geometry.N
@@ -3431,6 +3435,15 @@ function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
     end
 end
 
+"""
+    convolution_integral_circular_equatorial_isem(a, p, s, l, m; x = 1.0, trajectory = nothing)
+
+Closed-form flux of the (s, l, m) mode of a circular equatorial orbit (x = ±1) using the ISEM radial solution.
+Returns a `Dict` with "Amplitude", "omega", "EnergyFlux", "AngularMomentumFlux", "CarterConstantFlux" (always 0),
+"Trajectory", "YSolution" and "SWSH"; a mode whose frequency is static at the relevant boundary is returned as a
+zero-flux `Dict` with "SkippedMode" => true. `trajectory` supplies a precomputed `kerr_geo_orbit` result for the
+same (a, p, 0, x) and is checked against those parameters.
+"""
 function convolution_integral_circular_equatorial_isem(a, p, s, l, m; x=1.0, trajectory=nothing)
     KG = _submission_public_trajectory(a, p, 0.0, x, trajectory)
     E = KG["Energy"]
@@ -3547,6 +3560,8 @@ function convolution_integral_circular_equatorial_isem(a, p, s, l, m; x=1.0, tra
     end
 end
 
+# Standalone entry point that builds the dense eccentric master itself; the mode-summation path calls the
+# `KG_sample::Dict` method directly.
 function convolution_integral_eccentric_trapezoidal_isem(a, p, e, s, l, m, n, N_sample; x=1.0, Nmax::Int = 2^14, cache=nothing, trajectory=nothing, geometry_owner=nothing, kwargs...)
     route = _submission_public_route(a, p, e, x, cache, trajectory, geometry_owner)
     KG_sample = route.master
@@ -4130,73 +4145,6 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
     return res
 end
 
-function convolution_integral_eccentric_levin_isem(a, p, e, s, l, m, n, N_sample; x=1.0)
-    key = (a, p, e, x, s, l, m, n, N_sample)
-
-    KG = kerr_geo_orbit(a, p, e, x)
-
-    Frequencies = KG["Frequencies"]
-    Γ = Frequencies["ϒt"]
-    ϒr = Frequencies["ϒr"]
-    ϒφ = Frequencies["ϒϕ"]
-    omega = (m * ϒφ + n * ϒr) / Γ
-    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
-    rsout = max(500.0, 10pi / abs(omega))
-    KG_samp = kerr_geo_eccentric_sample_cheby(KG, N_sample)
-
-    result = if s == 2
-        SH_p2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
-        Yup_soln = _isem_y_solution(s, l, m, a, omega;
-            lambda = SH_p2.lambda)
-        Yup_samp = y_sample_p2_isem(Yup_soln, KG_samp)
-        S0_p2 = SH_p2(π/2, 0.0)
-        S1_p2 = SH_p2(π/2, 0.0; theta_derivative=1)
-        S2_p2 = (m^2 + (a * omega)^2 - 2 - 2 * a * omega * m - SH_p2.lambda) * S0_p2
-        rphase = _radial_phase_vector(KG_samp, omega, m, n)
-        Jp_up, Jm_up, drphase_up, rphaseL_up, rphaseR_up, prefactor_up = integrand_eccentric_sample_cheby_p2(KG_samp, Yup_samp, (S0_p2, S1_p2, S2_p2), n)
-        integralp_p2 = levin_1d_integral_local_phase(Jp_up, drphase_up, rphase)
-        integralm_p2 = levin_1d_integral_local_phase(Jm_up, -drphase_up, -rphase)
-        integral_p2 = (integralp_p2 + integralm_p2) * prefactor_up
-        hf = horizon_factor(omega, a, m)
-        Dict(
-            "Amplitude" => integral_p2,
-            "omega" => omega,
-            "EnergyFlux" => hf * abs2(integral_p2),
-            "AngularMomentumFlux" => hf * m * abs2(integral_p2) / omega,
-            "CarterConstantFlux" => 0.0,
-            "Trajectory" => KG,
-            "YSolution" => Yup_soln,
-            "SWSH" => SH_p2
-        )
-    elseif s == -2
-        SH_m2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
-        Yin_soln = _isem_y_solution(s, l, m, a, omega;
-            lambda = SH_m2.lambda)
-        Yin_samp = y_sample_m2_isem(Yin_soln, KG_samp)
-        S0_m2 = SH_m2(π/2, 0.0)
-        S1_m2 = SH_m2(π/2, 0.0; theta_derivative=1)
-        S2_m2 = (m^2 + (a * omega)^2 + 2 - 2 * a * omega * m - SH_m2.lambda) * S0_m2
-        rphase = _radial_phase_vector(KG_samp, omega, m, n)
-        Jp_in, Jm_in, drphase_in, rphaseL_in, rphaseR_in, prefactor_in = integrand_eccentric_sample_cheby_m2(KG_samp, Yin_samp, (S0_m2, S1_m2, S2_m2), n)
-        integralp_m2 = levin_1d_integral_local_phase(Jp_in, drphase_in, rphase)
-        integralm_m2 = levin_1d_integral_local_phase(Jm_in, -drphase_in, -rphase)
-        integral_m2 = (integralp_m2 + integralm_m2) * prefactor_in
-        Dict(
-            "Amplitude" => integral_m2,
-            "omega" => omega,
-            "EnergyFlux" => abs2(integral_m2)/(4.0pi*omega^2),
-            "AngularMomentumFlux" => m * abs2(integral_m2) / (4.0pi * omega^3),
-            "CarterConstantFlux" => 0.0,
-            "Trajectory" => KG,
-            "YSolution" => Yin_soln,
-            "SWSH" => SH_m2
-        )
-    else
-        error("Spin weight s must be either 2 or -2.")
-    end
-    return result
-end
-
 function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m, k, K_sample::Int64; Kmax::Int = 2^12, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, cache = nothing)
     _check_mode_geometry(cache, KG_sample)
     ispow2(K_sample) || throw(ArgumentError("K_sample must be a power of 2"))
@@ -4360,6 +4308,18 @@ function convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K_sample;
     return result
 end
 
+"""
+    convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 256, K = 64, Nmax = 2^14, Kmax = 2^12,
+        tol = 1e-8, sample_tol = 1e-3, max_flux = 1.0, mode_abs_floor = 1e-16, zero_low_flux = false,
+        threaded_sampling = false, cache = nothing, trajectory = nothing, geometry_owner = nothing)
+
+Flux of the (s, l, m, n, k) mode of the bound Kerr geodesic (a, p, e, x) using the ISEM radial solution and
+trapezoidal quadrature refined from (N, K) up to (Nmax, Kmax). Dispatches to the circular-equatorial, inclined,
+eccentric or generic routine. Returns a `Dict` with "Amplitude", "omega", "EnergyFlux", "AngularMomentumFlux",
+"CarterConstantFlux", "Trajectory", "YSolution" and "SWSH", plus sampling diagnostics for the sampled routines.
+`cache`, `trajectory` and `geometry_owner` let a submission reuse a mode cache, a precomputed orbit and shared
+orbit geometry across modes.
+"""
 function convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 256, K = 64, Nmax::Int = 2^14, Kmax::Int = 2^12, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, cache=nothing, trajectory=nothing, geometry_owner=nothing)
     route = _submission_public_route(a, p, e, x, cache, trajectory, geometry_owner)
     KG = route.KG
@@ -4410,6 +4370,18 @@ function convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 25
     end
 end
 
+"""
+    convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k; N = 256, K = 32, Nmax = DEFAULT_LEVIN_NMAX,
+        Kmax = DEFAULT_LEVIN_KMAX, tol = 1e-8, sample_tol = 1e-3, max_flux = 1.0, mode_abs_floor = 1e-16,
+        zero_low_flux = false, threaded_sampling = false, adaptive = true, adaptive_local_n, adaptive_min_depth,
+        adaptive_max_depth = 8, adaptive_tol_max, cache = nothing, trajectory = nothing, geometry_owner = nothing)
+
+Flux of the (s, l, m, n, k) mode of the bound Kerr geodesic (a, p, e, x) using the ISEM radial solution and Levin
+quadrature (adaptive segment refinement by default for the eccentric and generic routines). Dispatches to the
+circular-equatorial, inclined, eccentric or generic routine and returns a `Dict` with the same flux entries as
+`convolution_integral_trapezoidal_isem`, plus quadrature diagnostics where applicable. `cache`, `trajectory` and
+`geometry_owner` let a submission reuse a mode cache, a precomputed orbit and shared orbit geometry across modes.
+"""
 function convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k;
         N = 256,
         K = 32,

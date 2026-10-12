@@ -85,11 +85,11 @@ ISEM (iterative series expansion matching) constructs the GSN radial function $X
   <img width="80%" alt="ISEM matching" src="docs/src/isem_matching_original_30fps.gif">
 </p>
 
-`method = "ISEM"` selects it strictly, with no fallback. The default `method = "auto"` first tries ISEM with automatic frequency, spin, representation and matching controls; if ISEM throws, it reports the failure and falls back to the legacy automatic radial route. The homogeneous radial Teukolsky/GSN equations are solved typically at millisecond timescale or faster, and this route is also used by the single-mode point-particle amplitudes and total-flux mode summations. Optional controls are the matching point `xm` in $(0,1)$, the expansion order `N`, the tolerance `tol`, and the `small_frequency_expansion` and `large_frequency_expansion` switches; see the [API reference](docs/src/APIs.md).
+`method = "ISEM"` selects it strictly, with no fallback. The default `method = "auto"` first tries ISEM with automatic frequency, spin, representation and matching controls; if ISEM throws, it reports the failure and falls back to the legacy automatic radial route. The homogeneous radial Teukolsky/GSN equations are solved typically at millisecond timescale or faster, and this route is also used by the single-mode point-particle amplitudes and total-flux mode summations. Optional controls are the matching point `xm` in $(0,1)$, the expansion order `N`, the tolerance `tol`, and the small- and large-frequency expansion switches `sfe` and `lfe`; see the [API reference](docs/src/APIs.md).
 
 Superradiance-threshold solutions with $\omega = m a / (2 r_+)$ are built with a logarithmic horizon solution, while static/zero-frequency solutions are solved analytically with Gauss hypergeometric functions.
 
-*Change from v0.9.0:* in v0.10.0, `method = "ISEM"` solves the GSN equation directly. The v0.9.0 ISEM matched series solutions of the Teukolsky equation; it has been replaced, together with its `rhom`, `TSinInf`/`TSoutInf`/`TSinHor`/`TSoutHor` controls and its negative `xm` coordinate, and the `sfe`/`lfe` keywords are now spelled `small_frequency_expansion`/`large_frequency_expansion`.
+*Change from v0.9.0:* in v0.10.0, `method = "ISEM"` solves the GSN equation directly. The v0.9.0 ISEM matched series solutions of the Teukolsky equation; it has been replaced, together with its `rhom`, `TSinInf`/`TSoutInf`/`TSinHor`/`TSoutHor` controls and its negative `xm` coordinate.
 
 ### Basic radial-solution example
 
@@ -257,7 +257,7 @@ TeukolskyPointParticleMode(
     energy_flux_inf = 1.0917330113048546e-6,
     angular_momentum_flux_inf = 3.324033375494718e-5,
     Carter_const_flux_inf = 5.890504443058139e-5,
-    method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_small_frequency_expansion = false, N = 256, K = 64, truncation_floor = 1.0e-16),
+    method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_sfe = false, N = 256, K = 64, truncation_floor = 1.0e-16),
 )
 ```
 To access for example the amplitude at infinity,
@@ -282,7 +282,7 @@ TeukolskyPointParticleMode(
     energy_flux_hor = -2.843814878429853e-9,
     angular_momentum_flux_hor = -8.658651402627282e-8,
     Carter_const_flux_hor = -1.5343956812851395e-7,
-    method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_small_frequency_expansion = false, N = 256, K = 64, truncation_floor = 1.0e-16),
+    method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_sfe = false, N = 256, K = 64, truncation_floor = 1.0e-16),
 )
 ```
 To access for example the amplitude at the horizon,
@@ -413,7 +413,7 @@ The switch is automatic by default and can be forced with `tail_levin`. Users se
 
 ### Parallel execution and cache sharing
 
-For large-scale parallel computations, point-particle mode and flux calls are thread-safe on the default route. Calls on one orbit can share a read-only trajectory and sampling geometry through a submission (`with_pointparticle_submission`), while every mode keeps its own private workspace; caches are not shared across orbits, and admitted work is drained before a submission releases its caches. See [Parallel Calls](docs/src/APIs.md#parallel-calls) and [Point-particle submissions](docs/src/APIs.md#point-particle-submissions) for usage and the verified scope.
+For large-scale parallel computations, point-particle mode and flux calls are thread-safe on the default route. Calls on one orbit can share a read-only trajectory and sampling geometry through a submission (`with_pointparticle_submission`), while every mode keeps its own private workspace; caches are not shared across orbits, and admitted work is drained before a submission releases its caches. See [Parallel Calls](docs/src/APIs.md#parallel-calls) and [Point-particle submissions](docs/src/APIs.md#point-particle-submissions) for usage.
 
 ## How to cite
 If you have used this code in your research that leads to a publication, please cite the following article:

@@ -9,14 +9,12 @@ using ..CoefficientTables:
 
 export PQLayout
 export pq_layout, split_starts, ab_term_counts
-export rational_series_from_pq_len!, rational_series_from_pq!
 export rational_series_from_coefficients!
 export endpoint_ab_series!, endpoint_ab_series
 export ordinary_ab_series!, ordinary_ab_series
-export ordinary_y_ab_series!
 export ordinary_scaled_y_ab_series!
 export shifted_ab!, shifted_infinity_ab!
-export ordinary_point_coeffs!, ordinary_point_coeffs
+export ordinary_point_coeffs!
 export endpoint_power_lookup
 export poly_value, poly_pair, poly_triple
 export series_issue, denom_ok
@@ -69,6 +67,7 @@ function _q0_ok(q0)
     return _finite_complex(inv(ComplexF64(q0)))
 end
 
+# Lengths of the A and B numerator/denominator polynomials (ap, aq, bp, bq) in a packed P/Q vector.
 struct PQLayout
     ap_len::Int
     aq_len::Int
@@ -91,6 +90,7 @@ function pq_layout(s::Integer, group::Symbol)
     throw(ArgumentError("unsupported ISEM GSN coefficient group $group."))
 end
 
+# 1-based start offsets of the four polynomials in a packed P/Q vector.
 function split_starts(layout::PQLayout)
     ap = 1
     aq = ap + layout.ap_len
@@ -115,13 +115,6 @@ function _denominator_leading_shift(values)
     error("all-zero denominator in ISEM GSN rational P/Q recurrence")
 end
 
-function _denominator_leading_shift(pq::Vector{ComplexF64}, q_start::Integer, q_len::Integer)
-    @inbounds for k in 0:(q_len - 1)
-        !iszero(pq[q_start + k]) && return k
-    end
-    error("all-zero denominator in ISEM GSN rational P/Q recurrence")
-end
-
 function _check_regular_leading_terms(numerator, shift::Integer)
     @inbounds for k in 0:(shift - 1)
         if k < length(numerator) && !iszero(numerator[k + 1])
@@ -129,60 +122,6 @@ function _check_regular_leading_terms(numerator, shift::Integer)
         end
     end
     return nothing
-end
-
-function _check_regular_leading_terms(
-    pq::Vector{ComplexF64},
-    p_start::Integer,
-    p_len::Integer,
-    shift::Integer,
-)
-    @inbounds for k in 0:(shift - 1)
-        if k < p_len && !iszero(pq[p_start + k])
-            error("non-regular ISEM GSN rational P/Q leading terms")
-        end
-    end
-    return nothing
-end
-
-# Power series of P/Q by recursive division, after removing a common leading
-# power of the argument from the denominator.
-function rational_series_from_pq_len!(
-    out::Vector{ComplexF64},
-    out_len::Integer,
-    pq::Vector{ComplexF64},
-    p_start::Integer,
-    p_len::Integer,
-    q_start::Integer,
-    q_len::Integer,
-)
-    out_len <= length(out) || throw(ArgumentError("output buffer is too short."))
-    shift = _denominator_leading_shift(pq, q_start, q_len)
-    _check_regular_leading_terms(pq, p_start, p_len, shift)
-    q0 = pq[q_start + shift]
-    _q0_ok(q0) || error("noninvertible q0 in ISEM GSN rational P/Q recurrence")
-    inv_q0 = inv(q0)
-    order = out_len - 1
-    @inbounds for n in 0:order
-        p_index = n + shift
-        acc = p_index < p_len ? pq[p_start + p_index] : 0.0 + 0.0im
-        for k in 1:min(n, q_len - shift - 1)
-            acc -= pq[q_start + shift + k] * out[n - k + 1]
-        end
-        out[n + 1] = acc * inv_q0
-    end
-    return out
-end
-
-function rational_series_from_pq!(
-    out::Vector{ComplexF64},
-    pq::Vector{ComplexF64},
-    p_start::Integer,
-    p_len::Integer,
-    q_start::Integer,
-    q_len::Integer,
-)
-    return rational_series_from_pq_len!(out, length(out), pq, p_start, p_len, q_start, q_len)
 end
 
 function _ordinary_rational_series_from_pq_len!(
@@ -412,6 +351,9 @@ function shifted_infinity_ab!(
     return accepted, a_terms, b_terms, eps_condition
 end
 
+# Power series of numerator/denominator by recursive division into the first
+# `out_len` entries of `out`, after removing a common leading power of the
+# argument from the denominator.
 function rational_series_from_coefficients!(
     out::Vector{ComplexF64},
     out_len::Integer,
@@ -436,18 +378,8 @@ function rational_series_from_coefficients!(
     return out
 end
 
-function rational_series_from_coefficients!(
-    out::Vector{ComplexF64},
-    rational::RationalCoefficients,
-)
-    return rational_series_from_coefficients!(
-        out,
-        length(out),
-        rational.numerator,
-        rational.denominator,
-    )
-end
-
+# Laurent series of A and B about the horizon (:H, in x) or infinity (:I, in y),
+# written into `a_out` and `b_out`; returns the numbers of terms.
 function endpoint_ab_series!(
     a_out::Vector{ComplexF64},
     b_out::Vector{ComplexF64},
@@ -463,6 +395,7 @@ function endpoint_ab_series!(
     return a_terms, b_terms
 end
 
+# Allocating form of endpoint_ab_series!; returns (A series, B series).
 function endpoint_ab_series(coefficients::CoefficientSet, group::Symbol, order::Integer)
     group in (:H, :I) || throw(ArgumentError("endpoint group must be :H or :I."))
     endpoint = group == :H ? coefficients.horizon : coefficients.infinity
@@ -473,6 +406,7 @@ function endpoint_ab_series(coefficients::CoefficientSet, group::Symbol, order::
     return a_coeffs, b_coeffs
 end
 
+# Taylor series of A and B from P/Q values already evaluated at the expansion point.
 function ordinary_ab_series!(
     a_out::Vector{ComplexF64},
     b_out::Vector{ComplexF64},
@@ -487,28 +421,6 @@ function ordinary_ab_series!(
     length(b_out) >= b_terms || throw(ArgumentError("B-series output buffer is too short."))
     _ordinary_rational_series_from_pq_len!(a_out, a_terms, pq, ap, layout.ap_len, aq, layout.aq_len)
     _ordinary_rational_series_from_pq_len!(b_out, b_terms, pq, bp, layout.bp_len, bq, layout.bq_len)
-    return a_terms, b_terms
-end
-
-# A and B series in powers of (y - y0), y = 1 - x, obtained from the ordinary
-# table's x-series by the sign changes of d/dy = -d/dx.
-function ordinary_y_ab_series!(
-    a_out::Vector{ComplexF64},
-    b_out::Vector{ComplexF64},
-    pq::Vector{ComplexF64},
-    coefficients::CoefficientSet,
-    y0,
-    order::Integer,
-)
-    evaluate_ordinary_variable!(pq, coefficients.ordinary, y0)
-    a_terms, b_terms = ordinary_ab_series!(
-        a_out, b_out, pq, coefficients.params.s, order)
-    @inbounds for n in 0:(a_terms - 1)
-        a_out[n + 1] *= iseven(n) ? -1.0 : 1.0
-    end
-    @inbounds for n in 0:(b_terms - 1)
-        b_out[n + 1] *= iseven(n) ? 1.0 : -1.0
-    end
     return a_terms, b_terms
 end
 
@@ -542,6 +454,9 @@ function ordinary_scaled_y_ab_series!(a_out, b_out, pq,
     return na, nb
 end
 
+# Taylor series of A and B about the ordinary point x0: by shifting the horizon
+# rational functions when `metadata.horizon_shift` is set and the shift is
+# accepted, otherwise from the ordinary-point tables.
 function ordinary_ab_series!(
     a_out::Vector{ComplexF64},
     b_out::Vector{ComplexF64},
@@ -561,6 +476,7 @@ function ordinary_ab_series!(
     return ordinary_ab_series!(a_out, b_out, pq, coefficients.params.s, order)
 end
 
+# Allocating form of ordinary_ab_series!; returns (A series, B series, P/Q work vector).
 function ordinary_ab_series(coefficients::CoefficientSet, x0, order::Integer)
     a_terms, b_terms = ab_term_counts(:O, order)
     pq = Vector{ComplexF64}(undef, coefficients.ordinary.value_count)
@@ -594,11 +510,6 @@ function ordinary_point_coeffs!(
         coeffs[n + 3] = -numerator / ((n + 2) * (n + 1))
     end
     return coeffs
-end
-
-function ordinary_point_coeffs(a_coeffs, b_coeffs, c0, c1, order::Integer)
-    coeffs = Vector{ComplexF64}(undef, order + 1)
-    return ordinary_point_coeffs!(coeffs, a_coeffs, b_coeffs, c0, c1, order)
 end
 
 # Closure p -> coefficient of power p, for a series whose first stored power is

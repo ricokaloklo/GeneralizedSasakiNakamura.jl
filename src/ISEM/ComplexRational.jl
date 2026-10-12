@@ -43,13 +43,11 @@ using ..Iteration:
     _best_infinity_order_metrics,
     _horizon_eval_condition,
     _horizon_tail_metric,
-    _infinity_adjacent_metric,
-    _infinity_residual_metric,
     endpoint_seed_scale
-using ..MSTInfinity:
+using ..ManoSuzukiTakasugiInfinity:
     abel_denominator,
-    mst_principal_plan,
-    mst_principal_state
+    mano_suzuki_takasugi_principal_plan,
+    mano_suzuki_takasugi_principal_state
 
 export ComplexRationalEvaluator
 export complex_rational_build, complex_rational_state_r
@@ -104,7 +102,7 @@ const _SCALED_Y_CHART_GROWTH = 4.0
 const _SCALED_Y_PHYSICAL_HANDOFF = 1.0e-2
 const _SCALED_X_PHYSICAL_HANDOFF = 1.0e-2
 const _HORIZON_RESONANCE_TOL = 2048eps(Float64)
-const _PRINCIPAL_MST_Y_SCALES =
+const _PRINCIPAL_MANO_SUZUKI_TAKASUGI_Y_SCALES =
     (0.005, 0.01, 0.02, 0.04, 0.08, 0.12, 0.16, 0.24)
 const _RHO_MAGNITUDES = ntuple(index -> Float64(2.0^(index - 1)), 17)
 const _INFINITY_RHO_MAGNITUDES =
@@ -126,6 +124,9 @@ end
         abs(imag(omega)) <= _NEAR_REAL_MAX_RATIO * abs_re
 end
 
+# Route targets derived from `tolerance`: the rotated and real-axis horizon seed scores,
+# the infinity seed score and the per-step score, each with a floor; `reduced_order` is
+# the comparison order of the step check.
 function ComplexRationalSettings(order::Integer, tolerance::Real)
     resolved_order = Int(order)
     resolved_order >= 10 ||
@@ -373,6 +374,8 @@ end
     return abs(half - full) / 15
 end
 
+# The rho > 0 leg of `_integrate_coordinate_path` (towards infinity), integrated in
+# log u, u = 1/(1 - x); can extend an earlier path.
 function _integrate_infinity_path(
     params,
     q,
@@ -636,6 +639,8 @@ end
     return max(adjacent, residual), adjacent, residual
 end
 
+# Value, x-derivative and second x-derivative of a horizon Frobenius solution (plus its
+# logarithmic companion term, when present) at complex x, given log x.
 function _horizon_state(
     coefficients,
     solution,
@@ -753,6 +758,9 @@ end
 @inline _as_dd(value::DDComplex) = value
 @inline _as_dd(value) = DDComplex(value)
 
+# First `count` power-series coefficients of numerator/denominator in double-double
+# arithmetic, allowing leading zero coefficients of the denominator when the numerator
+# shares them.
 function _rational_series_dd(numerator, denominator, count::Int)
     first = findfirst(value -> !_dc_zero(value), denominator)
     first === nothing &&
@@ -837,6 +845,9 @@ function _horizon_plain_coefficients(
     return coeffs
 end
 
+# Log-Frobenius horizon solution when the two exponents differ by a positive integer:
+# X = x^mu sum c_n x^n + C log(x) x^mu' sum d_n x^n, with the companion series d_n and
+# the constant C fixed at the resonant order.
 function _resonant_horizon_solution(
     coefficients,
     branch::Symbol,
@@ -917,6 +928,9 @@ function _resonant_horizon_solution(
     )
 end
 
+# Horizon Frobenius recurrence in double-double arithmetic with the denominator
+# factorized through the exponent difference; hands over to
+# `_resonant_horizon_solution` at an integer resonance.
 function _factorized_horizon_solution(
     coefficients,
     branch::Symbol,
@@ -1007,6 +1021,8 @@ function _complex_horizon_solution(
     end
 end
 
+# Value, x-derivative and second x-derivative of an infinity local solution
+# X = exp(sigma/y + rho log y) * series(y / variable_scale), y = 1 - x.
 function _infinity_state(
     coefficients,
     solution,
@@ -1084,6 +1100,10 @@ function _best_scaled_infinity_metrics(
     return best
 end
 
+# Checks of a local endpoint solution at path.x against the ODE coefficients A, B
+# (this and the next two functions): disagreement between the full- and reduced-order
+# evaluation and the ODE residual; the `_from_endpoint` variant also counts the series
+# tail in the score and records the evaluation roundoff.
 function _horizon_check_from_ab(
     A,
     B,
@@ -1270,6 +1290,8 @@ function _infinity_candidate!(
     return (; path, checks, score=maximum(check.score for check in checks))
 end
 
+# Horizon seed on the real axis: halve x from the junction until the endpoint series
+# pass their checks there (or a structurally checked node is found).
 function _select_real_horizon_path(
     coefficients,
     solutions,
@@ -1335,6 +1357,9 @@ function _select_real_horizon_path(
         "$(best === nothing ? Inf : best.pair_abel_error).")
 end
 
+# Horizon seed on the rotated ray: extend the ray towards the horizon through
+# `_RHO_MAGNITUDES` until the endpoint series pass their checks at its end;
+# `max_best_score` accepts the best unchecked candidate instead of erroring.
 function _select_rotated_horizon_path(
     coefficients,
     solutions,
@@ -1435,6 +1460,8 @@ function _select_horizon_path(
     end
 end
 
+# Infinity seed on the rotated ray: extend the ray towards infinity through
+# `_INFINITY_RHO_MAGNITUDES` until the endpoint series pass their checks at its end.
 function _select_infinity_path(
     coefficients,
     solutions,
@@ -1471,7 +1498,7 @@ function _select_infinity_path(
         "$(best_check === nothing ? 0 : best_check.order).")
 end
 
-@inline _principal_mst_axis(omega) =
+@inline _principal_mano_suzuki_takasugi_axis(omega) =
     iszero(real(omega)) && imag(omega) < 0 &&
     abs(omega) <= _SCALED_Y_PHYSICAL_HANDOFF
 
@@ -1481,7 +1508,7 @@ end
 # Infinity seed on the principal MST axis: the outgoing local solution is
 # replaced by the combination of the local pair proportional to the principal
 # MST state, and its Abel error enters the score.
-function _principal_mst_candidate!(
+function _principal_mano_suzuki_takasugi_candidate!(
     coefficients,
     plan,
     solutions,
@@ -1503,7 +1530,7 @@ function _principal_mst_candidate!(
         _infinity_check_from_ab(
             A, B, coefficients, solution, kind, path, settings)
     end
-    mst = mst_principal_state(
+    mst = mano_suzuki_takasugi_principal_state(
         coefficients, plan, :out, path.x)
     mst_state = ComplexRationalState(mst.X, mst.dXdx)
     normalize(state) = begin
@@ -1564,7 +1591,10 @@ function _principal_mst_candidate!(
     )
 end
 
-function _select_principal_mst_infinity_path(
+# Infinity seed on the principal MST axis (small purely damped omega): real-axis nodes
+# at y = |omega| * `_PRINCIPAL_MANO_SUZUKI_TAKASUGI_Y_SCALES`, scored by
+# `_principal_mano_suzuki_takasugi_candidate!`.
+function _select_principal_mano_suzuki_takasugi_infinity_path(
     coefficients,
     solutions,
     kinds,
@@ -1573,10 +1603,10 @@ function _select_principal_mst_infinity_path(
     settings,
 )
     branches = (:out,)
-    plan = mst_principal_plan(coefficients; branches)
+    plan = mano_suzuki_takasugi_principal_plan(coefficients; branches)
     best = nothing
     omega_scale = abs(omega)
-    for scaled_y in _PRINCIPAL_MST_Y_SCALES
+    for scaled_y in _PRINCIPAL_MANO_SUZUKI_TAKASUGI_Y_SCALES
         y = omega_scale * scaled_y
         16eps(Float64) < y < 1 - match_x || continue
         seed_x = 1 - y
@@ -1603,7 +1633,7 @@ function _select_principal_mst_infinity_path(
             rejected_steps=0,
         )
         candidate = try
-            _principal_mst_candidate!(
+            _principal_mano_suzuki_takasugi_candidate!(
                 coefficients, plan, solutions, kinds, path, settings)
         catch
             nothing
@@ -1640,6 +1670,9 @@ function _series_state_condition(coeffs, h, value, derivative, order)
     )
 end
 
+# Local A/B Taylor series at the step centre `x`: the ordinary P/Q expansion, or (when
+# q0 is degenerate or `shifted`) the endpoint series shifted to the centre. Returns the
+# term counts, the representation used and its condition.
 function _local_ab_series!(
     scratch,
     coefficients,
@@ -1691,6 +1724,8 @@ function _local_ab_series!(
     return a_terms, b_terms, :ordinary_shift_fallback, shift_condition
 end
 
+# One Taylor step of size h for both states from the A/B series in `scratch`; the
+# score combines the full/reduced-order disagreement and the ODE residual.
 function _local_step_from_ab!(
     scratch,
     state1,
@@ -1751,6 +1786,8 @@ function _local_step_from_ab!(
     )
 end
 
+# Step both states from x by h; for ordinary representations the residual is
+# re-checked with the exact ODE coefficients at x + h.
 function _local_step!(
     scratch,
     coefficients,
@@ -1908,6 +1945,8 @@ function _scaled_step!(
     )
 end
 
+# Step the pair in the chart variable from `variable0` to `target`, shrinking each step
+# until it passes; returns the final states and the step statistics.
 function _propagate_scaled_pair!(
     scratch,
     chart::Symbol,
@@ -1988,6 +2027,7 @@ end
         candidate.residual <= 10target
 end
 
+# Step the pair from x0 to `target` in x, accumulating the local error in `scratch`.
 function _propagate_pair!(
     scratch,
     coefficients,
@@ -2220,6 +2260,9 @@ function _ordinary_path_hops(
     return (; x, index, state1, state2, patches, rejected, max_score)
 end
 
+# Backward propagation from the last path node (the endpoint seed) to the first (the
+# junction): scaled-y chart steps while 1 - x is inside the chart handoff radius (only
+# when `variable_scale` is not one), then ordinary-point steps along the remaining nodes.
 function _propagate_on_path(
     coefficients,
     path,
@@ -2391,6 +2434,9 @@ end
     return merge(path, (; x=last(nodes), nodes))
 end
 
+# Match at an interior node of the infinity path: the target is propagated forward and
+# the basis pair back to it; nodes are tried at fixed fractions of the path and the
+# first that passes (else the best) is returned.
 function _infinity_overlap_match(
     coefficients,
     seed,
@@ -2485,6 +2531,8 @@ function _infinity_overlap_match(
     error("no certified infinity overlap match; " * join(failures, " | "))
 end
 
+# Ratio of the numerical Wronskian of (state1, state2) to the exact Abel denominator,
+# formed in log magnitude so it stays representable for extreme state scales.
 function _scaled_abel_ratio(state1, state2, exact_denominator)
     _finite_complex(exact_denominator) && !iszero(exact_denominator) ||
         error("nonfinite Abel denominator.")
@@ -2568,6 +2616,8 @@ end
 
 @inline _finite_or_inf(value) = isfinite(value) ? Float64(value) : Inf
 
+# Condition number of the row-scaled 2x2 matching matrix (sigma_max^2 / |det|) and the
+# cancellation of each connection-coefficient numerator.
 function _matching_diagnostics(target, basis1, basis2)
     xscale = max(abs(target.X), abs(basis1.X), abs(basis2.X),
         floatmin(Float64))
@@ -2620,6 +2670,8 @@ end
     return iszero(result.horizon_seed.path.angle_offset)
 end
 
+# IN match re-solved with the horizon ray rotated by `angle_offset`, reusing the
+# selected match's infinity states and junction.
 function _solve_horizon_angle_at_match(
     coefficients,
     locals,
@@ -3103,11 +3155,11 @@ function _solve_at_match(
                     (:infinity_in, :infinity_out), params.omega, match_x,
                     settings)
             catch exception
-                _principal_mst_axis(params.omega) || rethrow()
+                _principal_mano_suzuki_takasugi_axis(params.omega) || rethrow()
                 message = sprint(showerror, exception)
                 occursin("no certified two-ray infinity path", message) ||
                     rethrow()
-                _select_principal_mst_infinity_path(
+                _select_principal_mano_suzuki_takasugi_infinity_path(
                     coefficients,
                     (locals.infinity_in, locals.infinity_out),
                     (:infinity_in, :infinity_out),
@@ -3513,7 +3565,6 @@ const _JUNCTION_SEARCH_X = Tuple(0.02:0.02:0.98)
 # junction is accepted when its rays do not wind around the horizon, the
 # matching conditioning keeps the route's accuracy target and its pair is
 # certified.
-
 function _junction_search(coefficients, locals, branch, params, settings,
         default_x)
     for x in sort(collect(_JUNCTION_SEARCH_X); by=x -> abs(x - default_x))
@@ -4375,6 +4426,9 @@ function _states_x(
     return states, errors
 end
 
+# Vector form of `complex_rational_state_r`: chained propagation checked against
+# single-point evaluations at up to nine of the radii, with per-point evaluation as the
+# fallback when they disagree.
 function complex_rational_states_r(
     evaluator::ComplexRationalEvaluator,
     radii::AbstractVector{<:Real},

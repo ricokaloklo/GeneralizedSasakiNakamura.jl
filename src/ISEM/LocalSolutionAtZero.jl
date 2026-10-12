@@ -11,9 +11,7 @@ using ..OrdinaryPointExpansion:
     series_issue
 
 export horizon_rotation_frequency, horizon_exponent, is_horizon_threshold
-export horizon_coefficients!, horizon_coefficients
 export zero_local_solution, zero_log_solution
-export zero_in_coeffs, zero_out_coeffs
 export horizon_series_value, horizon_series_pair, horizon_series_triple
 
 _param_a(params) = hasproperty(params, :a) ? getproperty(params, :a) : sin(getproperty(params, :nu))
@@ -42,6 +40,8 @@ function is_horizon_threshold(params)
         8 * eps(Float64) * max(abs(rotation), abs(azimuthal))
 end
 
+# Frobenius exponent at the horizon: -i nu_h for the ingoing branch, +i nu_h for
+# the outgoing branch.
 function horizon_exponent(params, branch::Symbol)
     nu_h = horizon_rotation_frequency(params)
     branch in (:in, :ingoing, :IN) && return -1im * nu_h
@@ -88,35 +88,6 @@ function _horizon_coefficients!(
         end
     end
     return order, :none
-end
-
-function horizon_coefficients!(
-    coeffs::Vector{ComplexF64},
-    a_power,
-    b_power,
-    mu,
-    order::Integer,
-)
-    _horizon_coefficients!(coeffs, a_power, b_power, mu, order, false)
-    return coeffs
-end
-
-function horizon_coefficients(a_power, b_power, mu, order::Integer)
-    coeffs = Vector{ComplexF64}(undef, order + 1)
-    return horizon_coefficients!(coeffs, a_power, b_power, mu, order)
-end
-
-function horizon_coefficients(
-    a_coeffs::Vector{ComplexF64},
-    b_coeffs::Vector{ComplexF64},
-    mu,
-    order::Integer;
-    a_first_power::Integer=-1,
-    b_first_power::Integer=-2,
-)
-    a_power = endpoint_power_lookup(a_coeffs, a_first_power)
-    b_power = endpoint_power_lookup(b_coeffs, b_first_power)
-    return horizon_coefficients(a_power, b_power, mu, order)
 end
 
 # Guarded horizon Frobenius series for the :in or :out branch, with metadata.
@@ -167,6 +138,9 @@ function _horizon_numerator(coeffs, a_power, b_power, mu, n::Int)
     return ComplexF64(numerator)
 end
 
+# Coefficient of x^(mu+n-2) contributed by the non-logarithmic terms
+# 2u'/x - u/x^2 + A u/x when X = log(x) u, u = x^mu sum c_k x^k, is substituted
+# into the equation.
 function _horizon_log_forcing(coeffs, a_power, mu, n::Int)
     forcing = (2 * (mu + n) - 1 + a_power(-1)) * coeffs[n + 1]
     @inbounds for j in 0:(n - 1)
@@ -227,12 +201,6 @@ function zero_log_solution(
         log_coefficients=base.coefficients,
     )
 end
-
-zero_in_coeffs(coefficients::CoefficientSet, order::Integer) =
-    zero_local_solution(coefficients, :in, order).coefficients
-
-zero_out_coeffs(coefficients::CoefficientSet, order::Integer) =
-    zero_local_solution(coefficients, :out, order).coefficients
 
 # x^mu times the power series, with first and second x-derivatives in the
 # _pair and _triple versions.

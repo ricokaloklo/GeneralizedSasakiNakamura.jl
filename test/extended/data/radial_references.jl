@@ -139,7 +139,7 @@ const STRONG_DAMPING_POINTS = [
         E = nothing, lam = complex(4.0, 0.0),
         binc = complex(-2.0012635643475054e-15, 1.8622481937285594e-14), bref = complex(-989.281634064303, 714.7106431662438),
         cup = complex(-5.936546451686004e-16, 5.950226733990739e-15), cref = complex(-0.0006641749834315917, -0.0004798359872841489),
-        tol = (1e-09, 1e-09, 1e-08, 1e-09), notes = ("", "", "same class as backlog items 2/3 (a=0 high-overtone UP C_up), 1.2e-9 measured", ""),
+        tol = (1e-09, 1e-09, 1e-08, 1e-09), notes = ("", "", "same class as the a=0 high-overtone UP C_up rows, 1.2e-9 measured", ""),
         meas_dom = (5.476821721460747e-15, 4.4524277349656366e-13, 1.1935627398530021e-09, 6.32336885118382e-14), meas_rel = (356.87519166062253, 4.4524277349656366e-13, 163.54685965514904, 6.32336885118382e-14),
         rep_direct = (25.784786951829975, 9.511360306629072e-12, 261.96905286186626, 2.6439161857163903e-12), act_direct = (356.87519166062253, 4.4524277349656366e-13, 163.54685965514904, 6.32336885118382e-14),
         src = "strong_damping_reference/float64_inputs/f64_points.tsv"),

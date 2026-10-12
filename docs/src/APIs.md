@@ -106,16 +106,14 @@ Keyword summary:
 | `tolerance` | internal default | legacy ODE tolerance; `tol` takes precedence when both are supplied |
 | `xm` | `nothing` | ISEM matching point in the compact coordinate, `0 < xm < 1` |
 | `N` | `nothing` | optional ISEM expansion order override; chosen automatically when omitted |
-| `small_frequency_expansion`, `large_frequency_expansion` | `nothing` | optional switches for the small-frequency (MST) and large-frequency (eikonal) expansions; `nothing` selects them automatically |
+| `sfe`, `lfe` | `nothing` | optional switches for the small-frequency (MST) and large-frequency (eikonal) expansions; `nothing` selects them automatically |
 
 Omit optional matching controls to use automatic selection.
 If construction at an explicit `xm` fails, `"auto"` reports the failure rather
 than falling back to a legacy solver that ignores that junction.
-Automatic matching is recommended. For the tested UP mode
-`(-2, 2, 2, 0.7, 0.4198385710926635 - 2.09355961067422im)`,
-explicit `xm = 0.4` gives an incidence error of `1.8151e-5` in reflection-amplitude
-units (`5.048e-10` in transmission-amplitude units); matching tolerance alone
-does not bound this cancellation error.
+Automatic matching is recommended: an explicit `xm` can introduce a
+cancellation error in the incidence amplitude that the matching tolerance does
+not bound.
 The v0.9.0 ISEM keywords `rhom`, `TSinInf`, `TSoutInf`, `TSinHor`, `TSoutHor`
 and the negative `xm` coordinate no longer exist; passing them raises an error.
 
@@ -275,9 +273,9 @@ Important keywords:
 | `generic_deep` | `1e-5` | generic orbits: an outward ℓ tail stops once a mode is at most this fraction of its cutoff; `0` disables it. Peak-search walks keep the original cutoff and confirmation count |
 | `tail_levin` | `nothing` (automatic) | adaptive Levin quadrature for high-index eccentric and generic radial tails: `true`, `false`, or automatic selection |
 | `levin_nmin` | `50` | radial shell at which tail Levin quadrature becomes eligible |
-| `levin_local_n` | `ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N` | number of local nodes per adaptive Levin subinterval |
+| `levin_local_n` | `16` | number of local nodes per adaptive Levin subinterval |
 | `levin_max_depth` | `8` | maximum adaptive Levin subdivision depth |
-| `info` | `false` | print solver fallback diagnostics from `Y_radial` when `method = "auto"` changes radial backend |
+| `info` | `false` | accepted for signature stability; it has no effect, since the ISEM radial solver prints no fallback diagnostics |
 | `record` | `false` | when set to `true`, records mode details to HDF5 where supported |
 | `record_path` | `nothing` | optional HDF5 output path |
 | `fast` | `true` | use cached/presampled fast summation path where available |
@@ -398,19 +396,16 @@ Stores a homogeneous GSN radial solution.
 
 Reported errors are estimates, not complete error bounds; they exclude equation-coefficient evaluation error, which can be of order `1e-11` near the horizon.
 
-They also exclude uncertainty in the input angular eigenvalue. In tested real-frequency MST amplitudes, relative errors reach about `3e-10`, with estimates low by up to a factor of `2.6`.
-
-Complex-frequency amplitude checks show residual underestimation by up to about `1.33` in the tested cases. At an incidence zero, use absolute or transmission-normalized error rather than relative error with respect to the zero. Real-frequency estimates can miss larger relative errors in small reflection amplitudes.
+They also exclude uncertainty in the input angular eigenvalue, and they can underestimate the true error. At an incidence zero, use absolute or transmission-normalized error rather than relative error with respect to the zero. Real-frequency estimates can miss larger relative errors in small reflection amplitudes.
 
 Amplitude estimates do not bound errors in `X`, `R`, or `Y` evaluations. Even at real or weakly damped frequencies, transmission-normalized `R(10)` can have relative errors above `1e-8`; strong damping can cause order-unity errors on the real radius axis despite successful construction. Small reflection amplitudes may also lose relative precision. No total radial-value error estimate is provided.
 
-For example, tested real-frequency cases with `s = -2`, `l = m = 2:4`, and `abs(omega) = 3` have reflection amplitudes with no reliable relative digits. These are not high-accuracy reflection results even when the dominant amplitude is accurate.
+Reflection amplitudes that are small relative to the dominant amplitude may have no reliable relative digits, even when the dominant amplitude is accurate.
 
-Explicit legacy methods have separate low-frequency limits. At
-`(s,l,m,a,omega) = (2,2,-1,0.47302630436742865,-1e-4)`, `method="Riccati"`
-agrees with the default near-zone value to about `5e-14`, but its incidence
-amplitude is wrong with the default outer boundary. An accurate local
-radial value does not certify the legacy far-field amplitudes. Below
+Explicit legacy methods have separate low-frequency limits. At low
+frequencies their incidence amplitudes can be wrong with the default outer
+boundary even when their near-zone values agree with the default method; an
+accurate local radial value does not certify the legacy far-field amplitudes. Below
 `|omega| = 1e-8` the legacy ODE routes lose the UP solution; `method = "auto"`
 warns when it falls back to them there.
 
@@ -437,10 +432,11 @@ Threads.@threads for i in eachindex(parameters)
 end
 ```
 
-Serial/thread bitwise checks cover radial construction, complex-frequency
-evaluation, QNM frequencies and excitation factors, and concurrent evaluation
-of a shared radial solution. Point-particle modes and fluxes also depend on the
-angular and geodesic packages. KerrGeodesics 0.5 evaluates its Jacobi elliptic
+Radial construction, complex-frequency evaluation, QNM frequencies and
+excitation factors, and concurrent evaluation of one shared radial solution are
+thread-safe and give identical results in serial and threaded runs.
+Point-particle modes and fluxes also depend on the angular and geodesic
+packages. KerrGeodesics 0.5 evaluates its Jacobi elliptic
 functions without a shared workspace. With SpinWeightedSpheroidalHarmonics 1.4.0,
 do not take the first polar derivative of one shared Leaver-method harmonic
 object from several threads at once; harmonics constructed inside each call are

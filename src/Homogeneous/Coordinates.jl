@@ -21,6 +21,9 @@ function _drstar_dh_exact_extremal(h)
     return 1 + 2/h + 2/(h*h)
 end
 
+# Newton starting guess: h ~ 2/|rstar| near the horizon (where rstar ~ -2/h),
+# h ~ rstar - 2 log rstar + log 4 - 1 far out (rstar > 10, where rstar ~ h + 2 log h),
+# and h = 1.3, close to the root at rstar = 0, in between.
 function _exact_extremal_initial_h(rstar)
     if rstar < 0
         return max(2 / max(-rstar, 1), sqrt(eps(Float64)))
@@ -117,6 +120,7 @@ Convert a tortoise coordinate `rstar` to the corresponding Boyer-Lindquist coord
 It uses a bisection method when `rstar <= 0`, and Newton method otherwise.
 
 The function assumes that $r \geq r_{+}$ where $r_{+}$ is the outer event horizon.
+For exactly extremal spin (``|a| = 1``) the closed-form extremal tortoise coordinate is inverted by Newton iteration with a bisection fallback.
 """
 function r_from_rstar(a, rstar)
     _is_exact_extremal_spin(a) && return _r_from_rstar_exact_extremal(rstar)

@@ -218,6 +218,9 @@ function QminusInf_z(s::Int, m::Int, a, omega, lambda, z)
 end
 
 
+# workspace: a Ref holding (expansion_coeffs, Pcoeffs, Qcoeffs) from a previous call with the
+# same (s, m, a, omega, lambda); when given, the recurrence is extended from the stored order
+# and the Ref is updated (see coefficient_sequence).
 function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE, workspace=nothing)
     #=
     We have derived/shown the explicit expression for
@@ -619,6 +622,9 @@ function QplusInf_z(s::Int, m::Int, a, omega, lambda, z)
 end
 
 
+# workspace: a Ref holding (expansion_coeffs, Pcoeffs, Qcoeffs) from a previous call with the
+# same (s, m, a, omega, lambda); when given, the recurrence is extended from the stored order
+# and the Ref is updated (see coefficient_sequence).
 function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE, workspace=nothing)
     #=
     We have derived/shown the explicit expression for
@@ -1182,6 +1188,9 @@ function QplusH(s::Int, m::Int, a, omega, lambda, x)
 end
 
 
+# workspace: a Ref holding (expansion_coeffs, Pcoeffs, Qcoeffs) from a previous call with the
+# same (s, m, a, omega, lambda); when given, the recurrence is extended from the stored order
+# and the Ref is updated (see coefficient_sequence).
 function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE, workspace=nothing)
 
     if order < 0
@@ -1614,6 +1623,9 @@ function QminusH(s::Int, m::Int, a, omega, lambda, x)
 end
 
 
+# workspace: a Ref holding (expansion_coeffs, Pcoeffs, Qcoeffs) from a previous call with the
+# same (s, m, a, omega, lambda); when given, the recurrence is extended from the stored order
+# and the Ref is updated (see coefficient_sequence).
 function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE, workspace=nothing)
 
     if order < 0

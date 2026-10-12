@@ -79,7 +79,7 @@ function load_factor_table(path)
             "unsupported ISEM endpoint factor table version $version")
         s = Int(read(io, Int8))
         powers = Tuple(Int.(read_vector(io, UInt8, 4)))
-        read(io, UInt8)
+        read(io, UInt8)  # header byte not used by the reader
         output_count = Int(read(io, UInt32))
         monomial_count = Int(read(io, UInt32))
         term_count = Int(read(io, UInt32))
@@ -336,6 +336,8 @@ function endpoint_delta(left, right)
         scaled_delta(left_b, right_b))
 end
 
+# Whether near_extreme_prepare substituted the fully compensated horizon
+# coefficients (metadata field near_extreme_compensated).
 function near_extreme_selected(coefficients::CoefficientSet)
     metadata = coefficients.metadata
     return hasproperty(metadata, :near_extreme_compensated) &&

@@ -18,9 +18,9 @@ using ..LargeFrequencyExpansion:
     dc_value
 
 export InfinityLargeFrequencyExpansionBranch, InfinityLargeFrequencyExpansionPatch
-export lfei_single, lfei_pair, lfei_reach, lfei_reach_pair
-export lfei_anchor, lfei_anchor_pair
-export lfei_value, lfei_state
+export large_frequency_expansion_infinity_single, large_frequency_expansion_infinity_pair, large_frequency_expansion_infinity_reach, large_frequency_expansion_infinity_reach_pair
+export large_frequency_expansion_infinity_anchor, large_frequency_expansion_infinity_anchor_pair
+export large_frequency_expansion_infinity_value, large_frequency_expansion_infinity_state
 
 # Infinity patches for the large-frequency route. Each branch is represented as
 # X = exp(sigma / y) y^rho x^alpha sum c_n y^n (y = 1 - x), where the x^alpha factor
@@ -38,6 +38,8 @@ const LARGE_FREQUENCY_EXPANSION_INFINITY_PREFLIGHT_ORDER = 48
 const LARGE_FREQUENCY_EXPANSION_INFINITY_PREFLIGHT_START = 16
 const LARGE_FREQUENCY_EXPANSION_INFINITY_PREFLIGHT_REJECT = 1e-2
 
+# Asymptotic series of one branch (:out or :in) at infinity: exponents rho, sigma,
+# alpha and the coefficients c_n in y = 1 - x.
 struct InfinityLargeFrequencyExpansionBranch
     branch::Symbol
     rho::ComplexF64
@@ -46,6 +48,8 @@ struct InfinityLargeFrequencyExpansionBranch
     coeffs::Vector{ComplexF64}
 end
 
+# A branch used on [center_x, next_x] with its matched scale; evaluate with
+# `large_frequency_expansion_infinity_state` / `large_frequency_expansion_infinity_value`.
 struct InfinityLargeFrequencyExpansionPatch
     center_x::Float64
     next_x::Float64
@@ -415,7 +419,7 @@ function _preflight_high(avec, bvec, params, branch, match_x, A, B,
     y = 1 - Float64(match_x)
     plan = _fast_branch(avec, bvec, params, branch, order)
     scores = Float64[score24]
-    for degree in 32:LFEI_ORDER_STEP:order
+    for degree in 32:LARGE_FREQUENCY_EXPANSION_INFINITY_ORDER_STEP:order
         state = _state(plan, y, degree)
         nested = _state(plan, y, degree - LARGE_FREQUENCY_EXPANSION_INFINITY_ORDER_STEP)
         score = max(_tail(plan, y, degree), _residual(state, A, B),
@@ -431,7 +435,7 @@ end
 
 # Lowest certified truncation of `plan` at y, copied into a new branch.
 function _select(plan, y, A, B)
-    for order in LARGE_FREQUENCY_EXPANSION_INFINITY_MIN_ORDER:LFEI_ORDER_STEP:(length(plan.coeffs) - 1)
+    for order in LARGE_FREQUENCY_EXPANSION_INFINITY_MIN_ORDER:LARGE_FREQUENCY_EXPANSION_INFINITY_ORDER_STEP:(length(plan.coeffs) - 1)
         check = _certify(plan, y, order, A, B)
         if check.accepted
             branch = InfinityLargeFrequencyExpansionBranch(
@@ -443,7 +447,7 @@ function _select(plan, y, A, B)
     return nothing
 end
 
-function lfei_state(patch::InfinityLargeFrequencyExpansionPatch, x)
+function large_frequency_expansion_infinity_state(patch::InfinityLargeFrequencyExpansionPatch, x)
     state = _state(
         patch.plan, 1 - x, length(patch.plan.coeffs) - 1)
     return (
@@ -453,10 +457,10 @@ function lfei_state(patch::InfinityLargeFrequencyExpansionPatch, x)
     )
 end
 
-lfei_value(patch::InfinityLargeFrequencyExpansionPatch, x) = lfei_state(patch, x).X
+large_frequency_expansion_infinity_value(patch::InfinityLargeFrequencyExpansionPatch, x) = large_frequency_expansion_infinity_state(patch, x).X
 
 # Patch from the infinity seed directly to match_x for one branch, or `nothing`.
-function lfei_single(coefficients::CoefficientSet, branch,
+function large_frequency_expansion_infinity_single(coefficients::CoefficientSet, branch,
         seed_y, match_x, scale)
     y = 1 - Float64(match_x)
     y > seed_y * (1 + 100eps(Float64)) || return nothing
@@ -481,12 +485,12 @@ function lfei_single(coefficients::CoefficientSet, branch,
     patch = InfinityLargeFrequencyExpansionPatch(
         1 - Float64(seed_y), Float64(match_x), selected.branch,
         ComplexF64(scale))
-    state = lfei_state(patch, match_x)
+    state = large_frequency_expansion_infinity_state(patch, match_x)
     return (; patch, state, selected.tail,
         selected.residual, selected.check)
 end
 
-function lfei_pair(coefficients::CoefficientSet,
+function large_frequency_expansion_infinity_pair(coefficients::CoefficientSet,
         branch1, branch2, seed_y, match_x, scale1, scale2)
     y = 1 - Float64(match_x)
     y > seed_y * (1 + 100eps(Float64)) || return nothing
@@ -526,8 +530,8 @@ function lfei_pair(coefficients::CoefficientSet,
     return (
         patch1,
         patch2,
-        state1=lfei_state(patch1, match_x),
-        state2=lfei_state(patch2, match_x),
+        state1=large_frequency_expansion_infinity_state(patch1, match_x),
+        state2=large_frequency_expansion_infinity_state(patch2, match_x),
         tail=max(selected1.tail, selected2.tail),
         residual=max(selected1.residual, selected2.residual),
         check=max(selected1.check, selected2.check),
@@ -536,7 +540,7 @@ end
 
 # Patch from the seed as far toward match_x as the series is certified, scaled to
 # match the given seed value and derivative.
-function lfei_reach(coefficients::CoefficientSet, branch,
+function large_frequency_expansion_infinity_reach(coefficients::CoefficientSet, branch,
         seed_y, match_x, seed_X, seed_dXdx)
     y = 1 - Float64(match_x)
     y > seed_y * (1 + 100eps(Float64)) || return nothing
@@ -551,11 +555,11 @@ function lfei_reach(coefficients::CoefficientSet, branch,
     patch = InfinityLargeFrequencyExpansionPatch(1 - Float64(seed_y),
         1 - selected.y, plan, scale)
     check = selected.checks[1]
-    state = lfei_state(patch, 1 - selected.y)
+    state = large_frequency_expansion_infinity_state(patch, 1 - selected.y)
     return (; patch, state, check.tail, check.residual, check.check)
 end
 
-function lfei_reach_pair(coefficients::CoefficientSet,
+function large_frequency_expansion_infinity_reach_pair(coefficients::CoefficientSet,
         branch1, branch2, seed_y, match_x,
         seed_X1, seed_dXdx1, seed_X2, seed_dXdx2)
     y = 1 - Float64(match_x)
@@ -580,18 +584,20 @@ function lfei_reach_pair(coefficients::CoefficientSet,
     return (
         patch1,
         patch2,
-        state1=lfei_state(patch1, 1 - selected.y),
-        state2=lfei_state(patch2, 1 - selected.y),
+        state1=large_frequency_expansion_infinity_state(patch1, 1 - selected.y),
+        state2=large_frequency_expansion_infinity_state(patch2, 1 - selected.y),
         tail=max(check1.tail, check2.tail),
         residual=max(check1.residual, check2.residual),
         check=max(check1.check, check2.check),
     )
 end
 
-# As lfei_reach with a given scale, re-checking the hand-off point after the
+# As large_frequency_expansion_infinity_reach with a given scale, re-checking the hand-off point after the
 # round trip y -> x -> y.
-function lfei_anchor(coefficients::CoefficientSet, branch,
+function large_frequency_expansion_infinity_anchor(coefficients::CoefficientSet, branch,
         seed_y, match_x, scale)
+    # Round the seed through x = 1 - y once, so that the y used for the checks
+    # and 1 - patch.center_x are the same floating-point number.
     canonical_seed = 1.0 - (1.0 - Float64(seed_y))
     target_y = 1.0 - Float64(match_x)
     target_y > canonical_seed * (1 + 100eps(Float64)) || return nothing
@@ -608,14 +614,16 @@ function lfei_anchor(coefficients::CoefficientSet, branch,
     check.accepted || return nothing
     patch = InfinityLargeFrequencyExpansionPatch(
         1.0 - canonical_seed, next_x, plan, ComplexF64(scale))
-    seed = lfei_state(patch, patch.center_x)
-    state = lfei_state(patch, patch.next_x)
+    seed = large_frequency_expansion_infinity_state(patch, patch.center_x)
+    state = large_frequency_expansion_infinity_state(patch, patch.next_x)
     return (; patch, seed, state, check.tail,
         check.residual, check.check)
 end
 
-function lfei_anchor_pair(coefficients::CoefficientSet,
+function large_frequency_expansion_infinity_anchor_pair(coefficients::CoefficientSet,
         branch1, branch2, seed_y, match_x, scale1, scale2)
+    # Round the seed through x = 1 - y once, so that the y used for the checks
+    # and 1 - patch.center_x are the same floating-point number.
     canonical_seed = 1.0 - (1.0 - Float64(seed_y))
     target_y = 1.0 - Float64(match_x)
     target_y > canonical_seed * (1 + 100eps(Float64)) || return nothing
@@ -640,10 +648,10 @@ function lfei_anchor_pair(coefficients::CoefficientSet,
     return (
         patch1,
         patch2,
-        seed1=lfei_state(patch1, patch1.center_x),
-        seed2=lfei_state(patch2, patch2.center_x),
-        state1=lfei_state(patch1, patch1.next_x),
-        state2=lfei_state(patch2, patch2.next_x),
+        seed1=large_frequency_expansion_infinity_state(patch1, patch1.center_x),
+        seed2=large_frequency_expansion_infinity_state(patch2, patch2.center_x),
+        state1=large_frequency_expansion_infinity_state(patch1, patch1.next_x),
+        state2=large_frequency_expansion_infinity_state(patch2, patch2.next_x),
         tail=max(check1.tail, check2.tail),
         residual=max(check1.residual, check2.residual),
         check=max(check1.check, check2.check),

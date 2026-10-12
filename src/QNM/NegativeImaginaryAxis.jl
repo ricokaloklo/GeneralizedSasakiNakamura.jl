@@ -21,23 +21,23 @@
 # rho_edge / 8^k, k = 0..3 (a root born from a pole stays very close to it),
 # and the tangent restart starts 1e-3 off the axis.
 
-const _NIA_EDGE_STEP_FACTOR = 8
-const _NIA_SEARCH_HALF_WINDOW = 1 // 4
-const _NIA_CANDIDATE_REAL_CAP = 1 // 4
-const _NIA_EDGE_SCAN_POINTS = 33
-const _NIA_FIRST_SEARCH_SPAN = 1 // 10
+const _NEGATIVE_IMAGINARY_AXIS_EDGE_STEP_FACTOR = 8
+const _NEGATIVE_IMAGINARY_AXIS_SEARCH_HALF_WINDOW = 1 // 4
+const _NEGATIVE_IMAGINARY_AXIS_CANDIDATE_REAL_CAP = 1 // 4
+const _NEGATIVE_IMAGINARY_AXIS_EDGE_SCAN_POINTS = 33
+const _NEGATIVE_IMAGINARY_AXIS_FIRST_SEARCH_SPAN = 1 // 10
 
 """
-    _nia_endpoint_detected(mode, last_root, last_predictor, last_stop_reason;
+    _negative_imaginary_axis_endpoint_detected(mode, last_root, last_predictor, last_stop_reason;
         derivative_step_scale=1)
 
 Classify a stalled continuation as reaching the NIA: the last accepted root is
 within two unclamped derivative steps of the axis, or the last predictor lies
 on or beyond it, or the last polish started off the branch.
 """
-function _nia_endpoint_detected(mode::QNMMode, last_root, last_predictor,
+function _negative_imaginary_axis_endpoint_detected(mode::QNMMode, last_root, last_predictor,
         last_stop_reason::Symbol; derivative_step_scale=1)
-    _nia_crossing_exempt(mode) && return false
+    _negative_imaginary_axis_crossing_exempt(mode) && return false
     last_stop_reason == :initial_guess_off_branch && return true
     sign = _branch_sign(mode)
     if last_root !== nothing && isfinite(last_root)
@@ -52,7 +52,7 @@ end
 # Extrapolate the last (at most three) accepted roots to Re(omega)=0. Near a
 # collision with the mirror root Re(omega)^2 is regular in a, so the zero of
 # its interpolant is used; it must lie within four bracket widths.
-function _nia_endpoint_extrapolation(mode::QNMMode, spins, roots, failed_spin)
+function _negative_imaginary_axis_endpoint_extrapolation(mode::QNMMode, spins, roots, failed_spin)
     isempty(spins) && return (spin=missing, frequency=missing,
         method=:unavailable)
     T = eltype(spins)
@@ -104,7 +104,7 @@ function _interpolant_zeros(xs, ys)
 end
 
 """
-    _nia_step_crosses_axis(mode, coordinates, roots, next_coordinate)
+    _negative_imaginary_axis_step_crosses_axis(mode, coordinates, roots, next_coordinate)
 
 True when the interpolant of Re(omega)^2 or of Re(omega) through the last (at
 most three) accepted points has a zero between the last accepted coordinate and
@@ -114,9 +114,9 @@ regular where the root meets its mirror (Re(omega) ~ sqrt(a_end - a)); Re(omega)
 itself is regular where the sequence ends on a continued-fraction pole -i N/4
 (Re(omega) ~ a_end - a, e.g. l=2, m=0, n=13).
 """
-function _nia_step_crosses_axis(mode::QNMMode, coordinates, roots,
+function _negative_imaginary_axis_step_crosses_axis(mode::QNMMode, coordinates, roots,
         next_coordinate)
-    _nia_crossing_exempt(mode) && return false
+    _negative_imaginary_axis_crossing_exempt(mode) && return false
     count = min(3, length(coordinates))
     count >= 2 || return false
     xs = coordinates[(end - count + 1):end]
@@ -132,7 +132,7 @@ end
 # A later segment can touch the NIA without ending. Before returning an
 # endpoint failure, restart on the physical side at Re(omega)=+/-1e-3 and
 # continue in the same direction. Segment 0 is never restarted.
-function _continue_with_nia_restarts!(state, mode::QNMMode, target::T;
+function _continue_with_negative_imaginary_axis_restarts!(state, mode::QNMMode, target::T;
         sequence_segment::Int=0, selected_coordinate::Symbol,
         initial_step::T, minimum_step::T, maximum_step::T,
         continuation_root_tolerance::T, polish_options) where {T<:AbstractFloat}
@@ -224,7 +224,7 @@ end
         spins, roots, angular_A, rejected_rows; sequence_segment=0)
 
 Attach the accepted root path to a stalled continuation and, when
-[`_nia_endpoint_detected`](@ref) holds, reclassify the failure as
+[`_negative_imaginary_axis_endpoint_detected`](@ref) holds, reclassify the failure as
 `:negative_imaginary_axis_endpoint` with the extrapolated endpoint.
 """
 function _classify_continuation_failure(mode::QNMMode, reason::Symbol,
@@ -237,11 +237,11 @@ function _classify_continuation_failure(mode::QNMMode, reason::Symbol,
         rejected_rows[end].predictor
     T = typeof(real(last_root))
     scale = _near_extremal_derivative_scale(mode, T(failed_spin))
-    detected = _nia_endpoint_detected(mode, last_root, last_predictor,
+    detected = _negative_imaginary_axis_endpoint_detected(mode, last_root, last_predictor,
         polished.stop_reason; derivative_step_scale=scale)
     detected || return (reason=reason, provenance=(root_path=root_path,
         angular_path=angular_path))
-    endpoint = _nia_endpoint_extrapolation(mode, spins, roots, failed_spin)
+    endpoint = _negative_imaginary_axis_endpoint_extrapolation(mode, spins, roots, failed_spin)
     # A re-emerged segment continues to a -> 1 while touching the axis ever
     # more often (Cook & Zalutskiy); a stall there after the tangent restarts
     # is not an end of the sequence.
@@ -350,7 +350,7 @@ function _qnm_frequency_segmented(mode::QNMMode, a, segment;
         frequency=first_segment.provenance.endpoint_frequency)
     if mode.m != 0
         segment === :auto && return first_segment
-        search = _nia_reemergence_seed(mode, first_segment, aT;
+        search = _negative_imaginary_axis_reemergence_seed(mode, first_segment, aT;
             attribute=false, kwargs...)
         return failure(first_segment.omega,
             :segment_attribution_unavailable, (
@@ -361,7 +361,7 @@ function _qnm_frequency_segmented(mode::QNMMode, a, segment;
             ))
     end
 
-    search = _nia_reemergence_seed(mode, first_segment, aT; kwargs...)
+    search = _negative_imaginary_axis_reemergence_seed(mode, first_segment, aT; kwargs...)
     search_provenance = (
         segment0_endpoint=endpoint,
         reemergence_events=search.events,
@@ -389,12 +389,12 @@ end
 
 # Roots on the edge line Re(omega) = rho_edge at spin `a`, polished and
 # restricted to the candidate strip 0 < Re(omega) <= 1/4.
-function _nia_edge_scan(mode::QNMMode, a::T, gamma_center, rho_edge,
+function _negative_imaginary_axis_edge_scan(mode::QNMMode, a::T, gamma_center, rho_edge,
         polish_options) where {T<:AbstractFloat}
     sign = _branch_sign(mode)
-    gammas = range(gamma_center - T(_NIA_SEARCH_HALF_WINDOW),
-        gamma_center + T(_NIA_SEARCH_HALF_WINDOW);
-        length=_NIA_EDGE_SCAN_POINTS)
+    gammas = range(gamma_center - T(_NEGATIVE_IMAGINARY_AXIS_SEARCH_HALF_WINDOW),
+        gamma_center + T(_NEGATIVE_IMAGINARY_AXIS_SEARCH_HALF_WINDOW);
+        length=_NEGATIVE_IMAGINARY_AXIS_EDGE_SCAN_POINTS)
     residual_options = (; polish_options.angular_order,
         polish_options.sheet_id, polish_options.inversion_index,
         polish_options.cf_tolerance, polish_options.cf_minimum_iterations,
@@ -434,7 +434,7 @@ function _nia_edge_scan(mode::QNMMode, a::T, gamma_center, rho_edge,
             polish_options...)
         polished.converged || continue
         rho = sign * real(polished.omega)
-        zero(T) < rho <= T(_NIA_CANDIDATE_REAL_CAP) || continue
+        zero(T) < rho <= T(_NEGATIVE_IMAGINARY_AXIS_CANDIDATE_REAL_CAP) || continue
         duplicate = any(candidates) do candidate
             abs(candidate.omega - polished.omega) <=
                 T(1.0e-6) * max(one(T), abs(polished.omega))
@@ -452,7 +452,7 @@ end
 # Continue a candidate root at `a_start` down to `a_end`. A candidate that
 # reaches a_end without touching the axis belongs to another sequence; one
 # that ends on the NIA above a_end is a re-emergence event.
-function _nia_downward_event(mode::QNMMode, a_start::T, candidate, a_end::T,
+function _negative_imaginary_axis_downward_event(mode::QNMMode, a_start::T, candidate, a_end::T,
         settings) where {T<:AbstractFloat}
     state = (accepted_spins=T[a_start], accepted_coordinates=T[a_start],
         accepted_roots=Complex{T}[candidate.omega],
@@ -483,7 +483,7 @@ function _nia_downward_event(mode::QNMMode, a_start::T, candidate, a_end::T,
 end
 
 """
-    _nia_reemergence_seed(mode, first_segment, target; attribute=true,
+    _negative_imaginary_axis_reemergence_seed(mode, first_segment, target; attribute=true,
         kwargs...)
 
 Search for the segment that re-emerges from the NIA after `first_segment`
@@ -494,18 +494,18 @@ attributed to `mode` (m = 0) when its axis frequency lies between the
 segment-0 endpoints of overtones `n` and `n+1`; the earliest such event seeds
 the segment-1 continuation at its rung.
 """
-function _nia_reemergence_seed(mode::QNMMode, first_segment, target::T;
+function _negative_imaginary_axis_reemergence_seed(mode::QNMMode, first_segment, target::T;
         attribute::Bool=true, kwargs...) where {T<:AbstractFloat}
     provenance = first_segment.provenance
     settings = provenance.continuation_settings
     a_end = T(provenance.endpoint_spin)
     omega_end = provenance.endpoint_frequency
     gamma_end = -imag(omega_end)
-    rho_edge = T(_NIA_EDGE_STEP_FACTOR) *
+    rho_edge = T(_NEGATIVE_IMAGINARY_AXIS_EDGE_STEP_FACTOR) *
         T(_root_derivative_step(T, omega_end))
     step = settings.maximum_step
     anchor = _spin_sequence_anchor(mode, T)
-    first_upper = min(target, a_end + T(_NIA_FIRST_SEARCH_SPAN), anchor)
+    first_upper = min(target, a_end + T(_NEGATIVE_IMAGINARY_AXIS_FIRST_SEARCH_SPAN), anchor)
     final_upper = min(target, anchor)
     rungs = T[]
     j = 1
@@ -534,12 +534,12 @@ function _nia_reemergence_seed(mode::QNMMode, first_segment, target::T;
             rung <= upper || break
             pass == 2 && rung <= first_upper && continue
             searched = (a_end, rung)
-            scan = _nia_edge_scan(mode, rung, gamma_end, rho_edge,
+            scan = _negative_imaginary_axis_edge_scan(mode, rung, gamma_end, rho_edge,
                 settings.polish_options)
             push!(rows, scan.rows)
             rung_events = NamedTuple[]
             for candidate in scan.candidates
-                outcome = _nia_downward_event(mode, rung, candidate, a_end,
+                outcome = _negative_imaginary_axis_downward_event(mode, rung, candidate, a_end,
                     settings)
                 record = merge(outcome, (rung=rung,
                     rung_frequency=candidate.omega))

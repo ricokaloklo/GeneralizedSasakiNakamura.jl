@@ -19,27 +19,24 @@ using ..Eikonal:
     eikonal_value
 using ..HorizonLargeFrequencyExpansion:
     HorizonLargeFrequencyExpansionPatch,
-    lfeh_pair,
-    lfeh_single,
-    lfeh_state,
-    lfeh_value
+    large_frequency_expansion_horizon_pair,
+    large_frequency_expansion_horizon_single,
+    large_frequency_expansion_horizon_state,
+    large_frequency_expansion_horizon_value
 using ..InfinityLargeFrequencyExpansion:
     InfinityLargeFrequencyExpansionPatch,
-    lfei_anchor,
-    lfei_anchor_pair,
-    lfei_pair,
-    lfei_reach,
-    lfei_reach_pair,
-    lfei_single,
-    lfei_state,
-    lfei_value
+    large_frequency_expansion_infinity_anchor,
+    large_frequency_expansion_infinity_anchor_pair,
+    large_frequency_expansion_infinity_pair,
+    large_frequency_expansion_infinity_reach,
+    large_frequency_expansion_infinity_reach_pair,
+    large_frequency_expansion_infinity_single,
+    large_frequency_expansion_infinity_state,
+    large_frequency_expansion_infinity_value
 using ..LocalSolutionAtInfinity:
-    infinity_coefficients,
     infinity_guarded,
     infinity_exponents,
-    infinity_series_pair,
-    infinity_series_triple,
-    infinity_series_value
+    infinity_series_triple
 using ..LocalSolutionAtZero:
     is_horizon_threshold,
     horizon_series_pair,
@@ -80,6 +77,14 @@ const _ENDPOINT_SEED_TARGET = 1e-13
 const _HORIZON_REACH_ORDER = 64
 const _HORIZON_REACH_COST_RATIO = 0.75
 const _HORIZON_REACH_MIN_SAVING = 2.0
+# Load-time environment switches (read once when the module loads):
+# ISEM_HORIZON_REACH_AUTO=1 (default) lets the horizon seed be re-selected with an
+# order-_HORIZON_REACH_ORDER series when that shortens the march (see
+# `_horizon_seed`); ISEM_ORDINARY_EIKONAL=1 (default) allows eikonal patches in
+# the ordinary regime; ISEM_HORIZON_LARGE_FREQUENCY_EXPANSION=1 (default 0)
+# compiles in the horizon large-frequency carrier route (`_large_frequency_expansion_horizon_basis`);
+# ISEM_INFINITY_LARGE_FREQUENCY_EXPANSION=1 (default) compiles in the infinity
+# large-frequency carrier of the hybrid marches and `iterate_from_infinity`.
 const _HORIZON_REACH_AUTO = get(
     ENV, "ISEM_HORIZON_REACH_AUTO", "1") == "1"
 const _INFINITY_ENDPOINT_TARGET = 1e-10
@@ -106,6 +111,8 @@ const _SMALL_FREQUENCY_EXPANSION_BRIDGE_TOLERANCE = 1.0e-13
 @inline _eikonal_allowed(regime::Symbol) =
     regime != :ordinary || _ORDINARY_EIKONAL
 
+# Taylor patch about center_x, valid through next_x: the solution is scale times
+# sum_k coeffs[k+1] (x - center_x)^k.
 struct Patch
     center_x::Float64
     next_x::Float64
@@ -116,6 +123,8 @@ end
 Patch(center_x, next_x, coeffs) =
     Patch(center_x, next_x, coeffs, 1.0)
 
+# Taylor patch in Y = (1 - x) / omega_scale about center_y, valid through next_x;
+# the solution is scale times the series in Y - center_y.
 struct ScaledPatch
     center_x::Float64
     next_x::Float64
@@ -125,12 +134,16 @@ struct ScaledPatch
     scale::Float64
 end
 
+# State (X, dXdx) normalized so that max(|X|, |dXdx|) = 1; the true state is
+# exp(log_scale) times the stored one.
 struct LogScaledState
     X::ComplexF64
     dXdx::ComplexF64
     log_scale::Float64
 end
 
+# Taylor patch like `Patch` whose amplitude is stored as its natural log, for
+# propagation through regions of exponential growth or decay.
 struct LogScaledPatch
     center_x::Float64
     next_x::Float64
@@ -152,6 +165,8 @@ struct Truncation
     reason::Symbol
 end
 
+# Result of `iterate_logscaled_from_state`: the seed state, the log-scaled
+# patches to the match point, the state there, step statistics and truncations.
 struct LogScaledBasis
     kind::Symbol
     seed_x::Float64
@@ -318,6 +333,10 @@ Basis(
     true,
 )
 
+# Chosen infinity endpoint: endpoint_y (y = 1 - x), the truncated :out and :in
+# series with their orders, the selection score, the variable scale of the
+# series variable y / variable_scale, the requested order and the truncation
+# reasons of the two series.
 struct InfinitySelection
     endpoint_y::Float64
     out_coeffs::Vector{ComplexF64}
@@ -331,6 +350,9 @@ struct InfinitySelection
     in_reason::Symbol
 end
 
+# Thrown when no endpoint coordinate meets the seed target: `endpoint` is
+# :horizon or :infinity, with the target, the best score and coordinate tried,
+# and the series order in use.
 struct EndpointCertificateError <: Exception
     endpoint::Symbol
     target::Float64
@@ -370,6 +392,12 @@ InfinitySelection(
     :none,
 )
 
+# Work buffers for the ordinary-point marches: `pq` for the coefficient-table
+# values, `avec`/`bvec` for the local A/B series, `local_coeffs`/`local_coeffs2`
+# for the Taylor coefficients of up to two solutions, `radius_buffer`/
+# `radius_buffer2` for the radius estimate, `denom_inv[n+1] = 1/((n+2)(n+1))`,
+# and the optional eikonal scratch, large-frequency plan and near-extreme
+# double-double plan (`ordinary_dd`).
 struct IterationScratch
     pq::Vector{ComplexF64}
     avec::Vector{ComplexF64}
@@ -707,6 +735,10 @@ end
 @inline _state_scale(value, derivative) =
     max(abs(value), abs(derivative), floatmin(Float64))
 
+# Checks of a horizon seed x: relative ODE residual of x^mu sum c_n x^n with
+# A = a(x)/x, B = b(x)/x^2 (`_horizon_residual_metric`); round-off condition
+# number of the series value and derivative (`_horizon_eval_condition`); and the
+# relative size of the upper half of the series (`_horizon_tail_metric`).
 function _horizon_residual_metric(coeffs, mu, a_coeffs, b_coeffs, x)
     value, derivative, second = horizon_series_triple(coeffs, mu, x)
     A = poly_value(a_coeffs, x) / x
@@ -797,6 +829,8 @@ function _tail_metric(coeffs, value, h, order::Integer)
     return tail
 end
 
+# Step shrink factor from the tail score: the order-based estimate of the step
+# that would meet tol, clamped to [0.05, 0.9]; 1 when tol is already met.
 @inline function _step_factor(score, tol, order)
     score <= tol && return 1.0
     (!isfinite(score) || score <= 0 || tol <= 0) && return 0.5
@@ -969,6 +1003,8 @@ function _best_infinity_order_metrics(a_coeffs, b_coeffs, coeffs, rho, sigma, y)
     return best
 end
 
+# Laurent coefficients of A (from y^-1) and B (from y^-4) rewritten for the
+# scaled variable Y = y / omega.
 function _scale_infinity_ab(a_coeffs, b_coeffs, omega)
     a_scaled = similar(a_coeffs)
     b_scaled = similar(b_coeffs)
@@ -1020,6 +1056,9 @@ function _scaled_y_residual_metric(a_scaled, b_scaled, coeffs, rho, Sigma, Y, or
     return abs(residual) / max(scale, eps(Float64))
 end
 
+# For one branch: the widest Y in _SCALED_Y_CANDIDATES (over all orders) whose
+# max(tail, adjacent-order, residual) score meets _INFINITY_ENDPOINT_TARGET, or
+# the best-scoring (order, Y) if none does.
 function _best_scaled_y_branch_metric(a_scaled, b_scaled, coeffs, rho, Sigma)
     max_order = length(coeffs) - 1
     min_order = min(12, max_order)
@@ -1467,7 +1506,7 @@ function _hybrid_state(
         if work.large_frequency_expansion !== nothing && kind in (:infinity_in, :infinity_out)
             branch = kind == :infinity_in ? :in : :out
             scale = endpoint_seed_scale(kind, coefficients.params)
-            carrier = lfei_anchor(coefficients, branch,
+            carrier = large_frequency_expansion_infinity_anchor(coefficients, branch,
                 1.0 - current_x, target_x, scale)
             if carrier !== nothing
                 push!(patches, carrier.patch)
@@ -1515,7 +1554,7 @@ function _hybrid_state(
     if !carrier_anchored && current_x != target_x && work.large_frequency_expansion !== nothing &&
             kind in (:infinity_in, :infinity_out)
         branch = kind == :infinity_in ? :in : :out
-        carrier = lfei_reach(coefficients, branch, 1 - current_x,
+        carrier = large_frequency_expansion_infinity_reach(coefficients, branch, 1 - current_x,
             target_x, current_value, current_derivative)
         if carrier !== nothing
             push!(patches, carrier.patch)
@@ -1702,7 +1741,7 @@ function _hybrid_pair(
             branch2 = kind2 == :infinity_in ? :in : :out
             scale1 = endpoint_seed_scale(kind1, coefficients.params)
             scale2 = endpoint_seed_scale(kind2, coefficients.params)
-            carrier = lfei_anchor_pair(coefficients, branch1, branch2,
+            carrier = large_frequency_expansion_infinity_anchor_pair(coefficients, branch1, branch2,
                 1.0 - current_x, target_x, scale1, scale2)
             if carrier !== nothing
                 push!(patches1, carrier.patch1)
@@ -1760,7 +1799,7 @@ function _hybrid_pair(
             kind2 in (:infinity_in, :infinity_out)
         branch1 = kind1 == :infinity_in ? :in : :out
         branch2 = kind2 == :infinity_in ? :in : :out
-        carrier = lfei_reach_pair(coefficients, branch1, branch2,
+        carrier = large_frequency_expansion_infinity_reach_pair(coefficients, branch1, branch2,
             1 - current_x, target_x,
             value1, deriv1, value2, deriv2)
         if carrier !== nothing
@@ -2055,6 +2094,8 @@ function _materialize_logscaled_component(component, log_scale, phase)
     return ComplexF64(value)
 end
 
+# Named tuple (X, dXdx) equal to `scale * exp(state.log_scale)` times the stored
+# components; errors when the result is not finite.
 function materialize_logscaled_state(
     state::LogScaledState;
     scale=1.0 + 0.0im,
@@ -2282,6 +2323,9 @@ function iterate_scaled_y(
     )
 end
 
+# Two states propagated from seed_x to match_x with common steps (the hybrid
+# march for infinity kinds when eikonal patches are enabled); returns
+# (basis1, basis2) with endpoint_valid = false.
 function iterate_pair_from_state(
     coefficients::CoefficientSet,
     kind1::Symbol,
@@ -2430,6 +2474,8 @@ function iterate_pair_from_state(
     return basis1, basis2
 end
 
+# Value and x-derivative of a horizon local solution at x, including the
+# log(x) term of a threshold (logarithmic) solution when present.
 function _horizon_solution_pair(solution, x)
     value, derivative = horizon_series_pair(
         solution.coefficients, solution.exponent, x)
@@ -2446,6 +2492,8 @@ function _horizon_solution_pair(solution, x)
     return ComplexF64(value), ComplexF64(derivative)
 end
 
+# Taylor march of both horizon solutions from the common seed_x to match_x with
+# shared steps; the plain route of `iterate_pair_from_zero`.
 function _build_pair_from_horizon_seed(
     coefficients::CoefficientSet,
     solution1,
@@ -2622,7 +2670,11 @@ function _patch_range(patches, seed_x)
     return maximum_step, isfinite(minimum_step) ? minimum_step : 0.0
 end
 
-function _lfeh_horizon(
+# Horizon large-frequency route: one horizon-series patch from seed_x, then an
+# eikonal path (or a Taylor march if that fails) to match_x; nothing when no
+# patch is available. Called only when ISEM_HORIZON_LARGE_FREQUENCY_EXPANSION=1.
+# `_large_frequency_expansion_horizon_basis_pair` is the two-branch version.
+function _large_frequency_expansion_horizon_basis(
     coefficients::CoefficientSet,
     solution,
     branch::Symbol,
@@ -2638,7 +2690,7 @@ function _lfeh_horizon(
     scale = endpoint_seed_scale(kind, coefficients.params)
     seed_value = scale * raw
     seed_derivative = scale * draw
-    candidate = lfeh_single(
+    candidate = large_frequency_expansion_horizon_single(
         coefficients, branch, seed_x, scale, match_x)
     candidate === nothing && return nothing
     PatchType = Union{HorizonLargeFrequencyExpansionPatch,EikonalPatch,Patch}
@@ -2681,7 +2733,7 @@ function _lfeh_horizon(
         max_step, min_step, 1.0 + 0.0im, truncations)
 end
 
-function _lfeh_horizon_pair(
+function _large_frequency_expansion_horizon_basis_pair(
     coefficients::CoefficientSet,
     solution1,
     solution2,
@@ -2706,7 +2758,7 @@ function _lfeh_horizon_pair(
     deriv1 = scale1 * draw1
     value2 = scale2 * raw2
     deriv2 = scale2 * draw2
-    candidate = lfeh_pair(coefficients,
+    candidate = large_frequency_expansion_horizon_pair(coefficients,
         branch1, scale1, branch2, scale2, seed_x, match_x)
     candidate === nothing && return nothing
     PatchType = Union{HorizonLargeFrequencyExpansionPatch,EikonalPatch,Patch}
@@ -2814,6 +2866,10 @@ function _hybrid_horizon(
     )
 end
 
+# Eikonal route from the horizon seed: `eikonal_path` when the slow-variation
+# score is at most _EIKONAL_SLOW_VARIATION, `eikonal_split` when only
+# _EIKONAL_CERTIFIED_VARIATION is met and a residual `limit` is given; nothing
+# otherwise. `_eikonal_horizon_pair` is the two-branch version.
 function _eikonal_horizon(
     coefficients::CoefficientSet,
     solution,
@@ -3048,6 +3104,8 @@ function _eikonal_horizon_pair(
     return basis1, basis2
 end
 
+# Seed point of a horizon solution from `select_horizon_seed` (using the
+# logarithmic part's series for a threshold solution).
 @inline function _horizon_seed_value(solution, coefficients, controls, match_x)
     seed_coefficients = hasproperty(solution, :log_coefficients) &&
         !isempty(solution.log_coefficients) ?
@@ -3087,6 +3145,9 @@ function _horizon_reach_promising(
     return roundoff < max(tail, residual), current_cost
 end
 
+# Whether the order-_HORIZON_REACH_ORDER seed extension is tried: switched on by
+# ISEM_HORIZON_REACH_AUTO, off in the small- and large-frequency regimes and
+# when the horizon order is already at least _HORIZON_REACH_ORDER.
 @inline function _horizon_reach_auto(coefficients, controls)
     _HORIZON_REACH_AUTO || return false
     getproperty(controls, :small_frequency_expansion) && return false
@@ -3175,7 +3236,7 @@ function iterate_from_zero(
             getproperty(controls, :ordinary_order), controls) : scratch
         @static if _HORIZON_LARGE_FREQUENCY_EXPANSION
             if getproperty(controls, :large_frequency_expansion)
-                basis = _lfeh_horizon(
+                basis = _large_frequency_expansion_horizon_basis(
                     coefficients, endpoint_solution, normalized,
                     seed_x, match_x, work, controls)
                 basis === nothing || return basis
@@ -3210,6 +3271,9 @@ function iterate_from_zero(
     )
 end
 
+# Both horizon branches from one common seed with shared steps, returning
+# (basis1, basis2). At the superradiant threshold the outgoing branch uses the
+# logarithmic solution and the eikonal routes are skipped.
 function iterate_pair_from_zero(
     coefficients::CoefficientSet,
     branch1::Symbol,
@@ -3233,7 +3297,7 @@ function iterate_pair_from_zero(
             getproperty(controls, :ordinary_order), controls) : scratch
         @static if _HORIZON_LARGE_FREQUENCY_EXPANSION
             if getproperty(controls, :large_frequency_expansion)
-                bases = _lfeh_horizon_pair(
+                bases = _large_frequency_expansion_horizon_basis_pair(
                     coefficients, solution1, solution2,
                     normalized1, normalized2,
                     seed_x, match_x, work, controls)
@@ -3273,7 +3337,7 @@ function iterate_pair_from_zero(
     )
 end
 
-function _lfei_data(coefficients, selected, branch)
+function _large_frequency_expansion_infinity_data(coefficients, selected, branch)
     kind = _kind(:infinity, branch)
     rho, sigma = infinity_exponents(coefficients.params, branch)
     endpoint_coeffs = branch == :out ?
@@ -3287,14 +3351,17 @@ function _lfei_data(coefficients, selected, branch)
         endpoint_order, endpoint_reason, scale)
 end
 
-function _lfei_basis(coefficients, selected, branch, match_x)
+# Large-frequency infinity route: one infinity-series patch from endpoint_y
+# straight to match_x; nothing when it is not certified or the selection uses a
+# scaled variable. `_large_frequency_expansion_infinity_pair` is the two-branch version.
+function _large_frequency_expansion_infinity_basis(coefficients, selected, branch, match_x)
     selected.variable_scale == 1 || return nothing
-    data = _lfei_data(coefficients, selected, branch)
-    candidate = lfei_single(coefficients, branch,
+    data = _large_frequency_expansion_infinity_data(coefficients, selected, branch)
+    candidate = large_frequency_expansion_infinity_single(coefficients, branch,
         selected.endpoint_y, match_x, data.scale)
     candidate === nothing && return nothing
     seed_x = 1 - selected.endpoint_y
-    seed = lfei_state(candidate.patch, seed_x)
+    seed = large_frequency_expansion_infinity_state(candidate.patch, seed_x)
     truncations = Truncation[]
     _record_truncation!(truncations, :infinity, data.kind,
         selected.requested_order, data.endpoint_order,
@@ -3309,16 +3376,16 @@ function _lfei_basis(coefficients, selected, branch, match_x)
         1, step, step, 1.0 + 0.0im, truncations)
 end
 
-function _lfei_pair(coefficients, selected, branch1, branch2, match_x)
+function _large_frequency_expansion_infinity_pair(coefficients, selected, branch1, branch2, match_x)
     selected.variable_scale == 1 || return nothing
-    data1 = _lfei_data(coefficients, selected, branch1)
-    data2 = _lfei_data(coefficients, selected, branch2)
-    candidate = lfei_pair(coefficients, branch1, branch2,
+    data1 = _large_frequency_expansion_infinity_data(coefficients, selected, branch1)
+    data2 = _large_frequency_expansion_infinity_data(coefficients, selected, branch2)
+    candidate = large_frequency_expansion_infinity_pair(coefficients, branch1, branch2,
         selected.endpoint_y, match_x, data1.scale, data2.scale)
     candidate === nothing && return nothing
     seed_x = 1 - selected.endpoint_y
-    seed1 = lfei_state(candidate.patch1, seed_x)
-    seed2 = lfei_state(candidate.patch2, seed_x)
+    seed1 = large_frequency_expansion_infinity_state(candidate.patch1, seed_x)
+    seed2 = large_frequency_expansion_infinity_state(candidate.patch2, seed_x)
     function wrap(data, patch, seed, state)
         truncations = Truncation[]
         _record_truncation!(truncations, :infinity, data.kind,
@@ -3356,7 +3423,7 @@ function iterate_from_infinity(
         selection
     @static if _INFINITY_LARGE_FREQUENCY_EXPANSION
         if getproperty(controls, :large_frequency_expansion)
-            basis = _lfei_basis(
+            basis = _large_frequency_expansion_infinity_basis(
                 coefficients, selected, normalized, match_x)
             basis === nothing || return basis
         end
@@ -3387,6 +3454,9 @@ function iterate_from_infinity(
     )
 end
 
+# Both infinity branches from the common selected endpoint, marched together by
+# `_hybrid_pair` (or the large-frequency patch pair when enabled); returns
+# (basis1, basis2).
 function iterate_pair_from_infinity(
     coefficients::CoefficientSet,
     branch1::Symbol,
@@ -3403,7 +3473,7 @@ function iterate_pair_from_infinity(
             controls=controls) : selection
     @static if _INFINITY_LARGE_FREQUENCY_EXPANSION
         if getproperty(controls, :large_frequency_expansion)
-            bases = _lfei_pair(
+            bases = _large_frequency_expansion_infinity_pair(
                 coefficients, selected, normalized1, normalized2, match_x)
             bases === nothing || return bases
         end
@@ -3541,8 +3611,8 @@ end
 _patch_value(patch::Patch, x) = patch.scale *
     poly_value(patch.coeffs, x - patch.center_x)
 _patch_value(patch::EikonalPatch, x) = eikonal_value(patch, x)
-_patch_value(patch::HorizonLargeFrequencyExpansionPatch, x) = lfeh_value(patch, x)
-_patch_value(patch::InfinityLargeFrequencyExpansionPatch, x) = lfei_value(patch, x)
+_patch_value(patch::HorizonLargeFrequencyExpansionPatch, x) = large_frequency_expansion_horizon_value(patch, x)
+_patch_value(patch::InfinityLargeFrequencyExpansionPatch, x) = large_frequency_expansion_infinity_value(patch, x)
 function _patch_value(patch::ScaledPatch, x)
     y = (1.0 - Float64(x)) / patch.omega_scale
     return patch.scale * poly_value(patch.coeffs, y - patch.center_y)
@@ -3555,11 +3625,11 @@ end
 
 _patch_state(patch::EikonalPatch, x) = eikonal_state(patch, x)
 function _patch_state(patch::HorizonLargeFrequencyExpansionPatch, x)
-    state = lfeh_state(patch, x)
+    state = large_frequency_expansion_horizon_state(patch, x)
     return state.X, state.dXdx
 end
 function _patch_state(patch::InfinityLargeFrequencyExpansionPatch, x)
-    state = lfei_state(patch, x)
+    state = large_frequency_expansion_infinity_state(patch, x)
     return state.X, state.dXdx
 end
 function _patch_state(patch::ScaledPatch, x)
@@ -3597,6 +3667,8 @@ function basis_value(basis::Basis, x)
     error("ISEM GSN basis does not cover x=$x")
 end
 
+# (X, dX/dx) of a basis at x: the endpoint series between the endpoint and the
+# seed (when valid), otherwise the patch covering x; errors outside the basis.
 function basis_state(basis::Basis, x)
     x == basis.seed_x && return basis.seed_X, basis.seed_dXdx
     if basis.endpoint_valid && _is_horizon(basis.kind)
@@ -3641,6 +3713,8 @@ function basis_state(basis::Basis{Patch}, x, infinity_y)
     return patch.scale * value, patch.scale * derivative
 end
 
+# LogScaledState of a log-scaled basis at x: the seed state at seed_x, otherwise
+# the covering patch renormalized; errors outside the basis.
 function logscaled_basis_state(basis::LogScaledBasis, x)
     x == basis.seed_x && return basis.seed_state
     patch_index = _patch_index(basis.patches, x)
@@ -3651,6 +3725,7 @@ function logscaled_basis_state(basis::LogScaledBasis, x)
     return logscaled_state(value, derivative, patch.log_scale)
 end
 
+# Number of patches in a basis.
 basis_patch_count(basis::Basis) = length(basis.patches)
 basis_patch_count(basis::LogScaledBasis) = length(basis.patches)
 

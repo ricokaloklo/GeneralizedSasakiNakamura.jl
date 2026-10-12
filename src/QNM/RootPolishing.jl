@@ -22,7 +22,7 @@ const _SCHWARZSCHILD_SEEDS = Dict{NTuple{3,Int},ComplexF64}(
 const _SCHWARZSCHILD_L2_N8_UNCONVENTIONAL =
     -0.0153245047607925 - 1.99841184185869im
 const _KERR_L2_M2_NEAR_AS_ANCHOR_SPIN = 0.05
-const _KERR_L2_M2_MST_SWITCH_SPIN = 0.015
+const _KERR_L2_M2_MANO_SUZUKI_TAKASUGI_SWITCH_SPIN = 0.015
 const _KERR_L2_M2_NEAR_AS_ANCHORS = Dict{Symbol,ComplexF64}(
     :unconventional => 0.06177258790671765 - 1.8876918643227598im,
     :algebraically_special =>
@@ -64,13 +64,13 @@ end
 
 # The l=2, |m|=2 complete-spectrum n=8/n=9 trajectories cross the NIA. Their
 # label is fixed by continuation from the finite-spin anchor, not by sign(Re w).
-_nia_crossing_exempt(mode::QNMMode) = mode.branch == :positive_real &&
+_negative_imaginary_axis_crossing_exempt(mode::QNMMode) = mode.branch == :positive_real &&
     mode.s == -2 && mode.l == 2 && abs(mode.m) == 2 && mode.n in (8, 9)
 
 _branch_sign(mode::QNMMode) = mode.branch == :positive_real ? 1 : -1
 
 function _branch_consistent(mode::QNMMode, omega)
-    _nia_crossing_exempt(mode) && return true
+    _negative_imaginary_axis_crossing_exempt(mode) && return true
     if mode.branch == :positive_real
         return real(omega) > 0
     end
@@ -366,7 +366,7 @@ end
 function _stencil_step(mode::QNMMode, omega::Complex{T},
         derivative_step_scale=one(T)) where {T<:AbstractFloat}
     h = T(_root_derivative_step(T, omega)) * T(derivative_step_scale)
-    _nia_crossing_exempt(mode) && return h
+    _negative_imaginary_axis_crossing_exempt(mode) && return h
     return min(h, _branch_sign(mode) * real(omega) / 4)
 end
 
@@ -637,7 +637,7 @@ function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
     omega = initial
     # The Leaver tail (ContinuedFractions.jl, sqrt(-(D1+D2+D3))) has a branch
     # cut on the NIA, so a root on the wrong side of it is not this branch.
-    clamp_stencil = !_nia_crossing_exempt(mode)
+    clamp_stencil = !_negative_imaginary_axis_crossing_exempt(mode)
     if clamp_stencil && _branch_sign(mode) * real(omega) <= zero(T)
         return (
             omega=omega, evaluation=nothing, history=NamedTuple[],
@@ -867,23 +867,23 @@ _near_as_complete_scope(mode::QNMMode, near_as_role::Symbol) =
     near_as_role in (:unconventional, :algebraically_special) &&
     mode.branch == :positive_real
 
-function _near_as_mst_required(mode::QNMMode, a, ::Type{T},
+function _near_as_mano_suzuki_takasugi_required(mode::QNMMode, a, ::Type{T},
         near_as_role::Symbol) where {T<:AbstractFloat}
     return T === Float64 && _near_as_complete_scope(mode, near_as_role) &&
-        !iszero(a) && abs(a) < T(_KERR_L2_M2_MST_SWITCH_SPIN)
+        !iszero(a) && abs(a) < T(_KERR_L2_M2_MANO_SUZUKI_TAKASUGI_SWITCH_SPIN)
 end
 
-function _near_as_mst_finalization_required(
+function _near_as_mano_suzuki_takasugi_finalization_required(
         mode::QNMMode, a, ::Type{T}, near_as_role::Symbol) where {
         T<:AbstractFloat}
     return T === Float64 &&
         _near_as_complete_scope(mode, near_as_role) &&
         near_as_role == :algebraically_special &&
-        abs(a) >= T(_KERR_L2_M2_MST_SWITCH_SPIN) &&
+        abs(a) >= T(_KERR_L2_M2_MANO_SUZUKI_TAKASUGI_SWITCH_SPIN) &&
         abs(a) < T(_KERR_L2_M2_NEAR_AS_ANCHOR_SPIN)
 end
 
-function _mst_incidence_evaluation(mode::QNMMode, a::Float64,
+function _mano_suzuki_takasugi_incidence_evaluation(mode::QNMMode, a::Float64,
         omega::ComplexF64; angular_order::Int, sheet_id::Symbol)
     route = ISEM.complex_route(
         mode.s, mode.l, mode.m, a, omega, :IN; backend=:mst)
@@ -914,12 +914,12 @@ end
 
 # Newton polish of the GSN incidence amplitude from the MST backend; used for
 # the near-AS pair at small nonzero spin.
-function _polish_mst_incidence_root(mode::QNMMode, a::Float64,
+function _polish_mano_suzuki_takasugi_incidence_root(mode::QNMMode, a::Float64,
         initial::ComplexF64; angular_order::Int, sheet_id::Symbol,
         root_tolerance::Float64, maximum_root_iterations::Int,
         trust_radius::Float64, derivative_step_scale::Float64=1.0)
     omega = initial
-    evaluation = _mst_incidence_evaluation(
+    evaluation = _mano_suzuki_takasugi_incidence_evaluation(
         mode, a, omega; angular_order, sheet_id)
     history = NamedTuple[]
     for iteration in 1:maximum_root_iterations
@@ -939,13 +939,13 @@ function _polish_mst_incidence_root(mode::QNMMode, a::Float64,
             stop_reason=:root_tolerance)
 
         h = derivative_step_scale * 2.0e-5 * max(1.0, abs(omega))
-        minus2 = _mst_incidence_evaluation(
+        minus2 = _mano_suzuki_takasugi_incidence_evaluation(
             mode, a, omega - 2h; angular_order, sheet_id)
-        minus1 = _mst_incidence_evaluation(
+        minus1 = _mano_suzuki_takasugi_incidence_evaluation(
             mode, a, omega - h; angular_order, sheet_id)
-        plus1 = _mst_incidence_evaluation(
+        plus1 = _mano_suzuki_takasugi_incidence_evaluation(
             mode, a, omega + h; angular_order, sheet_id)
-        plus2 = _mst_incidence_evaluation(
+        plus2 = _mano_suzuki_takasugi_incidence_evaluation(
             mode, a, omega + 2h; angular_order, sheet_id)
         derivative = (minus2.value - 8minus1.value + 8plus1.value -
             plus2.value) / (12h)
@@ -962,7 +962,7 @@ function _polish_mst_incidence_root(mode::QNMMode, a::Float64,
         accepted = false
         for backtrack in 0:10
             candidate = omega + delta / 2.0^backtrack
-            candidate_evaluation = _mst_incidence_evaluation(
+            candidate_evaluation = _mano_suzuki_takasugi_incidence_evaluation(
                 mode, a, candidate; angular_order, sheet_id)
             if candidate_evaluation.scaled_residual < residual
                 omega = candidate
@@ -991,8 +991,8 @@ function _polish_frequency_root(mode::QNMMode, a::T, initial::Complex{T};
         derivative_step_scale=one(T),
         near_as_role::Symbol=:none,
         position_tolerance=nothing) where {T<:AbstractFloat}
-    if _near_as_mst_required(mode, a, T, near_as_role)
-        return _polish_mst_incidence_root(
+    if _near_as_mano_suzuki_takasugi_required(mode, a, T, near_as_role)
+        return _polish_mano_suzuki_takasugi_incidence_root(
             mode, Float64(a), ComplexF64(initial);
             angular_order, sheet_id,
             root_tolerance=Float64(max(root_tolerance, T(2.0e-11))),
@@ -1852,7 +1852,7 @@ function _continue_in_spin!(state, mode::QNMMode, sequence_target::T;
             # A converged root beyond an NIA crossing belongs to another
             # sequence even when the branch guard admits it.
             axis_crossing = polished.converged && branch_guard.accepted &&
-                _nia_step_crosses_axis(mode, accepted_coordinates,
+                _negative_imaginary_axis_step_crosses_axis(mode, accepted_coordinates,
                     accepted_roots, next_coordinate)
             if polished.converged && branch_guard.accepted && !axis_crossing
                 push!(accepted_spins, next_spin)
@@ -2283,7 +2283,7 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
                 rejected_continuation_rows,
                 last_polish=Ref{Any}(last_polish),
                 nia_restart_rows=NamedTuple[])
-            outcome = _continue_with_nia_restarts!(continuation_state, mode,
+            outcome = _continue_with_negative_imaginary_axis_restarts!(continuation_state, mode,
                 sequence_target; selected_coordinate, initial_step,
                 minimum_step, maximum_step, continuation_root_tolerance,
                 polish_options, sequence_segment=segment)
@@ -2413,9 +2413,9 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
                 2 * T(_root_derivative_step(Float64, ComplexF64(current))) *
                     T(_near_extremal_derivative_scale(mode, Float64(aT))) ?
             tolerance_stability : nothing
-        if _near_as_mst_finalization_required(
+        if _near_as_mano_suzuki_takasugi_finalization_required(
                 mode, aT, T, near_as_role)
-            mst_primary = _polish_mst_incidence_root(
+            mst_primary = _polish_mano_suzuki_takasugi_incidence_root(
                 mode, Float64(aT), ComplexF64(current);
                 angular_order,
                 sheet_id=Symbol(sheet_id, :_mst_final),
@@ -2423,7 +2423,7 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
                 maximum_root_iterations,
                 trust_radius=Float64(radius),
             )
-            guard = mst_primary.converged ? _polish_mst_incidence_root(
+            guard = mst_primary.converged ? _polish_mano_suzuki_takasugi_incidence_root(
                 mode, Float64(aT), ComplexF64(mst_primary.omega);
                 angular_order=angular_order + 8,
                 sheet_id=Symbol(sheet_id, :_mst_guard),

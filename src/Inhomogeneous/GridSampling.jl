@@ -17,7 +17,9 @@ export integrand_generic_sample_cheby_m2, integrand_generic_sample_cheby_p2, int
 export kerr_geo_eccentric_segment_sample_cheby, eccentric_segment_geometry_cache, eccentric_segment_phase_basis_cache, eccentric_segment_sample_bundle_cheby, integrand_eccentric_factored_segment_cheby_m2
 export carter_ingredients_sample
 
-# Keep the phase loops specialized after extracting callable fields from the orbit dictionary.
+# Phase-grid helpers. `_phase_values` evaluates an orbit function at Mino time λ = (q - q0)/ϒ for each phase q;
+# `_radial_phase_rates` and `_polar_phase_rates` return Σ·u(λ) with Σ = r² + a²cos²θ on the grid. Typed callable
+# arguments keep the loops specialized.
 _phase_values(f::F, qs, q0, frequency) where {F} =
     map(q -> f((q - q0) / frequency), qs)
 
@@ -1935,6 +1937,8 @@ function _validate_generic_cheby_geometry(geometry, KG_samp, a)
     return nothing
 end
 
+# `geometry`: optional precomputed `GenericM2Geometry` for this sample (built by ConvolutionIntegrals); when given,
+# its cached angular, ρ and N± arrays are used instead of being recomputed.
 function integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64; geometry = nothing)
     # --------------------------
     # 1. Extract Parameters (1D Vectors)
@@ -2126,6 +2130,8 @@ function integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n::Int64, k
     return Jpp_grid, Jpm_grid, Jmp_grid, Jmm_grid, drphase, dθphase, rphaseL, rphaseR, θphaseL, θphaseR, prefactor
 end
 
+# `geometry`: optional precomputed `GenericM2Geometry` for this sample (built by ConvolutionIntegrals); when given,
+# its cached angular, ρ and L± arrays are used instead of being recomputed.
 function integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64; geometry = nothing)
     # --------------------------
     # 1. Extract Parameters (1D Vectors)

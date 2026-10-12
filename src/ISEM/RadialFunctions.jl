@@ -12,14 +12,12 @@ using ..Matching:
     route_state
 using ..Matching: route_plan_of, route_truncations
 using ..Iteration: _endpoint_last_term_radius, _ENDPOINT_SEED_TARGET
-using ..Matching: _mst_evaluation_region
+using ..Matching: _mano_suzuki_takasugi_evaluation_region
 
 export compact_kappa, compact_r_plus, compact_r_minus
 export y_from_x, x_from_y
-export r_from_x, x_from_r, r_from_y, y_from_r
+export r_from_x, x_from_r
 export dx_dr, dr_dx, dx_drstar
-export evaluate_route_x, evaluate_route_y, evaluate_route_r
-export route_state_x, route_state_y, route_state_r, route_state_rstar
 export gsn_solution_rstar, gsn_radial_function
 export route_teukolsky_solution, teukolsky_radial_function
 export y_branch_supported, route_y_solution, y_radial_function
@@ -228,6 +226,8 @@ function (e::TeukolskyTupleEvaluator)(r)
 end
 
 # Compactified coordinate x = (r - r_+) / (r - r_-) in [0, 1), and y = 1 - x.
+# `a_or_params` is the spin a or any object with a field `a` (and optionally `kappa`);
+# dr/dx = 2 kappa / (1 - x)^2.
 y_from_x(x) = one(x) - x
 x_from_y(y) = one(y) - y
 
@@ -257,9 +257,6 @@ function x_from_r(a_or_params, r)
     rm = compact_r_minus(a_or_params)
     return (r - rp) / (r - rm)
 end
-
-r_from_y(a_or_params, y) = r_from_x(a_or_params, x_from_y(y))
-y_from_r(a_or_params, r) = y_from_x(x_from_r(a_or_params, r))
 
 function dr_dx(a_or_params, x)
     kappa = compact_kappa(a_or_params)
@@ -367,55 +364,6 @@ function _x_from_rstar(params, target)
     return x
 end
 
-evaluate_route_x(route::Route, x) = evaluate_route(route, x)
-evaluate_route_y(route::Route, y) = evaluate_route(route, x_from_y(y))
-evaluate_route_r(route::Route, r) = evaluate_route(route, x_from_r(route.params, r))
-evaluate_route_x(route::ConjugatedRoute, x) =
-    evaluate_route(route, x)
-evaluate_route_y(route::ConjugatedRoute, y) =
-    evaluate_route(route, x_from_y(y))
-evaluate_route_r(route::ConjugatedRoute, r) =
-    evaluate_route(route, x_from_r(route.params, r))
-
-route_state_x(route::Route, x) = route_state(route, x)
-route_state_x(route::ConjugatedRoute, x) = route_state(route, x)
-
-function route_state_y(route::Route, y)
-    state = route_state(route, x_from_y(y))
-    return (X=state.X, dXdy=-state.dXdx)
-end
-
-function route_state_y(route::ConjugatedRoute, y)
-    state = route_state(route, x_from_y(y))
-    return (X=state.X, dXdy=-state.dXdx)
-end
-
-function route_state_r(route::Route, r)
-    x = x_from_r(route.params, r)
-    state = route_state(route, x)
-    return (X=state.X, dXdr=state.dXdx * dx_dr(route.params, x))
-end
-
-function route_state_r(route::ConjugatedRoute, r)
-    x = x_from_r(route.params, r)
-    state = route_state(route, x)
-    return (X=state.X, dXdr=state.dXdx * dx_dr(route.params, x))
-end
-
-# Note: takes x (not r*) and returns X with dX/dr*.
-function route_state_rstar(route::Route, x)
-    state = route_state(route, x)
-    return (X=state.X, dXdrstar=state.dXdx * dx_drstar(route.params, x))
-end
-
-function route_state_rstar(route::ConjugatedRoute, x)
-    state = route_state(route, x)
-    return (
-        X=state.X,
-        dXdrstar=state.dXdx * dx_drstar(route.params, x),
-    )
-end
-
 function _route_boundary_condition(route::Route)
     root = _root_module()
     route.branch == :IN && return getfield(root, :IN)
@@ -459,7 +407,7 @@ end
 function gsn_solution_rstar(route::Route)
     return rs -> begin
         x = _x_from_rstar(route.params, rs)
-        if _mst_evaluation_region(route, x) ||
+        if _mano_suzuki_takasugi_evaluation_region(route, x) ||
                 (x > route.match_x && (route.endpoint_bridge isa ScaledBasis ||
                     route.endpoint_plan !== nothing))
             r = r_from_rstar(route.params.a, rs)
@@ -515,6 +463,9 @@ function _unit_basis_safe(route::Route, basis, limit)
     return true
 end
 
+# True when dividing by `solution_scale` keeps the state finite, with margin
+# _UNIT_STATE_LOG_MARGIN, at x = 1e-5, match_x, 1 - 1e-5 and sample points of
+# every bridge patch.
 function _unit_state_safe(route::Route)
     scale = route.solution_scale
     scale == 1.0 && return true
@@ -656,6 +607,10 @@ function _normalization_scale(route::Route, normalize)
     return _normalization_scale_from_factors(route, normalize, _teukolsky_amplitude_factors(route))
 end
 
+# Teukolsky solution r -> (R, dR/dr, d2R/dr2, error) of a route divided by `scale`
+# (default: the transmission in the `normalize` convention, :teukolsky or :gsn).
+# `converter` maps (r, X, dX/dx) to (R, dR/dr); real-frequency UP routes use the
+# large-r series where it meets the tolerance.
 function route_teukolsky_solution(route::Route; normalize=:teukolsky, scale=nothing, converter=nothing)
     p = route.params
     scale_value = scale === nothing ? first(_normalization_scale(route, normalize)) : scale
@@ -893,133 +848,6 @@ function (c::TeukolskySPlus2Converter)(r, X, dXdx)
     )
 end
 
-function _teukolsky_matrix_sminus2(m, a, omega, lambda, r)
-    a2 = a^2
-    a3 = a2 * a
-    a4 = a2^2
-    a5 = a4 * a
-    a6 = a3^2
-    a7 = a6 * a
-    a8 = a4^2
-    m2 = m * m
-    lambda2 = lambda * lambda
-    omega2 = omega * omega
-    omega3 = omega2 * omega
-    return _teukolsky_matrix_sminus2(
-        m,
-        a,
-        omega,
-        lambda,
-        r,
-        a2,
-        a3,
-        a4,
-        a5,
-        a6,
-        a7,
-        a8,
-        m2,
-        lambda2,
-        omega2,
-        omega3,
-    )
-end
-
-function _teukolsky_matrix_sminus2(
-    m,
-    a,
-    omega,
-    lambda,
-    r,
-    a2,
-    a3,
-    a4,
-    a5,
-    a6,
-    a7,
-    a8,
-    m2,
-    lambda2,
-    omega2,
-    omega3,
-)
-    delta = a2 + (-2 + r) * r
-    r2 = r^2
-    r3 = r2 * r
-    r4 = r2^2
-    r5 = r4 * r
-    r6 = r3^2
-    r7 = r6 * r
-    r8 = r4^2
-    denom = (-r4) * (2 * lambda + lambda2 - 12im * omega) +
-        24 * a3 * m * r * (im - 2 * r * omega) -
-        4 * a * m * r2 * (6im + 2im * r * lambda + 3 * r2 * omega) +
-        12 * a4 * (-1 - 2im * r * omega + 2 * r2 * omega2) +
-        4 * a2 * r * (6 + r * (-3 + 6 * m2 + 6im * omega) +
-        2im * r2 * (-3 + lambda) * omega + 3 * r3 * omega2)
-    invdenom = inv(denom)
-    m11_num = r2 * (
-        -4 * a5 * m * r * (-im + r * omega) -
-        2 * a * m * r4 * (im + 2 * r2 * omega) -
-        2 * a3 * m * r2 * (3im - 2im * r + 4 * r2 * omega) +
-        2 * a6 * (-5 - 2im * r * omega + r2 * omega2) +
-        a4 * r * (32 + r * (-20 + 2 * m2 - lambda + 6im * omega) -
-        10im * r2 * omega + 6 * r3 * omega2) +
-        r4 * (-12 + 2 * r * (5 + lambda) -
-        r2 * (2 + lambda - 6im * omega) - 2im * r3 * omega +
-        2 * r4 * omega2) +
-        2 * a2 * r2 * (-12 + r * (19 + lambda) +
-        r2 * (-6 + m2 - lambda + 6im * omega) - 4im * r3 * omega +
-        3 * r4 * omega2)
-    )
-    sqrtfac = sqrt((a2 + r2) / delta^2)
-    m11 = m11_num * invdenom / (delta^3 * sqrtfac^3)
-    m12 = (
-        2 * r3 * delta * sqrtfac *
-        (im * a * m * r + a2 * (-2 - im * r * omega) +
-        r * (3 - r - im * r2 * omega))
-    ) * invdenom
-    m21_num = 2 * a7 * m * r * (2 + 4im * r * omega - 3 * r2 * omega2) -
-        2 * a5 * m * r2 * (4 + r * (-1 + m2 - lambda + 6im * omega) -
-        12im * r2 * omega + 9 * r3 * omega2) -
-        2 * a3 * m * r4 * (-5 + 2 * lambda + r * (3 + m2 - 2 * lambda +
-        16im * omega) - 12im * r2 * omega + 9 * r3 * omega2) -
-        2 * a * m * r5 * (6 + r * (-7 + 2 * lambda) +
-        r2 * (2 - lambda + 10im * omega) - 4im * r3 * omega +
-        3 * r4 * omega2) +
-        2 * a8 * (6im - 2 * r * omega - 2im * r2 * omega2 + r3 * omega3) +
-        2 * a6 * r * (-36im + r2 * (-12 + 3 * m2 - lambda + 3im * omega) *
-        omega - 10im * r3 * omega2 + 4 * r4 * omega3 +
-        r * (21im - 2im * m2 + 2im * lambda + 4 * omega)) +
-        r5 * (-48im + 12im * r * (6 + lambda) -
-        12im * r2 * (3 + lambda - 3im * omega) -
-        2 * r4 * (4 + lambda - 9im * omega) * omega -
-        8im * r5 * omega2 + 2 * r6 * omega3 +
-        r3 * (6im + 3im * lambda + 34 * omega + 4 * lambda * omega)) +
-        2 * a2 * r3 * (-48im + 4im * r * (27 + 2 * lambda) +
-        im * r2 * (-72 + m2 - 14 * lambda + 30im * omega) +
-        r4 * (-16 + 3 * m2 - 3 * lambda + 21im * omega) * omega -
-        14im * r5 * omega2 + 4 * r6 * omega3 +
-        r3 * (15im + 5im * lambda + 48 * omega + 4 * lambda * omega)) +
-        a4 * r2 * (144im + 2im * r * (-90 + 3 * m2 - 8 * lambda) +
-        2 * r3 * (-22 + 6 * m2 - 3 * lambda + 15im * omega) * omega -
-        36im * r4 * omega2 + 12 * r5 * omega3 +
-        r2 * (54im - 4im * m2 + 11im * lambda + 70 * omega + 4 * lambda * omega))
-    m21 = im * r * sqrtfac * m21_num * invdenom / ((a2 + r2)^2)
-    m22 = (
-        r2 * sqrtfac *
-        (-4 * a3 * m * r * (-im + r * omega) -
-        2 * a * m * r2 * (3im - im * r + 2 * r2 * omega) +
-        2 * a4 * (-3 - 2im * r * omega + r2 * omega2) +
-        a2 * r * (24 + r * (-12 + 2 * m2 - lambda + 6im * omega) -
-        12im * r2 * omega + 4 * r3 * omega2) +
-        r2 * (-24 + 2 * r * (12 + lambda) -
-        r2 * (6 + lambda - 18im * omega) - 8im * r3 * omega +
-        2 * r4 * omega2))
-    ) * invdenom
-    return m11, m12, m21, m22
-end
-
 # Explicit s = -2 GSN-to-Teukolsky conversion applied to (X, dX/dx).
 function _teukolsky_pair_sminus2(
     m,
@@ -1049,8 +877,6 @@ function _teukolsky_pair_sminus2(
     r4 = r2 * r2
     r5 = r4 * r
     r6 = r3 * r3
-    r7 = r6 * r
-    r8 = r4 * r4
     rshift = r - rminus
     dxdrstar = 2 * kappa * delta / (rshift * rshift * (a2 + r2))
     denom = (-r4) * (2 * lambda + lambda2 - 12im * omega) +
@@ -1151,8 +977,6 @@ function _teukolsky_pair_splus2(
     r4 = r2 * r2
     r5 = r4 * r
     r6 = r3 * r3
-    r7 = r6 * r
-    r8 = r4 * r4
     sumr2 = a2 + r2
     rshift = r - rminus
     dxdrstar = 2 * kappa * delta / (rshift * rshift * sumr2)
@@ -1321,6 +1145,8 @@ function route_y_solution(route::Route; amplitudes=nothing)
     )
 end
 
+# Wrap a route as a YRadialFunction (s = -2 IN or s = +2 UP), with the GSN
+# amplitudes converted by the Teukolsky factors.
 function y_radial_function(route::Route)
     _check_y_branch(route)
     isem = _isem_module()

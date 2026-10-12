@@ -190,7 +190,7 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# 5. Invariants on the 180-point review grid (s = -2..2, l = 2..4, a in {0, 1e-4, .3, .7, .9, .99},
+# 5. Invariants on the 180-point validation grid (s = -2..2, l = 2..4, a in {0, 1e-4, .3, .7, .9, .99},
 #    real omega 0.05..3, complex omega down to Im = -5, both signs of Re omega).
 # ---------------------------------------------------------------------------------------------------
 function check_radial_invariants(s, l, m, a, omega; wronskian_radii=(4.0, 6.0, 10.0, 20.0))

@@ -187,6 +187,9 @@ function _gsn_five_point_real_derivative_attempt(
     )
 end
 
+# True when the only failure is the scaled-incidence gate on the n = 8 unconventional near-algebraically-special
+# root accepted on root-position stability; such roots are re-gated on the inferred root shift instead
+# (_condition_near_as_validation).
 function _near_as_conditioned_validation_candidate(
         result::LeaverResult, validation::ISEMValidationResult)
     provenance = result.provenance
@@ -458,14 +461,14 @@ function _qnm_gsn_excitation_factor(result::LeaverResult;
     )
 end
 
-function _mst_amplitude_pair(result, omega)
+function _mano_suzuki_takasugi_amplitude_pair(result, omega)
     mode = result.mode
     inputs = _radial_evaluation_inputs(result, omega)
     a, w = inputs.a, inputs.omega
     lambda = spin_weighted_spheroidal_eigenvalue(mode.s, mode.l, mode.m, a*w)
-    mst = ISEM.MSTInfinity
-    nu = mst.mst_nu_complex(mode.s, mode.l, mode.m, a, w, lambda)
-    amplitudes = mst.mst_nia_amplitudes(
+    mst = ISEM.ManoSuzukiTakasugiInfinity
+    nu = mst.mano_suzuki_takasugi_nu_complex(mode.s, mode.l, mode.m, a, w, lambda)
+    amplitudes = mst.mano_suzuki_takasugi_negative_imaginary_axis_amplitudes(
         mode.s, mode.l, mode.m, a, w, lambda, :IN; nu)
     # These are two normalizations of one amplitude calculation. Accuracy
     # must be checked separately; no radial-state construction is needed.
@@ -506,7 +509,7 @@ function _excitation_pair_function(result, radial_solver, teukolsky_solver,
     if hasproperty(numerical, :amplitude_backend) &&
             numerical.amplitude_backend === :complex_mst_analytic &&
             abs(centre.incidence_amplitude) / scale <= incidence_tolerance
-        return omega -> _mst_amplitude_pair(result, omega), :mst_amplitudes
+        return omega -> _mano_suzuki_takasugi_amplitude_pair(result, omega), :mst_amplitudes
     end
     teuk(s,l,m,a,w,b) = _qnm_default_radial_solver(s,l,m,a,w,b;
         solver=Teukolsky_radial)

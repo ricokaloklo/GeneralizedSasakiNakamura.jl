@@ -3,8 +3,6 @@
 # qnm is Copyright (c) 2019 Leo C. Stein and is distributed under the MIT
 # License. The translated formulas retain that attribution and license notice.
 
-@inline _real_type(::Type{Complex{T}}) where {T<:AbstractFloat} = T
-@inline _real_type(::Type{T}) where {T<:AbstractFloat} = T
 @inline _precision_bits(::Type{Float16}) = 11
 @inline _precision_bits(::Type{Float32}) = 24
 @inline _precision_bits(::Type{Float64}) = 53

@@ -39,6 +39,7 @@ end
 
 Public branch selector for [`qnm`](@ref). `ordinary` selects the positive-real
 QNM branch and `mirror` selects the directly solved negative-real branch.
+`Ordinary` and `Mirror` are capitalised aliases of `ordinary` and `mirror`.
 """
 @enum QNMBranch begin
     ordinary

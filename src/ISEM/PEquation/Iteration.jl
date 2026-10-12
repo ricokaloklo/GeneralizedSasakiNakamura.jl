@@ -247,6 +247,8 @@ end
 function iterate_inf_out_rho(rho_m, s, epsilon, tau, kappa, lambda, z, N = _TruncatioN, tol = _TOLERANCE)
     coeffs_inf, Nopt, canonical_R0 = inf_out_coeffs(
         s, epsilon, tau, kappa, lambda, z, N; tol = tol)
+    # Start the outward series where its residual meets seed_target: at the
+    # canonical radius, or at the first of 1.05, 1.10, ..., 1.50 times it that does.
     R0 = canonical_R0
     seed_target = max(0.05 * Float64(tol), 2.5 * eps(Float64))
     seed_error = error_inf_out(

@@ -6,7 +6,7 @@ export RationalCoefficients, EndpointCoefficientSet
 export OrdinaryCoefficientEvaluator, CoefficientSet
 export evaluate_ordinary_coefficients!
 export evaluate_ordinary_variable!
-export coefficient_tables_available, register_coefficient_backend!
+export register_coefficient_backend!
 export gsn_coefficients
 
 # Numerator and denominator polynomial coefficients of one rational ODE coefficient.
@@ -53,11 +53,14 @@ end
     return out
 end
 
+# Fill the first `e.value_count` entries of `out` with the ordinary-point coefficients
+# at expansion point `x0`; returns `out`.
 function evaluate_ordinary_coefficients!(out::Vector{ComplexF64}, e::OrdinaryCoefficientEvaluator, x0)
     length(out) >= e.value_count || throw(ArgumentError("ordinary output buffer is too short."))
     return e.eval!(out, e.coefficients, x0)
 end
 
+# As `evaluate_ordinary_coefficients!`, at the already transformed expansion variable `value`.
 function evaluate_ordinary_variable!(out::Vector{ComplexF64}, e::OrdinaryCoefficientEvaluator, value)
     length(out) >= e.value_count || throw(ArgumentError("ordinary output buffer is too short."))
     return e.eval_variable!(out, e.coefficients, value)
@@ -81,8 +84,6 @@ end
 
 const _BACKEND = Ref{Union{Nothing,Function}}(nothing)
 
-coefficient_tables_available() = _BACKEND[] !== nothing
-
 # Install the function that builds a CoefficientSet; returns the previous backend.
 function register_coefficient_backend!(backend::Function)
     old = _BACKEND[]
@@ -98,6 +99,8 @@ function _missing_backend()
     )
 end
 
+# The CoefficientSet for `params` (or for `s, lambda, m, nu, omega`) from the registered
+# backend; `controls` selects the endpoint and ordinary-point bases.
 function gsn_coefficients(params::GSNParameters; controls=nothing)
     backend = _BACKEND[]
     backend === nothing && _missing_backend()

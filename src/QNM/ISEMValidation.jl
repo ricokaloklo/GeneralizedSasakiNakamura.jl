@@ -25,6 +25,8 @@ function _radial_metadata(solution)
     )
 end
 
+# Near-extremal radial tolerance: for kappa = sqrt(1 - a^2) <= 0.02 return 64 eps / (1000 kappa^2) clamped to
+# [1e-14, 1e-11]; `nothing` otherwise (solver default).
 function _qnm_conditioned_radial_tolerance(a)
     af = Float64(real(a))
     isfinite(af) && abs(af) < 1 || return nothing

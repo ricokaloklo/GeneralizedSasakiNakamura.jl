@@ -23,12 +23,12 @@ import ..Matching:
     match_route,
     route_state,
     route_patch_count
-import ..MSTInfinity:
-    mst_physical_amplitudes,
-    mst_physical_plan,
-    mst_physical_state,
-    mst_nia_jump,
-    nia_strength_fast
+import ..ManoSuzukiTakasugiInfinity:
+    mano_suzuki_takasugi_physical_amplitudes,
+    mano_suzuki_takasugi_physical_plan,
+    mano_suzuki_takasugi_physical_state,
+    mano_suzuki_takasugi_negative_imaginary_axis_jump,
+    negative_imaginary_axis_strength_fast
 import ..RadialFunctions:
     teukolsky_horizon_pair,
     TeukolskyRadialEvaluator,
@@ -44,19 +44,20 @@ import ..RadialFunctions:
 
 export ComplexParameters, ComplexControls
 export ComplexContour, ComplexRoutePlan, ComplexRoute
-export ComplexMSTEvaluator
+export ComplexManoSuzukiTakasugiEvaluator
 export complex_parameters, complex_controls
-export complex_contour_parameters, complex_x_from_rho, complex_r_from_rho
-export complex_endpoint_states
+export complex_contour_parameters, complex_x_from_rho
 export complex_route, complex_route_plan_of, complex_route_patch_count
 export complex_amplitudes
-export complex_nia_jump
+export complex_negative_imaginary_axis_jump
 export complex_route_state_r, complex_route_state_rstar
 export complex_route_evaluate_r, complex_route_evaluate_rstar
-export evaluate_complex_route_on_real_axis
 export complex_gsn_solution_rstar, complex_gsn_radial_function
-export complex_radial_route
 
+# Mode data of a complex-frequency route, (s, l, m, a, omega, lambda), with the derived
+# kappa = sqrt(1 - a^2), rplus, rminus, omega_horizon = a / (2 rplus), epsilon = 2 omega,
+# tau = (epsilon - m a) / kappa, p = omega - m omega_horizon and the unit phase
+# z = omega / |omega|; built by `complex_parameters`.
 struct ComplexParameters
     s::Int
     l::Int
@@ -74,6 +75,8 @@ struct ComplexParameters
     z::ComplexF64
 end
 
+# Optional overrides of a complex-frequency route (`nothing` leaves the choice to the
+# backend); built by `complex_controls`.
 struct ComplexControls
     xm::Union{Nothing,Float64}
     rhom::Union{Nothing,Float64}
@@ -83,6 +86,8 @@ struct ComplexControls
     large_frequency_expansion::Union{Nothing,Bool}
 end
 
+# Straight-ray contour x = dxdrho * rho of the P-equation backend, with both ray
+# directions equal to dxdrho; built by `complex_contour_parameters`.
 struct ComplexContour
     omega::ComplexF64
     p::ComplexF64
@@ -94,6 +99,8 @@ struct ComplexContour
     ray_angle::Float64
 end
 
+# Summary of a built route: contour, matching record, resolved controls, amplitudes
+# (GSN and Teukolsky normalization with the conversion factors) and total patch count.
 struct ComplexRoutePlan{C,M,K,A}
     contour::C
     matching::M
@@ -102,6 +109,10 @@ struct ComplexRoutePlan{C,M,K,A}
     patch_count::Int
 end
 
+# Real-axis state evaluators, callable as rstar -> (X, dX/drstar, error) or on a vector
+# of rstar: from the P-equation solution through the P-to-GSN coefficients
+# (ComplexStateEvaluator), from a real-axis GSN match (ComplexSmallFrequencyExpansionEvaluator) and from the
+# physical MST plan (ComplexManoSuzukiTakasugiEvaluator).
 struct ComplexStateEvaluator{P,F,C,T}
     params::P
     p_solution::F
@@ -109,12 +120,12 @@ struct ComplexStateEvaluator{P,F,C,T}
     scale::T
 end
 
-struct ComplexSFEvaluator{R,P}
+struct ComplexSmallFrequencyExpansionEvaluator{R,P}
     route::R
     params::P
 end
 
-struct ComplexMSTEvaluator{P,M}
+struct ComplexManoSuzukiTakasugiEvaluator{P,M}
     params::P
     plan::M
 end
@@ -280,12 +291,8 @@ function complex_contour_parameters(params::ComplexParameters; rho_match=1.0)
     )
 end
 
+# The contour point x = dxdrho * rho.
 complex_x_from_rho(contour::ComplexContour, rho::Real) = contour.dxdrho * rho
-
-function complex_r_from_rho(params::ComplexParameters, contour::ComplexContour, rho::Real)
-    x = complex_x_from_rho(contour, rho)
-    return params.rplus - 2 * params.kappa * x
-end
 
 function _isem_module()
     return parentmodule(@__MODULE__)
@@ -390,7 +397,7 @@ function _state_at_r(evaluator::ComplexRationalEvaluator, r::Real)
     return complex_rational_state_r(evaluator, r)
 end
 
-function _state_at_r(evaluator::ComplexSFEvaluator, r::Real)
+function _state_at_r(evaluator::ComplexSmallFrequencyExpansionEvaluator, r::Real)
     p = evaluator.params
     rf = Float64(r)
     isfinite(rf) && rf > p.rplus ||
@@ -408,14 +415,14 @@ function _state_at_r(evaluator::ComplexSFEvaluator, r::Real)
     )
 end
 
-function _state_at_r(evaluator::ComplexMSTEvaluator, r::Real)
+function _state_at_r(evaluator::ComplexManoSuzukiTakasugiEvaluator, r::Real)
     p = evaluator.params
     rf = Float64(r)
     isfinite(rf) && rf > p.rplus ||
         throw(DomainError(
             r, "real-axis ISEM complex evaluation requires r > r_plus."))
     x = (rf - p.rplus) / (rf - p.rminus)
-    state = mst_physical_state(evaluator.plan, x)
+    state = mano_suzuki_takasugi_physical_state(evaluator.plan, x)
     dxdrstar = p.kappa * (x - 1.0)^2 * x /
         (p.kappa + (x - 1.0)^2 + 2 * p.kappa^2 * x -
          p.kappa * x^2)
@@ -432,13 +439,13 @@ function (evaluator::ComplexStateEvaluator)(rstar::Real)
     return state.X, state.dXdrstar, state.error
 end
 
-function (evaluator::ComplexSFEvaluator)(rstar::Real)
+function (evaluator::ComplexSmallFrequencyExpansionEvaluator)(rstar::Real)
     r = r_from_rstar(evaluator.params.a, Float64(rstar))
     state = _state_at_r(evaluator, r)
     return state.X, state.dXdrstar, state.error
 end
 
-function (evaluator::ComplexMSTEvaluator)(rstar::Real)
+function (evaluator::ComplexManoSuzukiTakasugiEvaluator)(rstar::Real)
     r = r_from_rstar(evaluator.params.a, Float64(rstar))
     state = _state_at_r(evaluator, r)
     return state.X, state.dXdrstar, state.error
@@ -457,11 +464,11 @@ end
     rstars::AbstractVector{<:Real},
 ) = _state_vectors(evaluator, rstars)
 
-(evaluator::ComplexSFEvaluator)(
+(evaluator::ComplexSmallFrequencyExpansionEvaluator)(
     rstars::AbstractVector{<:Real},
 ) = _state_vectors(evaluator, rstars)
 
-(evaluator::ComplexMSTEvaluator)(
+(evaluator::ComplexManoSuzukiTakasugiEvaluator)(
     rstars::AbstractVector{<:Real},
 ) = _state_vectors(evaluator, rstars)
 
@@ -833,7 +840,7 @@ function _complex_principal_small_frequency_expansion_route(
         amplitude_backend=:principal_mst_logscaled,
         amplitude_patch_count=patch_count,
     )
-    evaluator = ComplexSFEvaluator(matched, complex_params)
+    evaluator = ComplexSmallFrequencyExpansionEvaluator(matched, complex_params)
     return ComplexRoute(
         branch_symbol,
         complex_params,
@@ -852,7 +859,7 @@ function _complex_principal_small_frequency_expansion_route(
 end
 
 # Route from the complete MST representation (backend=:mst).
-function _complex_mst_route(
+function _complex_mano_suzuki_takasugi_route(
     s::Int,
     l::Int,
     m::Int,
@@ -907,9 +914,9 @@ function _complex_mst_route(
     )
     coefficients = gsn_coefficients(
         params; controls=coefficient_controls)
-    mst = mst_physical_plan(coefficients, branch_symbol)
-    mst_amplitudes = mst_physical_amplitudes(mst)
-    anchor = mst_physical_state(mst, 0.5)
+    mst = mano_suzuki_takasugi_physical_plan(coefficients, branch_symbol)
+    mst_amplitudes = mano_suzuki_takasugi_physical_amplitudes(mst)
+    anchor = mano_suzuki_takasugi_physical_state(mst, 0.5)
 
     complex_params = complex_parameters(
         s, l, m, af, omegac, params.lambda)
@@ -1023,7 +1030,7 @@ function _complex_mst_route(
         mst_anchor_nmax=anchor.nmax,
         mst_anchor_representation=anchor.representation,
     )
-    evaluator = ComplexMSTEvaluator(complex_params, mst)
+    evaluator = ComplexManoSuzukiTakasugiEvaluator(complex_params, mst)
     return ComplexRoute(
         branch_symbol,
         complex_params,
@@ -1241,20 +1248,20 @@ const _P_CONTOUR_SPLIT_MISMATCH_MAX = 1.0e-10
 const _P_CONTOUR_USABLE_ORDER_AGREEMENT_MAX = 1.0e-8
 const _P_CONTOUR_USABLE_SEPARATION_MIN = 1.0e-8
 const _P_CONTOUR_USABLE_SPLIT_MISMATCH_MAX = 2.0e-8
-const _P_NIA_REAL_RATIO_MAX = 1.0e-8
-const _P_NIA_MAX_ABS_OMEGA = 0.1
-const _P_NIA_MAX_SPHEROIDICITY = 64eps(Float64)
-const _P_NIA_ORDER = 40
-const _P_NIA_ORDER_DELTA = 4
-const _P_NIA_ORDER_AGREEMENT_MAX = 1.0e-10
-const _P_NIA_STATE_AGREEMENT_MAX = 1.0e-10
-const _P_NIA_SEPARATION_MIN = 1.0e-8
-const _P_NIA_BUILD_ORDER_AGREEMENT_MAX = 1.0e-9
-const _P_NIA_BUILD_STATE_AGREEMENT_MAX = 1.0e-7
-const _P_NIA_NONROTATING_MAX_ABS_A = 64eps(Float64)
-const _P_NIA_PARTNER_ORDER_AGREEMENT_MAX = 1.0e-9
-const _NIA_SIDE_AGREEMENT_MAX = 1.0e-8
-const _NIA_SIDE_OFFSET_FACTOR = 4.0
+const _P_NEGATIVE_IMAGINARY_AXIS_REAL_RATIO_MAX = 1.0e-8
+const _P_NEGATIVE_IMAGINARY_AXIS_MAX_ABS_OMEGA = 0.1
+const _P_NEGATIVE_IMAGINARY_AXIS_MAX_SPHEROIDICITY = 64eps(Float64)
+const _P_NEGATIVE_IMAGINARY_AXIS_ORDER = 40
+const _P_NEGATIVE_IMAGINARY_AXIS_ORDER_DELTA = 4
+const _P_NEGATIVE_IMAGINARY_AXIS_ORDER_AGREEMENT_MAX = 1.0e-10
+const _P_NEGATIVE_IMAGINARY_AXIS_STATE_AGREEMENT_MAX = 1.0e-10
+const _P_NEGATIVE_IMAGINARY_AXIS_SEPARATION_MIN = 1.0e-8
+const _P_NEGATIVE_IMAGINARY_AXIS_BUILD_ORDER_AGREEMENT_MAX = 1.0e-9
+const _P_NEGATIVE_IMAGINARY_AXIS_BUILD_STATE_AGREEMENT_MAX = 1.0e-7
+const _P_NEGATIVE_IMAGINARY_AXIS_NONROTATING_MAX_ABS_A = 64eps(Float64)
+const _P_NEGATIVE_IMAGINARY_AXIS_PARTNER_ORDER_AGREEMENT_MAX = 1.0e-9
+const _NEGATIVE_IMAGINARY_AXIS_SIDE_AGREEMENT_MAX = 1.0e-8
+const _NEGATIVE_IMAGINARY_AXIS_SIDE_OFFSET_FACTOR = 4.0
 const _PRINCIPAL_P_FALLBACK_ORDER = 40
 const _PRINCIPAL_P_FALLBACK_ORDER_DELTA = 8
 const _PRINCIPAL_P_FALLBACK_AGREEMENT_MAX = 1.0e-10
@@ -1310,6 +1317,9 @@ end
         policy in (:scaled_infinity_endpoint, :scaled_horizon_endpoint)
 end
 
+# Pretriggers: cheap tests on the two-ray route's metadata (match policy, coefficient
+# cancellation, incidence residual), spin, branch and frequency that decide which
+# consensus retry or overlay is attempted.
 @inline function _p_consensus_pretrigger(route::ComplexRoute)
     _endpoint_amplitude_match(route) && return false
     metadata = route.metadata
@@ -1363,49 +1373,49 @@ end
             split_mismatch >= _P_CONTOUR_SPLIT_MISMATCH_MIN)
 end
 
-@inline function _p_nia_pretrigger(route::ComplexRoute)
+@inline function _p_negative_imaginary_axis_pretrigger(route::ComplexRoute)
     omega = route.params.omega
     imag(omega) < 0 || return false
     !iszero(real(omega)) || return false
-    abs(real(omega)) <= _P_NIA_REAL_RATIO_MAX * abs(imag(omega)) ||
+    abs(real(omega)) <= _P_NEGATIVE_IMAGINARY_AXIS_REAL_RATIO_MAX * abs(imag(omega)) ||
         return false
-    abs(omega) <= _P_NIA_MAX_ABS_OMEGA || return false
-    return abs(route.params.a * omega) <= _P_NIA_MAX_SPHEROIDICITY
+    abs(omega) <= _P_NEGATIVE_IMAGINARY_AXIS_MAX_ABS_OMEGA || return false
+    return abs(route.params.a * omega) <= _P_NEGATIVE_IMAGINARY_AXIS_MAX_SPHEROIDICITY
 end
 
-@inline function _p_nia_build_pretrigger(s, a, omega, branch)
+@inline function _p_negative_imaginary_axis_build_pretrigger(s, a, omega, branch)
     imag(omega) < 0 || return false
     !iszero(real(omega)) || return false
-    abs(real(omega)) <= _P_NIA_REAL_RATIO_MAX * abs(imag(omega)) ||
+    abs(real(omega)) <= _P_NEGATIVE_IMAGINARY_AXIS_REAL_RATIO_MAX * abs(imag(omega)) ||
         return false
-    abs(a * omega) <= _P_NIA_MAX_SPHEROIDICITY || return false
+    abs(a * omega) <= _P_NEGATIVE_IMAGINARY_AXIS_MAX_SPHEROIDICITY || return false
     branch_symbol = _normalize_branch(branch)
     return s == 2 || (s == 0 && branch_symbol == :IN)
 end
 
-@inline function _p_nia_nonrotating(route::ComplexRoute)
-    return abs(route.params.a) <= _P_NIA_NONROTATING_MAX_ABS_A
+@inline function _p_negative_imaginary_axis_nonrotating(route::ComplexRoute)
+    return abs(route.params.a) <= _P_NEGATIVE_IMAGINARY_AXIS_NONROTATING_MAX_ABS_A
 end
 
-@inline function _p_nia_partner_pretrigger(s, a, omega)
+@inline function _p_negative_imaginary_axis_partner_pretrigger(s, a, omega)
     s < 0 || return false
     iszero(a) || return false
     imag(omega) < 0 || return false
     !iszero(real(omega)) || return false
-    abs(real(omega)) <= _P_NIA_REAL_RATIO_MAX * abs(imag(omega)) ||
+    abs(real(omega)) <= _P_NEGATIVE_IMAGINARY_AXIS_REAL_RATIO_MAX * abs(imag(omega)) ||
         return false
-    return abs(omega) > _P_NIA_MAX_ABS_OMEGA
+    return abs(omega) > _P_NEGATIVE_IMAGINARY_AXIS_MAX_ABS_OMEGA
 end
 
-@inline function _nia_side_pretrigger(route::ComplexRoute)
+@inline function _negative_imaginary_axis_side_pretrigger(route::ComplexRoute)
     omega = route.params.omega
     route.branch == :UP || return false
-    abs(route.params.a) > _P_NIA_NONROTATING_MAX_ABS_A || return false
+    abs(route.params.a) > _P_NEGATIVE_IMAGINARY_AXIS_NONROTATING_MAX_ABS_A || return false
     real(omega) < 0 || return false
     imag(omega) < 0 || return false
-    abs(real(omega)) <= _P_NIA_REAL_RATIO_MAX * abs(imag(omega)) ||
+    abs(real(omega)) <= _P_NEGATIVE_IMAGINARY_AXIS_REAL_RATIO_MAX * abs(imag(omega)) ||
         return false
-    return abs(omega) <= _P_NIA_MAX_ABS_OMEGA
+    return abs(omega) <= _P_NEGATIVE_IMAGINARY_AXIS_MAX_ABS_OMEGA
 end
 
 @inline function _up_initial_match_pretrigger(route::ComplexRoute)
@@ -1710,6 +1720,10 @@ end
         max(maximum(abs, values), floatmin(Float64))
 end
 
+# Acceptance of the UP initial-match candidate: its incidence residual, the pairwise
+# agreement of the far, mid and initial candidates in Teukolsky normalization, the
+# separation of the initial candidate from the selected route, and the candidates'
+# split mismatch.
 function _up_initial_match_metrics(rational::ComplexRoute, candidates)
     factors = rational.plan.amplitudes.conversion_factors
     transmission = rational.transmission
@@ -1946,6 +1960,11 @@ end
         :direct_gsn_p_consensus
 end
 
+# Acceptance of the off-pole plateau candidate: agreement of the plateau members,
+# separation from the rational route relative to that agreement, split mismatch, and
+# continuity of the rebuilt state across the match point. For IN, when the selected
+# member fails the continuity test, a member closer to rstar = 0 that agrees with it
+# and passes continuity replaces it.
 function _offpole_match_plateau_metrics(rational, candidates)
     agreement = candidates.agreement
     agreement_max = rational.branch == :UP ?
@@ -2006,6 +2025,10 @@ function _offpole_match_plateau_metrics(rational, candidates)
     )
 end
 
+# Continuity of the state across the candidate's match point: X and dX/drstar at
+# rstar +- epsilon and +- 2 epsilon are extrapolated to the centre (first-order Taylor
+# for X, linear for dX/drstar) and compared with each other and with the centre value,
+# relative to their scale.
 function _offpole_match_plateau_continuity(rational, candidate)
     evaluator = ComplexRationalEvaluator(
         rational.state_evaluator.params,
@@ -2389,6 +2412,11 @@ function _try_up_horizon_in_order_consensus(
     )
 end
 
+# Dual-order acceptance metrics (this and the next four functions): a P-equation
+# `candidate` at the rational order and a `confirmation` at a higher order are adopted
+# when they agree, separate from the two-ray `rational` route and keep a small split
+# mismatch; each trigger has its own thresholds, and the negative-imaginary-axis
+# variants also compare the states.
 function _p_up_dual_metrics(
     rational::ComplexRoute,
     candidate::ComplexRoute,
@@ -2486,7 +2514,7 @@ function _p_contour_metrics(
     )
 end
 
-function _p_nia_metrics(
+function _p_negative_imaginary_axis_metrics(
     rational::ComplexRoute,
     candidate::ComplexRoute,
     confirmation::ComplexRoute,
@@ -2507,14 +2535,14 @@ function _p_nia_metrics(
     candidate_residual = _raw_incidence_residual(confirmation)
     residual_ratio = candidate_residual /
         max(direct_residual, floatmin(Float64))
-    nonrotating = _p_nia_nonrotating(rational)
+    nonrotating = _p_negative_imaginary_axis_nonrotating(rational)
     state_accepted = nonrotating ||
         (isfinite(state_agreement) &&
-            state_agreement <= _P_NIA_STATE_AGREEMENT_MAX)
+            state_agreement <= _P_NEGATIVE_IMAGINARY_AXIS_STATE_AGREEMENT_MAX)
     separation_accepted = nonrotating ||
-        (isfinite(separation) && separation >= _P_NIA_SEPARATION_MIN)
+        (isfinite(separation) && separation >= _P_NEGATIVE_IMAGINARY_AXIS_SEPARATION_MIN)
     accepted = isfinite(agreement) &&
-        agreement <= _P_NIA_ORDER_AGREEMENT_MAX &&
+        agreement <= _P_NEGATIVE_IMAGINARY_AXIS_ORDER_AGREEMENT_MAX &&
         state_accepted &&
         separation_accepted
     acceptance_kind = nonrotating ?
@@ -2538,7 +2566,7 @@ function _p_nia_metrics(
     )
 end
 
-function _p_nia_build_metrics(
+function _p_negative_imaginary_axis_build_metrics(
     fallback::ComplexRoute,
     candidate::ComplexRoute,
     confirmation::ComplexRoute,
@@ -2560,11 +2588,11 @@ function _p_nia_build_metrics(
     residual_ratio = candidate_residual /
         max(direct_residual, floatmin(Float64))
     accepted = isfinite(agreement) &&
-        agreement <= _P_NIA_BUILD_ORDER_AGREEMENT_MAX &&
+        agreement <= _P_NEGATIVE_IMAGINARY_AXIS_BUILD_ORDER_AGREEMENT_MAX &&
         isfinite(state_agreement) &&
-        state_agreement <= _P_NIA_BUILD_STATE_AGREEMENT_MAX &&
+        state_agreement <= _P_NEGATIVE_IMAGINARY_AXIS_BUILD_STATE_AGREEMENT_MAX &&
         isfinite(separation) &&
-        separation >= _P_NIA_SEPARATION_MIN
+        separation >= _P_NEGATIVE_IMAGINARY_AXIS_SEPARATION_MIN
     return (;
         accepted,
         acceptance_kind=:nia_build_dual_order,
@@ -2634,6 +2662,10 @@ function _p_pole_dual_metrics(
     )
 end
 
+# Acceptance of a single P-equation candidate against the two-ray route: the pole case
+# (small candidate incidence residual, well below the two-ray residual, agreeing
+# reflections) or the IN scattering case (comparable residuals, agreeing reflections);
+# both also require a small split mismatch.
 function _p_consensus_metrics(
     rational::ComplexRoute,
     candidate::ComplexRoute,
@@ -2792,21 +2824,21 @@ function _try_p_consensus(
     pole_dual_trigger = _p_pole_dual_pretrigger(rational)
     up_dual_trigger = _p_up_dual_pretrigger(rational)
     contour_trigger = _p_contour_pretrigger(rational)
-    nia_trigger = _p_nia_pretrigger(rational)
+    nia_trigger = _p_negative_imaginary_axis_pretrigger(rational)
     controls = rational.plan.controls
     if nia_trigger
         candidate = try
             with_logger(NullLogger()) do
                 _complex_p_route(
                     s, l, m, a, omega, branch;
-                    N=_P_NIA_ORDER,
+                    N=_P_NEGATIVE_IMAGINARY_AXIS_ORDER,
                     tol=controls.tolerance,
                 )
             end
         catch
             nothing
         end
-        confirmation_order = _P_NIA_ORDER + _P_NIA_ORDER_DELTA
+        confirmation_order = _P_NEGATIVE_IMAGINARY_AXIS_ORDER + _P_NEGATIVE_IMAGINARY_AXIS_ORDER_DELTA
         confirmation = try
             with_logger(NullLogger()) do
                 _complex_p_route(
@@ -2819,12 +2851,12 @@ function _try_p_consensus(
             nothing
         end
         if candidate !== nothing && confirmation !== nothing
-            metrics = _p_nia_metrics(
+            metrics = _p_negative_imaginary_axis_metrics(
                 rational, candidate, confirmation, confirmation_order)
             if metrics.accepted
                 return metrics.acceptance_kind ==
                     :nia_dual_order_nonrotating ?
-                    _nia_p_overlay(
+                    _negative_imaginary_axis_p_overlay(
                         rational,
                         confirmation,
                         s,
@@ -2921,7 +2953,7 @@ end
 
 # After a rational build failure near the negative imaginary axis, adopt a
 # dual-order P-equation route for the amplitudes when the two orders agree.
-function _try_p_nia_build_consensus(
+function _try_p_negative_imaginary_axis_build_consensus(
     fallback::ComplexRoute,
     s,
     l,
@@ -2930,20 +2962,20 @@ function _try_p_nia_build_consensus(
     omega,
     branch,
 )
-    _p_nia_build_pretrigger(s, a, omega, branch) || return fallback
+    _p_negative_imaginary_axis_build_pretrigger(s, a, omega, branch) || return fallback
     tolerance = fallback.plan.controls.tolerance
     candidate = try
         with_logger(NullLogger()) do
             _complex_p_route(
                 s, l, m, a, omega, branch;
-                N=_P_NIA_ORDER,
+                N=_P_NEGATIVE_IMAGINARY_AXIS_ORDER,
                 tol=tolerance,
             )
         end
     catch
         return fallback
     end
-    confirmation_order = _P_NIA_ORDER + _P_NIA_ORDER_DELTA
+    confirmation_order = _P_NEGATIVE_IMAGINARY_AXIS_ORDER + _P_NEGATIVE_IMAGINARY_AXIS_ORDER_DELTA
     confirmation = try
         with_logger(NullLogger()) do
             _complex_p_route(
@@ -2955,11 +2987,11 @@ function _try_p_nia_build_consensus(
     catch
         return fallback
     end
-    if _p_nia_nonrotating(fallback)
+    if _p_negative_imaginary_axis_nonrotating(fallback)
         _, _, agreement = _unit_pair_errors(candidate, confirmation)
         if isfinite(agreement) &&
-                agreement <= _P_NIA_ORDER_AGREEMENT_MAX
-            return _nia_p_overlay(
+                agreement <= _P_NEGATIVE_IMAGINARY_AXIS_ORDER_AGREEMENT_MAX
+            return _negative_imaginary_axis_p_overlay(
                 fallback,
                 confirmation,
                 s,
@@ -2968,13 +3000,16 @@ function _try_p_nia_build_consensus(
             )
         end
     end
-    metrics = _p_nia_build_metrics(
+    metrics = _p_negative_imaginary_axis_build_metrics(
         fallback, candidate, confirmation, confirmation_order)
     return metrics.accepted ?
         _p_consensus_route(fallback, confirmation, metrics) : fallback
 end
 
-function _nia_p_overlay(
+# Replace the route's incidence and reflection by those of `source_route` (a
+# dual-order-checked P-equation route of the same spin or of the partner spin),
+# rescaled to the route's transmission; the state evaluator is kept.
+function _negative_imaginary_axis_p_overlay(
     route::ComplexRoute,
     source_route::ComplexRoute,
     source_spin::Int,
@@ -3022,8 +3057,8 @@ function _nia_p_overlay(
         nia_p_amplitude_source=source,
         nia_p_source_spin=source_spin,
         nia_p_orders=(
-            _P_NIA_ORDER,
-            _P_NIA_ORDER + _P_NIA_ORDER_DELTA,
+            _P_NEGATIVE_IMAGINARY_AXIS_ORDER,
+            _P_NEGATIVE_IMAGINARY_AXIS_ORDER + _P_NEGATIVE_IMAGINARY_AXIS_ORDER_DELTA,
         ),
         nia_p_order_agreement=agreement,
         nia_p_original_incidence=route.incidence,
@@ -3063,7 +3098,7 @@ function _nia_p_overlay(
     )
 end
 
-function _try_nia_partner(
+function _try_negative_imaginary_axis_partner(
     route::ComplexRoute,
     s,
     l,
@@ -3072,23 +3107,23 @@ function _try_nia_partner(
     omega,
     branch,
 )
-    _p_nia_partner_pretrigger(s, a, omega) || return route
+    _p_negative_imaginary_axis_partner_pretrigger(s, a, omega) || return route
     # Function barrier: the triggered work is compiled only when it runs.
-    return Base.inferencebarrier(_nia_partner_retry)(
+    return Base.inferencebarrier(_negative_imaginary_axis_partner_retry)(
         route, s, l, m, a, omega, branch)
 end
 
 # For s < 0 on the negative imaginary axis of a Schwarzschild hole, replace the
 # unit-transmission amplitudes by those of the spin partner -s from two
 # P-equation orders that agree.
-function _nia_partner_retry(route, s, l, m, a, omega, branch)
+function _negative_imaginary_axis_partner_retry(route, s, l, m, a, omega, branch)
     partner_spin = -s
     tolerance = route.plan.controls.tolerance
     candidate = try
         with_logger(NullLogger()) do
             _complex_p_route(
                 partner_spin, l, m, a, omega, branch;
-                N=_P_NIA_ORDER,
+                N=_P_NEGATIVE_IMAGINARY_AXIS_ORDER,
                 tol=tolerance,
             )
         end
@@ -3099,7 +3134,7 @@ function _nia_partner_retry(route, s, l, m, a, omega, branch)
         with_logger(NullLogger()) do
             _complex_p_route(
                 partner_spin, l, m, a, omega, branch;
-                N=_P_NIA_ORDER + _P_NIA_ORDER_DELTA,
+                N=_P_NEGATIVE_IMAGINARY_AXIS_ORDER + _P_NEGATIVE_IMAGINARY_AXIS_ORDER_DELTA,
                 tol=tolerance,
             )
         end
@@ -3108,8 +3143,8 @@ function _nia_partner_retry(route, s, l, m, a, omega, branch)
     end
     _, _, agreement = _unit_pair_errors(candidate, confirmation)
     isfinite(agreement) &&
-        agreement <= _P_NIA_PARTNER_ORDER_AGREEMENT_MAX || return route
-    return _nia_p_overlay(
+        agreement <= _P_NEGATIVE_IMAGINARY_AXIS_PARTNER_ORDER_AGREEMENT_MAX || return route
+    return _negative_imaginary_axis_p_overlay(
         route, confirmation, partner_spin, agreement, :spin_partner)
 end
 
@@ -3129,7 +3164,11 @@ end
     )
 end
 
-function _nia_side_pair(
+# Lateral connection at `omega` just right of the negative imaginary axis: the UP
+# amplitudes there mapped through chi = 1 - i q Bref/Binc of the right-side IN pair
+# (q is the axis branch strength), then converted to GSN normalization with the
+# target's conversion factors.
+function _negative_imaginary_axis_side_pair(
     s,
     l,
     m,
@@ -3188,7 +3227,7 @@ function _nia_side_pair(
     )
 end
 
-function _nia_in_pair(
+function _negative_imaginary_axis_in_pair(
     s,
     l,
     m,
@@ -3199,21 +3238,21 @@ function _nia_in_pair(
     in_route = with_logger(NullLogger()) do
         _complex_p_route(
             s, l, m, a, omega, :IN;
-            N=_P_NIA_ORDER,
+            N=_P_NEGATIVE_IMAGINARY_AXIS_ORDER,
             tol=tolerance,
         )
     end
     in_confirmation = with_logger(NullLogger()) do
         _complex_p_route(
             s, l, m, a, omega, :IN;
-            N=_P_NIA_ORDER + _P_NIA_ORDER_DELTA,
+            N=_P_NEGATIVE_IMAGINARY_AXIS_ORDER + _P_NEGATIVE_IMAGINARY_AXIS_ORDER_DELTA,
             tol=tolerance,
         )
     end
     _, _, in_agreement = _unit_pair_errors(
         in_route, in_confirmation)
     isfinite(in_agreement) &&
-        in_agreement <= _P_NIA_PARTNER_ORDER_AGREEMENT_MAX ||
+        in_agreement <= _P_NEGATIVE_IMAGINARY_AXIS_PARTNER_ORDER_AGREEMENT_MAX ||
         error("right-side IN dual-order certificate rejected")
     in_pair = _teuk_unit_pair(in_confirmation)
     in_pair === nothing && error("nonfinite right-side IN amplitudes")
@@ -3225,7 +3264,7 @@ function _nia_in_pair(
     )
 end
 
-function _nia_in_rational(
+function _negative_imaginary_axis_in_rational(
     s,
     l,
     m,
@@ -3235,18 +3274,18 @@ function _nia_in_rational(
     route = with_logger(NullLogger()) do
         _complex_rational_route(
             s, l, m, a, omega, :IN;
-            N=_P_NIA_ORDER,
+            N=_P_NEGATIVE_IMAGINARY_AXIS_ORDER,
         )
     end
     confirmation = with_logger(NullLogger()) do
         _complex_rational_route(
             s, l, m, a, omega, :IN;
-            N=_P_NIA_ORDER + _P_NIA_ORDER_DELTA,
+            N=_P_NEGATIVE_IMAGINARY_AXIS_ORDER + _P_NEGATIVE_IMAGINARY_AXIS_ORDER_DELTA,
         )
     end
     _, _, agreement = _unit_pair_errors(route, confirmation)
     isfinite(agreement) &&
-        agreement <= _NIA_SIDE_AGREEMENT_MAX ||
+        agreement <= _NEGATIVE_IMAGINARY_AXIS_SIDE_AGREEMENT_MAX ||
         error("right-side rational IN dual-order certificate rejected")
     pair = _teuk_unit_pair(confirmation)
     pair === nothing && error("nonfinite rational right-side IN amplitudes")
@@ -3258,7 +3297,7 @@ function _nia_in_rational(
     )
 end
 
-function _nia_side_overlay(
+function _negative_imaginary_axis_side_overlay(
     route::ComplexRoute,
     mapped,
     confirmation,
@@ -3336,7 +3375,7 @@ function _nia_side_overlay(
     )
 end
 
-function _try_nia_side(
+function _try_negative_imaginary_axis_side(
     route::ComplexRoute,
     s,
     l,
@@ -3344,22 +3383,22 @@ function _try_nia_side(
     a,
     omega,
 )
-    _nia_side_pretrigger(route) || return route
+    _negative_imaginary_axis_side_pretrigger(route) || return route
     # Function barrier: the triggered work is compiled only when it runs.
-    return Base.inferencebarrier(_nia_side_retry)(route, s, l, m, a, omega)
+    return Base.inferencebarrier(_negative_imaginary_axis_side_retry)(route, s, l, m, a, omega)
 end
 
 # UP amplitudes just left of the negative imaginary axis (Re omega < 0) of a
 # rotating hole from the NIA lateral connection: the MST branch strength q on
 # the axis combined with the IN amplitudes at a small positive real offset and
 # the UP amplitudes at two such offsets, accepted when the two agree.
-function _nia_side_retry(route, s, l, m, a, omega)
+function _negative_imaginary_axis_side_retry(route, s, l, m, a, omega)
     omegac = ComplexF64(omega)
     axis_omega = ComplexF64(0, imag(omegac))
     strength = try
         axis_params = gsn_parameters(
             s, l, m, a, axis_omega)
-        nia_strength_fast(
+        negative_imaginary_axis_strength_fast(
             s, l, m, a, axis_omega, axis_params.lambda)
     catch
         return route
@@ -3367,18 +3406,18 @@ function _nia_side_retry(route, s, l, m, a, omega)
     strength.certificate_accepted || return route
     q = ComplexF64(strength.branch_strength)
     epsilon = abs(real(omegac))
-    offsets = (epsilon, _NIA_SIDE_OFFSET_FACTOR * epsilon)
+    offsets = (epsilon, _NEGATIVE_IMAGINARY_AXIS_SIDE_OFFSET_FACTOR * epsilon)
     factors = route.plan.amplitudes.conversion_factors
     tolerance = route.plan.controls.tolerance
     in_source = try
-        _nia_in_pair(
+        _negative_imaginary_axis_in_pair(
             s, l, m, a,
             ComplexF64(offsets[1], imag(omegac)),
             tolerance,
         )
     catch
         try
-            _nia_in_rational(
+            _negative_imaginary_axis_in_rational(
                 s, l, m, a,
                 ComplexF64(offsets[1], imag(omegac)),
             )
@@ -3387,7 +3426,7 @@ function _nia_side_retry(route, s, l, m, a, omega)
         end
     end
     first = try
-        _nia_side_pair(
+        _negative_imaginary_axis_side_pair(
             s, l, m, a,
             ComplexF64(offsets[1], imag(omegac)),
             q,
@@ -3398,7 +3437,7 @@ function _nia_side_retry(route, s, l, m, a, omega)
         return route
     end
     second = try
-        _nia_side_pair(
+        _negative_imaginary_axis_side_pair(
             s, l, m, a,
             ComplexF64(offsets[2], imag(omegac)),
             q,
@@ -3411,8 +3450,8 @@ function _nia_side_retry(route, s, l, m, a, omega)
     _, _, agreement = _amplitude_pair_errors(
         first.gsn, second.gsn)
     isfinite(agreement) &&
-        agreement <= _NIA_SIDE_AGREEMENT_MAX || return route
-    overlaid = _nia_side_overlay(
+        agreement <= _NEGATIVE_IMAGINARY_AXIS_SIDE_AGREEMENT_MAX || return route
+    overlaid = _negative_imaginary_axis_side_overlay(
         route, first, second, strength, offsets, agreement)
     overlaid === route && return route
     metadata = merge(overlaid.metadata, (;
@@ -3723,6 +3762,10 @@ function _select_consensus_retry(rational, s, l, m, a, omega, branch)
     return initial_match_retry !== rational ? initial_match_retry : p_retry
 end
 
+# Backend dispatch of `complex_route`: `:mst`; `:direct_rational` (the principal-MST
+# route on the negative imaginary axis, else the two-ray build followed by the
+# consensus retries, the plateau and negative-imaginary-axis overlays and the pole
+# reciprocal, with the P-equation fallback when the build fails); `:p_equation`.
 function _complex_route_impl(
     s::Int,
     l::Int,
@@ -3743,7 +3786,7 @@ function _complex_route_impl(
     pole_normalization::Bool=false,
 )
     if backend == :mst
-        selected = _complex_mst_route(
+        selected = _complex_mano_suzuki_takasugi_route(
             s, l, m, a, omega, branch;
             controls,
             lambda,
@@ -3830,11 +3873,11 @@ function _complex_route_impl(
                 fallback, fallback_trigger, sprint(showerror, error))
             fallback = _principal_small_frequency_expansion_overlay(
                 fallback, fallback.controls)
-            fallback = _try_p_nia_build_consensus(
+            fallback = _try_p_negative_imaginary_axis_build_consensus(
                 fallback, s, l, m, a, omega, branch)
-            fallback = _try_nia_partner(
+            fallback = _try_negative_imaginary_axis_partner(
                 fallback, s, l, m, a, omega, branch)
-            fallback = _try_nia_side(
+            fallback = _try_negative_imaginary_axis_side(
                 fallback, s, l, m, a, omega)
             return _apply_exact_pole_normalization(
                 fallback, pole_normalization)
@@ -3853,9 +3896,9 @@ function _complex_route_impl(
         pole_normalization || (selected =
             _try_offpole_match_plateau(
                 rational, selected, rational_build.retry_cache))
-        selected = _try_nia_partner(
+        selected = _try_negative_imaginary_axis_partner(
             selected, s, l, m, a, omega, branch)
-        selected = _try_nia_side(
+        selected = _try_negative_imaginary_axis_side(
             selected, s, l, m, a, omega)
         if pole_normalization
             reciprocal = _try_exact_pole_reciprocal(
@@ -3889,7 +3932,7 @@ end
 
 # Builder hooks used by `complex_route`: a special-case builder tried
 # first (returns `nothing` to decline), the default builder, and a step that
-# post-processes the built route. NIAAmplitudes registers the first and
+# post-processes the built route. NegativeImaginaryAxisAmplitudes registers the first and
 # the last.
 const _SPECIAL_ROUTE_BUILDER = Ref{Any}(
     (args...; kwargs...) -> nothing)
@@ -3990,6 +4033,7 @@ function complex_route(
     )
 end
 
+# The route's ComplexRoutePlan and its total patch count (also for a conjugated route).
 complex_route_plan_of(route::ComplexRoute) = route.plan
 complex_route_patch_count(route::ComplexRoute) = route.plan.patch_count
 
@@ -4031,12 +4075,12 @@ function complex_amplitudes(
 end
 
 """
-    complex_nia_jump(route)
+    complex_negative_imaginary_axis_jump(route)
 
 Analytic (MST) jump of the amplitudes across the negative imaginary frequency
 axis for an IN route, from its unit-transmission Teukolsky amplitudes.
 """
-function complex_nia_jump(route::ComplexRoute)
+function complex_negative_imaginary_axis_jump(route::ComplexRoute)
     route.branch == :IN ||
         throw(ArgumentError(
             "the analytic NIA jump requires an IN route."))
@@ -4044,7 +4088,7 @@ function complex_nia_jump(route::ComplexRoute)
     _finite_complex(transmission) && !iszero(transmission) ||
         throw(ArgumentError(
             "the analytic NIA jump requires finite Teukolsky transmission."))
-    return mst_nia_jump(
+    return mano_suzuki_takasugi_negative_imaginary_axis_jump(
         route.params.s,
         route.params.l,
         route.params.m,
@@ -4056,40 +4100,9 @@ function complex_nia_jump(route::ComplexRoute)
     )
 end
 
-"""
-    complex_endpoint_states(route)
-
-Endpoint states of a complex-frequency route: the horizon and infinity
-solutions used in the matching (`missing` where the backend did not record one).
-"""
-function complex_endpoint_states(route::ComplexRoute)
-    m = route.metadata
-    if _metadata_value(m, :backend, nothing) == :direct_gsn_two_ray_rational
-        states = _metadata_value(m, :endpoint_states, missing)
-        states === missing || return route.branch == :IN ? (
-            horizon_in=states.horizon_in,
-            infinity_in=states.infinity_in,
-            infinity_out=states.infinity_out,
-        ) : (
-            horizon_in=states.horizon_in,
-            horizon_out=states.horizon_out,
-            infinity_out=states.infinity_out,
-        )
-    end
-    if route.branch == :IN
-        return (
-            horizon_in=_metadata_value(m, :P_zero_in, missing),
-            infinity_in=_metadata_value(m, :P_inf_in, missing),
-            infinity_out=_metadata_value(m, :P_inf_out, missing),
-        )
-    end
-    return (
-        horizon_in=_metadata_value(m, :P_zero_in, missing),
-        horizon_out=_metadata_value(m, :P_zero_out, missing),
-        infinity_out=_metadata_value(m, :P_inf_out, missing),
-    )
-end
-
+# GSN state (X, dXdrstar, error) of a route at a real radius r > rplus or at a real
+# tortoise coordinate rstar; conjugated for a ConjugatedRoute. The `evaluate`
+# variants return X alone.
 complex_route_state_r(route::ComplexRoute, r::Real) =
     _state_at_r(route.state_evaluator, r)
 
@@ -4136,42 +4149,7 @@ complex_route_evaluate_rstar(
 ) where {R<:ComplexRoute} =
     complex_route_state_rstar(route, rstar).X
 
-"""
-    evaluate_complex_route_on_real_axis(route, coordinates; coordinate=:rstar, state=false)
-
-Evaluate the GSN function of a complex-frequency route at real `coordinates`
-(`coordinate = :rstar` or `:r`). Returns the values of X, or with `state=true`
-named tuples `(X, dXdrstar, error)`.
-"""
-function evaluate_complex_route_on_real_axis(
-    route::ComplexRoute,
-    coordinates;
-    coordinate::Symbol=:rstar,
-    state::Bool=false,
-)
-    if coordinate == :rstar && coordinates isa AbstractVector{<:Real}
-        values = route.state_evaluator(coordinates)
-        return state ? [
-            (
-                X=values[1][index],
-                dXdrstar=values[2][index],
-                error=values[3][index],
-            )
-            for index in eachindex(values[1])
-        ] : values[1]
-    end
-    evaluator = if coordinate == :rstar
-        state ? (value -> complex_route_state_rstar(route, value)) :
-            (value -> complex_route_evaluate_rstar(route, value))
-    elseif coordinate == :r
-        state ? (value -> complex_route_state_r(route, value)) :
-            (value -> complex_route_evaluate_r(route, value))
-    else
-        throw(ArgumentError("coordinate must be :rstar or :r."))
-    end
-    return map(evaluator, coordinates)
-end
-
+# The callable rstar -> (X, dXdrstar, error) of a route.
 complex_gsn_solution_rstar(route::ComplexRoute) = route.state_evaluator
 
 struct ComplexTeukolskyPair{R,C,T}
@@ -4291,6 +4269,8 @@ function _public_match_rstar(route::ComplexRoute, backend)
     return rstar_from_r(p.a, real(candidate_r))
 end
 
+# Horizon resonance: `order` is the exponent difference 2i (rplus/kappa) p of the two
+# horizon solutions when it is a positive integer, else 0; `threshold` marks p = 0.
 function _complex_horizon_resonance(params::ComplexParameters)
     iszero(params.p) && return (order=0, threshold=true)
     difference = 2im * (params.rplus / params.kappa) * params.p
@@ -4313,6 +4293,9 @@ function _complex_amplitude_observable(route::ComplexRoute)
     return :plane_wave_amplitudes
 end
 
+# GSNRadialFunction of a complex route in unit-GSN-transmission normalization; its
+# numerical metadata mirrors the real-frequency fields (regimes, orders, patch counts)
+# and adds the complex backend's retry, fallback and MST diagnostics.
 function _complex_gsn_wrapper(route::ComplexRoute)
     root = _root_module()
     p = route.params
@@ -4445,6 +4428,7 @@ function _complex_gsn_wrapper(route::ComplexRoute)
     )
 end
 
+# Wrap a complex route as a GSNRadialFunction (solver label "ISEM").
 function complex_gsn_radial_function(route::ComplexRoute)
     return _complex_gsn_wrapper(route)
 end
@@ -4578,18 +4562,10 @@ complex_gsn_radial_function(
     route::ConjugatedRoute{R},
 ) where {R<:ComplexRoute} = gsn_radial_function(route)
 
-"""
-    complex_radial_route(s, l, m, a, omega, branch; kwargs...)
-
-Build a complex-frequency route with `complex_route` (keywords
-are passed through) and return it as a `GSNRadialFunction`.
-"""
-function complex_radial_route(s::Int, l::Int, m::Int, a, omega, branch; kwargs...)
-    return complex_gsn_radial_function(
-        complex_route(s, l, m, a, omega, branch; kwargs...),
-    )
-end
-
+# Complex-omega method of `radial_route`: a zero imaginary part is forwarded to the
+# real-frequency route; with default controls and Re omega < 0 (including -0.0) the
+# route is built at (-m, -conj(omega)) and returned as a ConjugatedRoute; otherwise
+# `complex_route` is called with `:auto` expansion switches mapped to `nothing`.
 function radial_route(
     s::Integer,
     l::Integer,

@@ -5,6 +5,8 @@
 
 abstract type AbstractSubmissionGeometryOwner end
 
+# m-independent sampled geometry of one (N, K) generic grid (radial and polar nodes, trapezoid weights, N±/L±
+# factors, rho tables), built once per sample by _generic_m2_geometry and shared read-only by every m-cache.
 struct GenericM2Geometry
     r::Vector{Float64}
     rs::Vector{Float64}
@@ -148,15 +150,6 @@ function _submission_geometry_lookup!(build::Function, owner::AbstractSubmission
         return value
     end
 end
-
-function submission_geometry_stats(owner::AbstractSubmissionGeometryOwner)
-    return lock(owner.lock) do
-        copy(owner.stats)
-    end
-end
-generic_geometry_stats(owner::GenericGeometryOwner) = submission_geometry_stats(owner)
-inclined_geometry_stats(owner::InclinedGeometryOwner) = submission_geometry_stats(owner)
-eccentric_geometry_stats(owner::EccentricGeometryOwner) = submission_geometry_stats(owner)
 
 function _release_submission_geometry!(owner::AbstractSubmissionGeometryOwner)
     # Admission must already be stopped and submitted tasks joined by the caller.
