@@ -41,7 +41,9 @@ r_from_rstar
 result = qnm(a, s, l, m, n)
 result = qnm(a, s, l, m, n, mirror)
 pair = qnm_pair(a, s, l, m, n)
-root = qnm_frequency(QNMMode(s, l, m, n), a)
+root = qnm_frequency(a, s, l, m, n)                 # frequency only
+roots = qnm_sequence(spins, s, l, m, n)
+# keywords: convention=:overtone | :complete_spectrum, segment=0 | 1 | :auto
 ```
 
 `ordinary` is the default branch. `mirror` requests the negative-real root

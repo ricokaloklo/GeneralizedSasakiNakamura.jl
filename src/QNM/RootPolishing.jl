@@ -62,20 +62,23 @@ function _complex_of_type(::Type{T}, value) where {T<:AbstractFloat}
     return Complex{T}(T(real(value)), T(imag(value)))
 end
 
+# The l=2, |m|=2 complete-spectrum n=8/n=9 trajectories cross the NIA. Their
+# label is fixed by continuation from the finite-spin anchor, not by sign(Re w).
+_nia_crossing_exempt(mode::QNMMode) = mode.branch == :positive_real &&
+    mode.s == -2 && mode.l == 2 && abs(mode.m) == 2 && mode.n in (8, 9)
+
+_branch_sign(mode::QNMMode) = mode.branch == :positive_real ? 1 : -1
+
 function _branch_consistent(mode::QNMMode, omega)
-    if mode.branch == :positive_real && mode.s == -2 && mode.l == 2 &&
-            abs(mode.m) == 2 && mode.n in (8, 9)
-        # These complete-spectrum trajectories cross the NIA. Their label is
-        # fixed by continuation from the finite-spin anchor, not by sign(Re w).
-        return true
-    end
+    _nia_crossing_exempt(mode) && return true
     if mode.branch == :positive_real
         return real(omega) > 0
     end
     return real(omega) < 0
 end
 
-function _schwarzschild_label_contract(mode::QNMMode, convention::Symbol, a=0)
+function _schwarzschild_label_contract(mode::QNMMode, convention::Symbol, a=0;
+        segment::Integer=0)
     # Negative public spins are evaluated through (a,m) -> (-a,-m), so the
     # same physical near-AS branch appears internally with m=-2.
     l2m2 = mode.s == -2 && mode.l == 2 && abs(mode.m) == 2
@@ -99,7 +102,7 @@ function _schwarzschild_label_contract(mode::QNMMode, convention::Symbol, a=0)
     branch_label = convention == :leaver ? :unassigned_leaver_root :
         near_as_role == :unconventional ? :kerr_branch_8_0 :
         near_as_role == :algebraically_special ? :kerr_branch_8_1 :
-        Symbol(:kerr_overtone_n, mode.n)
+        _segment_branch_label(mode.n, segment)
     return (
         label_convention=convention == :overtone ? :standard_overtone :
             convention == :complete_spectrum ?
@@ -354,6 +357,16 @@ function _root_derivative_step(::Type{BigFloat}, omega)
         max(one(BigFloat), abs(omega))
 end
 
+# Real step of the four-point stencil omega +- h, omega +- 2h. Outside the
+# NIA-crossing exemption it is clamped to a quarter of the distance to the
+# axis, so all four points stay on the physical side of the Leaver tail cut.
+function _stencil_step(mode::QNMMode, omega::Complex{T},
+        derivative_step_scale=one(T)) where {T<:AbstractFloat}
+    h = T(_root_derivative_step(T, omega)) * T(derivative_step_scale)
+    _nia_crossing_exempt(mode) && return h
+    return min(h, _branch_sign(mode) * real(omega) / 4)
+end
+
 function _near_extremal_derivative_scale(mode::QNMMode, a::T) where {
         T<:AbstractFloat}
     abs(a) >= T(0.99) && mode.n >= 5 || return one(T)
@@ -605,8 +618,18 @@ function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
         root_tolerance::T,
         maximum_root_iterations::Int,
         trust_radius::T,
-        derivative_step_scale::T=one(T)) where {T<:AbstractFloat}
+        derivative_step_scale::T=one(T),
+        position_tolerance=nothing) where {T<:AbstractFloat}
     omega = initial
+    # The Leaver tail (ContinuedFractions.jl, sqrt(-(D1+D2+D3))) has a branch
+    # cut on the NIA, so a root on the wrong side of it is not this branch.
+    clamp_stencil = !_nia_crossing_exempt(mode)
+    if clamp_stencil && _branch_sign(mode) * real(omega) <= zero(T)
+        return (
+            omega=omega, evaluation=nothing, history=NamedTuple[],
+            converged=false, conditioned=false,
+            stop_reason=:initial_guess_off_branch)
+    end
     evaluation = leaver_radial_residual(mode, a, omega;
         angular_order, sheet_id, inversion_index, cf_tolerance,
         cf_minimum_iterations, cf_maximum_iterations,
@@ -636,12 +659,22 @@ function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
             cf_iterations=evaluation.iterations,
             angular_residual=evaluation.angular.residual,
         ))
-        residual <= root_tolerance && return (
+        residual <= root_tolerance && position_tolerance === nothing && return (
             omega=omega, evaluation=evaluation, history=history,
             converged=true, conditioned=false,
             stop_reason=:root_tolerance)
 
-        h = T(_root_derivative_step(T, omega)) * derivative_step_scale
+        h = _stencil_step(mode, omega, derivative_step_scale)
+        if position_tolerance !== nothing
+            isempty(excluded_roots) || throw(ArgumentError(
+                "Position certification requires the undeflated final root."))
+            h = min(h, _branch_sign(mode) * real(omega) / 16)
+            if !isfinite(h) || h <= zero(T) || omega + h/2 == omega ||
+                    omega - h/2 == omega || omega + im*h == omega
+                return (omega, evaluation, history, converged=false,
+                    conditioned=false, stop_reason=:near_axis_position_stencil_unverified)
+            end
+        end
         xplus = leaver_radial_residual(mode, a, omega + h;
             angular_order, sheet_id, inversion_index, cf_tolerance,
             cf_minimum_iterations, cf_maximum_iterations,
@@ -671,6 +704,94 @@ function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
                 stop_reason=:singular_root_jacobian)
         end
         delta = -deflated_value(evaluation.value, omega) / derivative
+        if position_tolerance !== nothing
+            # Keep the original successful first attempt unchanged. At most two
+            # smaller stencils may resolve fourth-order truncation error.
+            for stencil_attempt in 0:2
+                if stencil_attempt > 0
+                    h /= 2
+                    if !isfinite(h) || h <= zero(T) || omega + h/2 == omega ||
+                            omega - h/2 == omega || omega + im*h == omega
+                        return (omega=omega, evaluation=evaluation, history=history,
+                            converged=false, conditioned=false,
+                            stop_reason=:near_axis_position_stencil_unverified)
+                    end
+                    xplus, xminus, xplus2, xminus2 = map((h, -h, 2h, -2h)) do offset
+                        leaver_radial_residual(mode, a, omega + offset;
+                            angular_order, sheet_id, inversion_index, cf_tolerance,
+                            cf_minimum_iterations, cf_maximum_iterations,
+                            require_cf_convergence=false)
+                    end
+                    derivative = (-xplus2.value + 8 * xplus.value -
+                        8 * xminus.value + xminus2.value) / (12h)
+                end
+                # Final BigFloat roots near the NIA need a position certificate:
+                # residual alone can be tiny while |F/F'| is still material.
+                # All acceptance thresholds remain the caller's original gates.
+                cf_valid(e) = isfinite(e.value) && isfinite(e.error) &&
+                    e.cf_converged && e.error <= cf_tolerance &&
+                    isfinite(e.angular.residual)
+                extra = map((h/2, -h/2, im*h, -im*h, 2im*h, -2im*h)) do offset
+                    leaver_radial_residual(mode, a, omega + offset;
+                        angular_order, sheet_id, inversion_index, cf_tolerance,
+                        cf_minimum_iterations, cf_maximum_iterations,
+                        require_cf_convergence=false)
+                end
+                if !all(cf_valid, (evaluation, xplus, xminus, xplus2, xminus2, extra...))
+                    push!(history, (iteration=iteration, omega=omega, position_verified=false,
+                        stop_reason=:near_axis_position_cf_unverified))
+                    return (omega, evaluation, history, converged=false,
+                        conditioned=false, stop_reason=:near_axis_position_cf_unverified)
+                end
+                hp, hm, ip, iminus, ip2, iminus2 = extra
+                half_derivative = (-xplus.value + 8hp.value - 8hm.value +
+                    xminus.value) / (6h)
+                imaginary_derivative = (-ip2.value + 8ip.value -
+                    8iminus.value + iminus2.value) / (12im*h)
+                finite_derivatives = isfinite(half_derivative) &&
+                    isfinite(imaginary_derivative) && !iszero(half_derivative)
+                derivative_scale = max(abs(half_derivative), eps(T))
+                half_discrepancy = abs(derivative - half_derivative) / derivative_scale
+                imaginary_discrepancy = abs(imaginary_derivative - half_derivative) /
+                    derivative_scale
+                derivative_verified = finite_derivatives &&
+                    max(half_discrepancy, imaginary_discrepancy) <= position_tolerance
+                delta = -evaluation.value / half_derivative
+                scaled_correction = abs(delta) / max(one(T), abs(omega))
+                position_verified = derivative_verified && isfinite(delta) &&
+                    scaled_correction <= position_tolerance && residual <= root_tolerance
+                position_check = (verified=position_verified,
+                    precision_bits=_precision_bits(T), omega, h, stencil_attempt,
+                    residual, cf_error=evaluation.error,
+                    cf_iterations=evaluation.iterations, cf_converged=evaluation.cf_converged,
+                    all_samples_cf_verified=true,
+                    sample_offsets=(zero(omega), h, -h, 2h, -2h,
+                        h/2, -h/2, im*h, -im*h, 2im*h, -2im*h),
+                    sample_cf_errors=map(e -> e.error,
+                        (evaluation, xplus, xminus, xplus2, xminus2, extra...)),
+                    sample_cf_iterations=map(e -> e.iterations,
+                        (evaluation, xplus, xminus, xplus2, xminus2, extra...)),
+                    sample_angular_residuals=map(e -> e.angular.residual,
+                        (evaluation, xplus, xminus, xplus2, xminus2, extra...)),
+                    derivative, half_derivative, imaginary_derivative,
+                    half_discrepancy, imaginary_discrepancy,
+                    uncapped_correction=delta, scaled_correction,
+                    root_tolerance, cf_tolerance, position_tolerance,
+                    certificate=:local_newton_position_estimate)
+                push!(history, (iteration=iteration, omega=omega, position_check=position_check))
+                if derivative_verified && isfinite(delta)
+                    position_verified && return (omega=omega, evaluation=evaluation,
+                        history=history, converged=true, conditioned=false,
+                        stop_reason=:root_position_tolerance, position_check=position_check)
+                    break
+                elseif stencil_attempt == 2
+                    return (omega=omega, evaluation=evaluation, history=history,
+                        converged=false, conditioned=false,
+                        stop_reason=:near_axis_position_derivative_unverified,
+                        position_check=position_check)
+                end
+            end
+        end
         if abs(delta) > trust_radius
             delta *= trust_radius / abs(delta)
         end
@@ -685,7 +806,13 @@ function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
                 angular_order, sheet_id, inversion_index, cf_tolerance,
                 cf_minimum_iterations, cf_maximum_iterations,
                 require_cf_convergence=false)
-            if abs(deflated_value(candidate_evaluation.value, candidate)) <
+            candidate_cf_valid = position_tolerance === nothing ||
+                (isfinite(candidate_evaluation.value) &&
+                 isfinite(candidate_evaluation.error) &&
+                 candidate_evaluation.cf_converged &&
+                 candidate_evaluation.error <= cf_tolerance)
+            if candidate_cf_valid &&
+                    abs(deflated_value(candidate_evaluation.value, candidate)) <
                     abs(deflated_value(evaluation.value, omega))
                 omega = candidate
                 evaluation = candidate_evaluation
@@ -696,7 +823,8 @@ function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
         if !accepted
             conditioned_limit = _conditioned_root_residual_limit(
                 mode, a, root_tolerance)
-            conditioned = residual <= conditioned_limit &&
+            conditioned = position_tolerance === nothing &&
+                residual <= conditioned_limit &&
                 evaluation.cf_converged && evaluation.error <= cf_tolerance
             return (
                 omega=omega, evaluation=evaluation, history=history,
@@ -708,8 +836,11 @@ function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
     final_residual = T(abs(evaluation.value))
     conditioned_limit = _conditioned_root_residual_limit(
         mode, a, root_tolerance)
-    strict = final_residual <= root_tolerance
-    conditioned = !strict && final_residual <= conditioned_limit &&
+    # With position checking enabled, no residual-only iteration-limit exit
+    # may bypass the explicit derivative and uncapped-correction certificate.
+    strict = position_tolerance === nothing && final_residual <= root_tolerance
+    conditioned = position_tolerance === nothing && !strict &&
+        final_residual <= conditioned_limit &&
         evaluation.cf_converged && evaluation.error <= cf_tolerance
     return (
         omega=omega, evaluation=evaluation, history=history,
@@ -843,7 +974,8 @@ function _polish_frequency_root(mode::QNMMode, a::T, initial::Complex{T};
         cf_maximum_iterations::Int, root_tolerance::T,
         maximum_root_iterations::Int, trust_radius::T,
         derivative_step_scale=one(T),
-        near_as_role::Symbol=:none) where {T<:AbstractFloat}
+        near_as_role::Symbol=:none,
+        position_tolerance=nothing) where {T<:AbstractFloat}
     if _near_as_mst_required(mode, a, T, near_as_role)
         return _polish_mst_incidence_root(
             mode, Float64(a), ComplexF64(initial);
@@ -860,7 +992,7 @@ function _polish_frequency_root(mode::QNMMode, a::T, initial::Complex{T};
         cf_tolerance, cf_minimum_iterations, cf_maximum_iterations,
         root_tolerance, maximum_root_iterations, trust_radius,
         derivative_step_scale=T(derivative_step_scale) *
-            _near_extremal_derivative_scale(mode, a))
+            _near_extremal_derivative_scale(mode, a), position_tolerance)
 end
 
 _root_equation(evaluation) = hasproperty(evaluation, :root_equation) ?
@@ -1079,7 +1211,7 @@ function _automatic_precision_fallback(mode::QNMMode, a, omega;
         cf_tolerance, root_tolerance, stability_tolerance,
         continuation_coordinate,
         convention::Symbol, overtone_index::Union{Int,Missing},
-        inversion_index::Int)
+        inversion_index::Int, segment::Int=0)
     fallback_precision_bits >= 96 || throw(ArgumentError(
         "fallback_precision_bits must be at least 96."))
     high_damping_near_extremal = abs(a) >= 0.99 &&
@@ -1112,67 +1244,75 @@ function _automatic_precision_fallback(mode::QNMMode, a, omega;
             continuation_coordinate,
             convention,
             inversion_index,
+            segment,
         )
-        precision_drift = abs(result.omega - omega) /
-            max(one(real(result.omega)), abs(result.omega), abs(omega))
-        branch_reference = _complex_of_type(BigFloat, omega)
-        raw_branch_allowance = zero(BigFloat)
-        if hasproperty(float64_provenance, :terminal_predictor)
-            branch_reference = _complex_of_type(
-                BigFloat, float64_provenance.terminal_predictor)
-        elseif hasproperty(float64_provenance, :terminal_extrapolation_rows) &&
-                !isempty(float64_provenance.terminal_extrapolation_rows)
-            terminal_row = last(float64_provenance.terminal_extrapolation_rows)
-            branch_reference = _complex_of_type(BigFloat, terminal_row.predictor)
-            if hasproperty(terminal_row, :branch_allowance)
-                raw_branch_allowance = BigFloat(terminal_row.branch_allowance)
+        return setprecision(BigFloat, max(fallback_precision_bits, result.precision_bits)) do
+            precision_drift = abs(result.omega - omega) /
+                max(one(real(result.omega)), abs(result.omega), abs(omega))
+            branch_reference = _complex_of_type(BigFloat, omega)
+            raw_branch_allowance = zero(BigFloat)
+            if hasproperty(float64_provenance, :terminal_predictor)
+                branch_reference = _complex_of_type(
+                    BigFloat, float64_provenance.terminal_predictor)
+            elseif hasproperty(float64_provenance, :terminal_extrapolation_rows) &&
+                    !isempty(float64_provenance.terminal_extrapolation_rows)
+                terminal_row = last(float64_provenance.terminal_extrapolation_rows)
+                branch_reference = _complex_of_type(BigFloat, terminal_row.predictor)
+                if hasproperty(terminal_row, :branch_allowance)
+                    raw_branch_allowance = BigFloat(terminal_row.branch_allowance)
+                end
             end
+            branch_scale = max(one(BigFloat), abs(result.omega),
+                abs(branch_reference))
+            precision_candidate_allowance =
+                BigFloat(64) * sqrt(BigFloat(stability_tolerance))
+            precision_predictor_allowance = max(
+                precision_candidate_allowance,
+                raw_branch_allowance / branch_scale,
+            )
+            precision_predictor_drift = abs(result.omega - branch_reference) /
+                branch_scale
+            precision_branch_drift = min(
+                BigFloat(precision_drift), precision_predictor_drift)
+            precision_branch_allowance = precision_candidate_allowance
+            precision_branch_guard_passed =
+                BigFloat(precision_drift) <= precision_candidate_allowance ||
+                precision_predictor_drift <= precision_predictor_allowance
+            provenance = merge(result.provenance, (
+                precision_policy=:automatic_bigfloat_fallback,
+                high_damping_near_extremal,
+                fallback_cf_maximum_iterations,
+                float64_candidate=omega,
+                float64_bigfloat_drift=precision_drift,
+                precision_branch_reference=branch_reference,
+                precision_candidate_drift=precision_drift,
+                precision_candidate_allowance,
+                precision_predictor_drift,
+                precision_predictor_allowance,
+                precision_branch_drift,
+                precision_branch_allowance,
+                precision_branch_guard_passed,
+                float64_provenance=float64_provenance,
+                continuation_axis_touches=get(float64_provenance,
+                    :continuation_axis_touches,
+                    get(result.provenance, :continuation_axis_touches, 0)),
+                nia_restart_rows=get(float64_provenance, :nia_restart_rows,
+                    get(result.provenance, :nia_restart_rows, NamedTuple[])),
+            ))
+            status = result.status in (:accepted, :estimated) &&
+                precision_branch_guard_passed ? result.status : :failed
+            stop_reason = !(result.status in (:accepted, :estimated)) ?
+                result.stop_reason :
+                precision_branch_guard_passed ? result.stop_reason :
+                :precision_fallback_branch_guard
+            return LeaverResult(
+                result.mode, result.convention, result.overtone_index,
+                result.inversion_index, result.a, result.omega, result.angular_A,
+                result.lambda, result.mixing, result.cf_value, result.cf_error,
+                result.cf_iterations, result.root_residual,
+                result.angular_residual, result.precision_bits, status,
+                stop_reason, provenance)
         end
-        branch_scale = max(one(BigFloat), abs(result.omega),
-            abs(branch_reference))
-        precision_candidate_allowance =
-            BigFloat(64) * sqrt(BigFloat(stability_tolerance))
-        precision_predictor_allowance = max(
-            precision_candidate_allowance,
-            raw_branch_allowance / branch_scale,
-        )
-        precision_predictor_drift = abs(result.omega - branch_reference) /
-            branch_scale
-        precision_branch_drift = min(
-            BigFloat(precision_drift), precision_predictor_drift)
-        precision_branch_allowance = precision_candidate_allowance
-        precision_branch_guard_passed =
-            BigFloat(precision_drift) <= precision_candidate_allowance ||
-            precision_predictor_drift <= precision_predictor_allowance
-        provenance = merge(result.provenance, (
-            precision_policy=:automatic_bigfloat_fallback,
-            high_damping_near_extremal,
-            fallback_cf_maximum_iterations,
-            float64_candidate=omega,
-            float64_bigfloat_drift=precision_drift,
-            precision_branch_reference=branch_reference,
-            precision_candidate_drift=precision_drift,
-            precision_candidate_allowance,
-            precision_predictor_drift,
-            precision_predictor_allowance,
-            precision_branch_drift,
-            precision_branch_allowance,
-            precision_branch_guard_passed,
-            float64_provenance=float64_provenance,
-        ))
-        status = result.status in (:accepted, :estimated) &&
-            precision_branch_guard_passed ? result.status : :failed
-        stop_reason = !(result.status in (:accepted, :estimated)) ?
-            result.stop_reason :
-            precision_branch_guard_passed ? result.stop_reason :
-            :precision_fallback_branch_guard
-        return LeaverResult(
-            result.mode, result.convention, result.overtone_index,
-            result.inversion_index, result.a, result.omega, result.angular_A,
-            result.lambda, result.mixing, result.cf_value, result.cf_error,
-            result.cf_iterations, result.root_residual,
-            result.angular_residual, result.precision_bits, status,
-            stop_reason, provenance)
     end
 end
 
@@ -1442,6 +1582,14 @@ end
 function _spin_reflected_result(
         requested_mode::QNMMode, requested_a, source::LeaverResult;
         angular_order::Int, sheet_id::Symbol)
+    if hasproperty(source.provenance, :near_axis_position_recovery) &&
+            source.omega isa Complex{BigFloat} &&
+            precision(BigFloat) < source.precision_bits
+        return setprecision(BigFloat, source.precision_bits) do
+            _spin_reflected_result(requested_mode, requested_a, source;
+                angular_order, sheet_id)
+        end
+    end
     mapped_a = -source.a
     angular = angular_branch(
         requested_mode, mapped_a, source.omega;
@@ -1486,7 +1634,15 @@ function _spin_reflected_result(
 end
 
 """
-    qnm_frequency(mode::QNMMode, a; guess=nothing, kwargs...)
+    qnm_frequency(a, s, l, m, n, branch=ordinary; convention=:overtone,
+        segment=0, guess=nothing, kwargs...)
+    qnm_frequency(mode::QNMMode, a; kwargs...)
+
+Return the QNM frequency of the mode `(s, l, m, n)` at spin `a` as a
+`LeaverResult` (root only, no amplitudes). `branch` is `ordinary` (default) or
+`mirror`; a mirror root without `guess` is seeded from `-conj` of its ordinary
+`(a, -m)` partner, as in [`qnm`](@ref). The `QNMMode` form is equivalent and
+kept for existing code.
 
 Solve the coupled angular/radial Leaver equations in `M=1` units. Without an
 explicit guess, the labeled Schwarzschild mode is continued in spin. The final
@@ -1500,14 +1656,77 @@ the `n`-th Schwarzschild root. For `s=-2`, `l=2`, `|m|=2` co-rotating modes the
 algebraically special frequency `-2i` splits into a pair (Cook's 8₀ and 8₁);
 `n=8` returns the less damped 8₀, and 8₁ is `n=9` with
 `convention=:complete_spectrum`.
+
+Some sequences end on the negative imaginary axis (NIA) at finite spin and
+re-emerge from it at larger spin (Cook & Zalutskiy's `n₀` and `n₁`). The
+default `segment=0` continues the sequence attached to `a=0`; when it ends on
+the NIA the result fails with `stop_reason=:negative_imaginary_axis_endpoint`
+and records the extrapolated `endpoint_spin`. `segment=1` returns the
+re-emerged `n₁` (currently `m=0` only), and `segment=:auto` returns the first
+segment that exists at `a`. See the QNM manual page for the stop reasons.
 """
-function qnm_frequency(mode::QNMMode, a; kwargs...)
+function qnm_frequency(mode::QNMMode, a; segment=0, kwargs...)
+    selected_segment = _qnm_segment(segment)
     convention = _qnm_convention(get(kwargs, :convention, :overtone))
     internal_n = _overtone_internal_index(mode, a, convention)
-    internal_n == mode.n && return _qnm_frequency_labeled(mode, a; kwargs...)
-    result = _qnm_frequency_labeled(
-        QNMMode(mode.s, mode.l, mode.m, internal_n, mode.branch), a; kwargs...)
+    internal_mode = internal_n == mode.n ? mode :
+        QNMMode(mode.s, mode.l, mode.m, internal_n, mode.branch)
+    result = selected_segment === 0 ?
+        _qnm_frequency_labeled(internal_mode, a; kwargs...) :
+        _qnm_frequency_segmented(internal_mode, a, selected_segment;
+            kwargs...)
+    result = _with_sequence_segment(result, 0)
+    internal_n == mode.n && return result
     return _relabel_result(result, mode)
+end
+
+function qnm_frequency(a::Real, s::Integer, l::Integer, m::Integer,
+        n::Integer, branch=ordinary; guess=nothing, kwargs...)
+    if _qnm_selector(branch) == mirror && guess === nothing
+        options = Base.structdiff(values(kwargs),
+            NamedTuple{(:convention, :inversion_index, :segment)})
+        return first(_mirror_qnm_root(a, s, l, m, n, nothing, options;
+            convention=get(kwargs, :convention, :overtone),
+            inversion_index=get(kwargs, :inversion_index, :auto),
+            segment=get(kwargs, :segment, 0)))
+    end
+    return qnm_frequency(_qnm_flat_mode(s, l, m, n, branch), a; guess,
+        kwargs...)
+end
+
+_qnm_flat_mode(s, l, m, n, branch) = QNMMode(Int(s), Int(l), Int(m), Int(n),
+    _qnm_selector(branch) == mirror ? :negative_real : :positive_real)
+
+function _qnm_segment(segment)
+    if segment isa Union{Symbol,AbstractString}
+        Symbol(lowercase(String(segment))) == :auto && return :auto
+        throw(ArgumentError("segment must be 0, 1, or :auto."))
+    end
+    segment isa Integer || throw(ArgumentError(
+        "segment must be 0, 1, or :auto."))
+    segment >= 0 || throw(ArgumentError("segment must be nonnegative."))
+    segment <= 1 || throw(ArgumentError(
+        "Only segments 0 and 1 are implemented."))
+    return Int(segment)
+end
+
+# Paths that never enter the spin continuation (Schwarzschild endpoints,
+# extremal limits) are segment 0 unless they say otherwise.
+function _with_sequence_segment(result::LeaverResult, segment::Int)
+    hasproperty(result.provenance, :sequence_segment) && return result
+    return _with_provenance(result, (sequence_segment=segment,))
+end
+_with_sequence_segment(result, segment::Int) = result
+
+function _with_provenance(result::LeaverResult, extra::NamedTuple;
+        status=result.status, stop_reason=result.stop_reason)
+    return LeaverResult(result.mode, result.convention,
+        result.overtone_index, result.inversion_index, result.a,
+        result.omega, result.angular_A, result.lambda, result.mixing,
+        result.cf_value, result.cf_error, result.cf_iterations,
+        result.root_residual, result.angular_residual,
+        result.precision_bits, status, stop_reason,
+        merge(result.provenance, extra))
 end
 
 # Public overtone label -> label of the internal complete-spectrum ordering. Only
@@ -1520,9 +1739,15 @@ function _overtone_internal_index(mode::QNMMode, a, convention::Symbol)
     return mode.n >= 9 ? mode.n + 1 : mode.n
 end
 
+# Cook & Zalutskiy label the segment of a sequence that re-emerges from the NIA
+# as n_1; segment 0 keeps the plain overtone label.
+_segment_branch_label(n::Integer, segment::Integer) = segment == 0 ?
+    Symbol(:kerr_overtone_n, n) : Symbol(:kerr_overtone_n, n, :_, segment)
+
 function _relabel_result(result::LeaverResult, mode::QNMMode)
     label = mode.n == 8 ? result.provenance.branch_label :
-        Symbol(:kerr_overtone_n, mode.n)
+        _segment_branch_label(mode.n,
+            get(result.provenance, :sequence_segment, 0))
     provenance = hasproperty(result.provenance, :branch_label) ?
         merge(result.provenance, (branch_label=label,)) : result.provenance
     return LeaverResult(mode, result.convention,
@@ -1533,6 +1758,216 @@ function _relabel_result(result::LeaverResult, mode::QNMMode)
         result.precision_bits, result.status, result.stop_reason, provenance)
 end
 _relabel_result(result, mode::QNMMode) = result
+
+# Spin continuation of one labeled root from the last accepted point to
+# `sequence_target`. `state` holds the accepted path and the row logs and is
+# extended in place. Returns `completed=false` with the last polish when the
+# step falls below `minimum_step`.
+function _continue_in_spin!(state, mode::QNMMode, sequence_target::T;
+        selected_coordinate::Symbol, initial_step::T, minimum_step::T,
+        maximum_step::T, continuation_root_tolerance::T,
+        polish_options) where {T<:AbstractFloat}
+    (; accepted_spins, accepted_coordinates, accepted_roots,
+        accepted_angular_A, continuation_rows,
+        rejected_continuation_rows) = state
+    direction = sign(sequence_target - accepted_coordinates[end])
+    proposed_step = min(initial_step,
+        abs(sequence_target - accepted_coordinates[end]))
+    while direction *
+            (sequence_target - accepted_coordinates[end]) > zero(T)
+        if length(accepted_coordinates) < 3
+            proposed_step = initial_step
+        else
+            curvature = max(
+                _continuation_curvature(
+                    accepted_coordinates, accepted_roots),
+                _continuation_curvature(
+                    accepted_coordinates, accepted_angular_A),
+            )
+            if curvature > zero(T) && isfinite(curvature)
+                proposed_step = clamp(T(0.05) / sqrt(curvature),
+                    minimum_step, maximum_step)
+            else
+                proposed_step = min(proposed_step, maximum_step)
+            end
+        end
+        remaining = abs(sequence_target - accepted_coordinates[end])
+        attempted_step = min(proposed_step, remaining)
+        attempt = 0
+        accepted_step = false
+
+        while !accepted_step
+            attempt += 1
+            next_coordinate = accepted_coordinates[end] +
+                direction * attempted_step
+            next_spin = selected_coordinate == :nu ?
+                sin(next_coordinate) : next_coordinate
+            predictor = _continuation_predictor(
+                accepted_coordinates, accepted_roots, next_coordinate)
+            polished = _polish_frequency_root(
+                mode, next_spin, predictor;
+                polish_options...)
+            append!(continuation_rows, [merge(row, (
+                a=next_spin, continuation_attempt=attempt,
+                continuation_coordinate=selected_coordinate,
+                coordinate_value=next_coordinate,
+                predictor=predictor)) for row in polished.history])
+            state.last_polish[] = polished
+            branch_guard = polished.converged ?
+                _continuation_branch_guard(
+                    accepted_coordinates, accepted_roots,
+                    next_coordinate,
+                    predictor, polished.omega,
+                    continuation_root_tolerance) :
+                (accepted=false, discrepancy=T(Inf),
+                    allowance=zero(T))
+
+            # A converged root beyond an NIA crossing belongs to another
+            # sequence even when the branch guard admits it.
+            axis_crossing = polished.converged && branch_guard.accepted &&
+                _nia_step_crosses_axis(mode, accepted_coordinates,
+                    accepted_roots, next_coordinate)
+            if polished.converged && branch_guard.accepted && !axis_crossing
+                push!(accepted_spins, next_spin)
+                push!(accepted_coordinates, next_coordinate)
+                push!(accepted_roots, polished.omega)
+                push!(accepted_angular_A,
+                    polished.evaluation.angular.angular_A)
+                proposed_step = attempted_step
+                accepted_step = true
+                continue
+            end
+
+            push!(rejected_continuation_rows, (
+                a=next_spin,
+                continuation_coordinate=selected_coordinate,
+                coordinate_value=next_coordinate,
+                attempted_step=attempted_step,
+                attempt=attempt,
+                predictor=predictor,
+                candidate=polished.omega,
+                converged=polished.converged,
+                stop_reason=polished.stop_reason,
+                branch_discrepancy=branch_guard.discrepancy,
+                branch_allowance=branch_guard.allowance,
+                axis_crossing,
+            ))
+            attempted_step /= 2
+            if attempted_step < minimum_step
+                reason = axis_crossing ? :nia_crossing_step :
+                    polished.converged ? :continuation_branch_guard :
+                    polished.stop_reason
+                return (completed=false, polished, reason,
+                    failed_spin=next_spin)
+            end
+        end
+    end
+
+    return (completed=true, polished=nothing, reason=:completed,
+        failed_spin=nothing)
+end
+
+# Recover only a failed active 128-bit position certificate. This is a complete
+# same-spin finalization transaction, not a promoted derivative or acceptance
+# override. The 192-bit child cannot enter the 128-only recovery again.
+function _near_axis_position_precision_recovery(mode::QNMMode, a, omega;
+        options, context, failed_primary, failed_guard)
+    lower_precision_bits = _precision_bits(BigFloat)
+    lower_precision_bits == 128 || throw(ArgumentError(
+        "Near-axis position recovery requires a failed 128-bit finalization."))
+    return setprecision(BigFloat, 192) do
+        B = BigFloat
+        precise_a = B(a)
+        precise_seed = _complex_of_type(B, omega)
+        result = _qnm_frequency_labeled(mode, precise_a;
+            options..., guess=precise_seed, automatic_precision_fallback=false,
+            fallback_precision_bits=192)
+        result.precision_bits == 192 && precision(real(result.omega)) == 192 &&
+            precision(imag(result.omega)) == 192 || throw(ErrorException(
+                "Position recovery did not retain its actual 192-bit precision."))
+
+        # Explicit-guess finalization has no continuation history of its own.
+        # Use the parent's real path when present; a one-point parent remains
+        # unavailable, so the full outer resume/fallback guard still applies.
+        available = length(context.coordinates) >= 2
+        branch_guard = available ? merge(_continuation_branch_guard(
+            B.(context.coordinates), _complex_of_type.(Ref(B), context.roots),
+            B(last(context.coordinates)), _complex_of_type(B, last(context.roots)),
+            result.omega, B(context.continuation_root_tolerance)),
+            (available=true, source=:pre_recovery_GSN_path)) :
+            (available=false, accepted=missing,
+                reason=:explicit_guess_has_no_continuation_history)
+        child_position = get(result.provenance, :near_axis_position_check, nothing)
+        child_position_verified = child_position !== nothing &&
+            get(child_position, :verified, false) === true &&
+            get(child_position, :precision_bits, 0) == 192
+        status = result.status
+        stop_reason = result.stop_reason
+        if status in (:accepted, :estimated) && !child_position_verified
+            status = :failed
+            stop_reason = :near_axis_position_recovery_unverified
+        end
+        terminal_label_uncertain = false
+        if status in (:accepted, :estimated) && available && !branch_guard.accepted
+            status = :failed
+            stop_reason = :near_axis_position_branch_guard
+        end
+        # Preserve the parent's original terminal label gate and its estimated
+        # status semantics. A failed child is never upgraded by metadata.
+        if status == :accepted && !isempty(context.terminal_rows)
+            terminal_row = last(context.terminal_rows)
+            kappa = sqrt(max(zero(B), one(B) - precise_a^2)) /
+                (2 * (one(B) + sqrt(max(zero(B), one(B) - precise_a^2))))
+            jump = abs(terminal_row.candidate - context.roots[end-1])
+            if jump > kappa / 4
+                status = :estimated
+                stop_reason = :terminal_extrapolation_label_uncertain
+                terminal_label_uncertain = true
+            end
+        end
+        p = result.provenance
+        recovery = (
+            policy=:near_axis_finalization_precision_recovery,
+            trigger=failed_guard.stop_reason, source_precision_bits=lower_precision_bits,
+            working_precision_bits=192, source_spin=a, exact_promoted_spin=precise_a,
+            source_frequency=omega, promoted_seed=precise_seed,
+            recovered_frequency=result.omega, recovery_options=options,
+            continuation_recomputed=false, child_position_verified=child_position_verified,
+            previous_attempt=(precision_bits=lower_precision_bits,
+                final_primary=failed_primary, guard=failed_guard,
+                provenance=context.provenance),
+            child_final_primary_rows=get(p, :final_primary_rows, NamedTuple[]),
+            child_guard_rows=get(p, :guard_rows, NamedTuple[]),
+            branch_guard=branch_guard,
+            terminal_label_uncertain=terminal_label_uncertain,
+        )
+        # Child metrics/histories win over the old failed finalization. Only
+        # original continuation/seed identity is restored at the top level.
+        merged = merge(context.provenance, p, (
+            input_type=context.provenance.input_type,
+            guess_source=context.provenance.guess_source,
+            seed_inversion_index=context.provenance.seed_inversion_index,
+            seed_spin=context.seed_spin,
+            seed_predictor=context.provenance.seed_predictor,
+            seed_duplicate_distance=context.provenance.seed_duplicate_distance,
+            spin_path=context.provenance.spin_path,
+            coordinate_path=context.provenance.coordinate_path,
+            continuation_coordinate=context.provenance.continuation_coordinate,
+            continuation_rows=context.provenance.continuation_rows,
+            rejected_continuation_rows=context.provenance.rejected_continuation_rows,
+            terminal_extrapolation_rows=context.terminal_rows,
+            terminal_extrapolation=context.provenance.terminal_extrapolation,
+            continuation_axis_touches=context.provenance.continuation_axis_touches,
+            nia_restart_rows=context.provenance.nia_restart_rows,
+            final_primary_rows=get(p, :final_primary_rows, NamedTuple[]),
+            guard_rows=get(p, :guard_rows, NamedTuple[]),
+            final_position_branch_guard=branch_guard,
+            near_axis_position_recovery=recovery,
+            conditioned_root=terminal_label_uncertain || get(p, :conditioned_root, false),
+        ))
+        return _with_provenance(result, merged; status, stop_reason)
+    end
+end
 
 function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
         convention=:overtone,
@@ -1551,7 +1986,9 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
         minimum_spin_step=1.0e-6,
         trust_radius=0.2,
         automatic_precision_fallback::Bool=true,
-        fallback_precision_bits::Int=128)
+        fallback_precision_bits::Int=128,
+        segment::Int=0,
+        segment_seed=nothing)
     _require_qnm_angular_backend()
     selected_convention = _qnm_convention(convention)
     T = _working_type(a, guess)
@@ -1581,6 +2018,7 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
             trust_radius,
             automatic_precision_fallback,
             fallback_precision_bits,
+            segment,
         )
         mapped_order = hasproperty(source.provenance, :angular_order) ?
             source.provenance.angular_order : angular_order
@@ -1588,7 +2026,7 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
             mode, aT, source; angular_order=mapped_order, sheet_id)
     end
     label_contract = _schwarzschild_label_contract(
-        mode, selected_convention, aT)
+        mode, selected_convention, aT; segment)
     near_as_role = label_contract.near_as_role
     automatic_inversion = inversion_index === :auto
     default_inversion = selected_convention == :leaver ||
@@ -1642,6 +2080,17 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
     minimum_step <= maximum_step || throw(ArgumentError(
         "minimum_spin_step must not exceed maximum_spin_step."))
 
+    if abs(aT) == one(T) && segment != 0
+        return _failed_result(mode, aT, complex(T(NaN), T(NaN)),
+            :segment_unsupported_at_extremal, (
+                input_type=string(typeof(a)),
+                label_convention=label_contract.label_convention,
+                branch_label=label_contract.branch_label,
+                sequence_segment=segment,
+            );
+            convention=selected_convention, overtone_index,
+            inversion_index=selected_inversion)
+    end
     if abs(aT) == one(T)
         return _extremal_damped_limit_result(
             mode, aT;
@@ -1671,8 +2120,9 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
             label_contract.schwarzschild_sequence_index,
         schwarzschild_multiplicity=
             label_contract.schwarzschild_multiplicity,
+        sequence_segment=segment,
     )
-    counterrotating_seed = guess === nothing ?
+    counterrotating_seed = guess === nothing && segment_seed === nothing ?
         _counterrotating_near_extremal_seed(mode, aT) : nothing
     if counterrotating_seed !== nothing
         return _counterrotating_conditioned_result(
@@ -1702,7 +2152,8 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
             label_contract.schwarzschild_sequence_index, mode.branch) : mode
     automatic_coordinate = Symbol(lowercase(String(
         continuation_coordinate))) == :auto
-    seed_result = automatic_coordinate && guess === nothing &&
+    seed_result = segment_seed !== nothing ? segment_seed :
+        automatic_coordinate && guess === nothing &&
             selected_convention != :leaver &&
             mode.n <= 4 && _near_extremal_zdm_seed_scope(mode, aT) ?
         _near_extremal_zdm_seed(mode, aT, selected_inversion) :
@@ -1765,7 +2216,7 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
         root_tolerance=tolerance_root, stability_tolerance=tolerance_stability,
         continuation_coordinate=selected_coordinate,
         convention=selected_convention, overtone_index,
-        inversion_index=selected_inversion)
+        inversion_index=selected_inversion, segment)
 
     try
         if guess === nothing
@@ -1799,102 +2250,42 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
             sequence_target = selected_coordinate == :nu ?
                 target_coordinate : abs(aT) > sequence_anchor ?
                 copysign(sequence_anchor, aT) : aT
-            direction = sign(sequence_target - accepted_coordinates[end])
-            proposed_step = min(initial_step,
-                abs(sequence_target - accepted_coordinates[end]))
-            while direction *
-                    (sequence_target - accepted_coordinates[end]) > zero(T)
-                if length(accepted_coordinates) < 3
-                    proposed_step = initial_step
-                else
-                    curvature = max(
-                        _continuation_curvature(
-                            accepted_coordinates, accepted_roots),
-                        _continuation_curvature(
-                            accepted_coordinates, accepted_angular_A),
-                    )
-                    if curvature > zero(T) && isfinite(curvature)
-                        proposed_step = clamp(T(0.05) / sqrt(curvature),
-                            minimum_step, maximum_step)
-                    else
-                        proposed_step = min(proposed_step, maximum_step)
-                    end
-                end
-                remaining = abs(sequence_target - accepted_coordinates[end])
-                attempted_step = min(proposed_step, remaining)
-                attempt = 0
-                accepted_step = false
-
-                while !accepted_step
-                    attempt += 1
-                    next_coordinate = accepted_coordinates[end] +
-                        direction * attempted_step
-                    next_spin = selected_coordinate == :nu ?
-                        sin(next_coordinate) : next_coordinate
-                    predictor = _continuation_predictor(
-                        accepted_coordinates, accepted_roots, next_coordinate)
-                    polished = _polish_frequency_root(
-                        mode, next_spin, predictor;
-                        polish_options...)
-                    append!(continuation_rows, [merge(row, (
-                        a=next_spin, continuation_attempt=attempt,
+            continuation_state = (; accepted_spins, accepted_coordinates,
+                accepted_roots, accepted_angular_A, continuation_rows,
+                rejected_continuation_rows,
+                last_polish=Ref{Any}(last_polish),
+                nia_restart_rows=NamedTuple[])
+            outcome = _continue_with_nia_restarts!(continuation_state, mode,
+                sequence_target; selected_coordinate, initial_step,
+                minimum_step, maximum_step, continuation_root_tolerance,
+                polish_options, sequence_segment=segment)
+            last_polish = continuation_state.last_polish[]
+            current = accepted_roots[end]
+            if !outcome.completed
+                classified = _classify_continuation_failure(mode,
+                    outcome.reason, outcome.polished, outcome.failed_spin,
+                    accepted_spins, accepted_roots, accepted_angular_A,
+                    rejected_continuation_rows; sequence_segment=segment,
+                    after_birth=segment >= 1)
+                failure_provenance = merge((
+                        input_type=string(typeof(a)),
+                        guess_source=guess_source,
+                        spin_path=accepted_spins,
+                        coordinate_path=accepted_coordinates,
                         continuation_coordinate=selected_coordinate,
-                        coordinate_value=next_coordinate,
-                        predictor=predictor)) for row in polished.history])
-                    last_polish = polished
-                    branch_guard = polished.converged ?
-                        _continuation_branch_guard(
-                            accepted_coordinates, accepted_roots,
-                            next_coordinate,
-                            predictor, polished.omega,
-                            continuation_root_tolerance) :
-                        (accepted=false, discrepancy=T(Inf),
-                            allowance=zero(T))
-
-                    if polished.converged && branch_guard.accepted
-                        current = polished.omega
-                        push!(accepted_spins, next_spin)
-                        push!(accepted_coordinates, next_coordinate)
-                        push!(accepted_roots, current)
-                        push!(accepted_angular_A,
-                            polished.evaluation.angular.angular_A)
-                        proposed_step = attempted_step
-                        accepted_step = true
-                        continue
-                    end
-
-                    push!(rejected_continuation_rows, (
-                        a=next_spin,
-                        continuation_coordinate=selected_coordinate,
-                        coordinate_value=next_coordinate,
-                        attempted_step=attempted_step,
-                        attempt=attempt,
-                        predictor=predictor,
-                        candidate=polished.omega,
-                        converged=polished.converged,
-                        stop_reason=polished.stop_reason,
-                        branch_discrepancy=branch_guard.discrepancy,
-                        branch_allowance=branch_guard.allowance,
-                    ))
-                    attempted_step /= 2
-                    if attempted_step < minimum_step
-                        reason = polished.converged ?
-                            :continuation_branch_guard :
-                            polished.stop_reason
-                        return failed_result(polished.omega,
-                            reason, (
-                                input_type=string(typeof(a)),
-                                guess_source=guess_source,
-                                spin_path=accepted_spins,
-                                coordinate_path=accepted_coordinates,
-                                continuation_coordinate=selected_coordinate,
-                                continuation_rows=continuation_rows,
-                                rejected_continuation_rows=
-                                    rejected_continuation_rows,
-                                failed_spin=next_spin,
-                            ))
-                    end
-                end
+                        continuation_rows=continuation_rows,
+                        rejected_continuation_rows=
+                            rejected_continuation_rows,
+                        failed_spin=outcome.failed_spin,
+                        continuation_axis_touches=count(r -> r.accepted,
+                            continuation_state.nia_restart_rows),
+                        nia_restart_rows=continuation_state.nia_restart_rows,
+                        continuation_settings=(; polish_options,
+                            initial_step, minimum_step, maximum_step,
+                            continuation_root_tolerance),
+                    ), classified.provenance)
+                return failed_result(outcome.polished.omega,
+                    classified.reason, failure_provenance)
             end
 
             if selected_coordinate == :spin && sequence_target != aT
@@ -1920,6 +2311,9 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
                             rejected_continuation_rows,
                         terminal_predictor=predictor,
                         terminal_stop_reason=polished.stop_reason,
+                        continuation_axis_touches=count(r -> r.accepted,
+                            continuation_state.nia_restart_rows),
+                        nia_restart_rows=continuation_state.nia_restart_rows,
                     )
                     if T === Float64 && automatic_precision_fallback
                         return _automatic_precision_fallback(
@@ -1959,14 +2353,18 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
                 for row in polished.history])
             last_polish = polished
             if !polished.converged
+                classified = _classify_continuation_failure(mode,
+                    polished.stop_reason, polished, aT, T[], Complex{T}[],
+                    Complex{T}[], NamedTuple[(predictor=current,)];
+                    sequence_segment=segment, after_birth=segment >= 1)
                 return failed_result(polished.omega,
-                    polished.stop_reason, (
+                    classified.reason, merge((
                         input_type=string(typeof(a)),
                         guess_source=:explicit_guess,
                         spin_path=T[aT],
                         continuation_rows=continuation_rows,
                         rejected_continuation_rows=rejected_continuation_rows,
-                    ))
+                    ), classified.provenance))
             end
             current = polished.omega
             push!(accepted_spins, aT)
@@ -1979,6 +2377,14 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
 
         mst_primary = nothing
         final_primary = nothing
+        # Use the Float64 risk geometry for BigFloat finalizations (automatic
+        # precision fallback): BigFloat epsilon would shrink this NIA region.
+        final_position_tolerance = segment >= 1 && mode.m == 0 &&
+            T === BigFloat && _precision_bits(T) >= 128 &&
+            zero(T) < _branch_sign(mode) * real(current) <
+                2 * T(_root_derivative_step(Float64, ComplexF64(current))) *
+                    T(_near_extremal_derivative_scale(mode, Float64(aT))) ?
+            tolerance_stability : nothing
         if _near_as_mst_finalization_required(
                 mode, aT, T, near_as_role)
             mst_primary = _polish_mst_incidence_root(
@@ -2008,7 +2414,8 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
             final_primary = _polish_frequency_root(mode, aT, current;
                 polish_options...,
                 sheet_id=Symbol(sheet_id, :_final_primary),
-                root_tolerance=tolerance_root)
+                root_tolerance=tolerance_root,
+                position_tolerance=final_position_tolerance)
             current = final_primary.omega
             guard = final_primary.converged ? _polish_frequency_root(
                 mode, aT, current;
@@ -2017,7 +2424,25 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
                 sheet_id=Symbol(sheet_id, :_guard),
                 cf_minimum_iterations=cf_minimum_iterations + 100,
                 root_tolerance=tolerance_root,
-                derivative_step_scale=T(0.5)) : final_primary
+                derivative_step_scale=T(0.5),
+                position_tolerance=final_position_tolerance) : final_primary
+        end
+        final_position_branch_guard = nothing
+        if final_position_tolerance !== nothing && guard.converged
+            # Apply the original continuation branch allowance to the final
+            # correction from the GSN path, without limiting that correction
+            # itself by the much smaller convergence/stability tolerance.
+            available = length(accepted_coordinates) >= 2
+            final_position_branch_guard = available ? merge(
+                _continuation_branch_guard(accepted_coordinates, accepted_roots,
+                    last(accepted_coordinates), last(accepted_roots), guard.omega,
+                    continuation_root_tolerance), (available=true,)) :
+                (available=false, accepted=missing,
+                    reason=:explicit_guess_has_no_continuation_history)
+            if available && !final_position_branch_guard.accepted
+                guard = merge(guard, (converged=false, conditioned=false,
+                    stop_reason=:near_axis_position_branch_guard))
+            end
         end
         float64_provenance = (
             input_type=string(typeof(a)),
@@ -2040,6 +2465,10 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
             continuation_rows=continuation_rows,
             rejected_continuation_rows=rejected_continuation_rows,
             terminal_extrapolation_rows=terminal_extrapolation_rows,
+            continuation_axis_touches=guess === nothing ?
+                count(r -> r.accepted, continuation_state.nia_restart_rows) : 0,
+            nia_restart_rows=guess === nothing ?
+                continuation_state.nia_restart_rows : NamedTuple[],
             near_as_mst_finalization=mst_primary !== nothing,
             mst_primary_rows=mst_primary === nothing ?
                 NamedTuple[] : mst_primary.history,
@@ -2049,6 +2478,26 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
         )
         guard_root_equation = _root_equation(guard.evaluation)
         if !guard.converged
+            if final_position_tolerance !== nothing && T === BigFloat &&
+                    _precision_bits(T) == 128 &&
+                    guard.stop_reason == :near_axis_position_derivative_unverified
+                return _near_axis_position_precision_recovery(mode, aT, guard.omega;
+                    options=(angular_order=angular_order, sheet_id=sheet_id,
+                        convention=selected_convention, inversion_index=selected_inversion,
+                        segment=segment, cf_tolerance=tolerance_cf,
+                        cf_minimum_iterations=cf_minimum_iterations,
+                        cf_maximum_iterations=maximum_cf_iterations,
+                        root_tolerance=tolerance_root, stability_tolerance=tolerance_stability,
+                        maximum_root_iterations=maximum_root_iterations, trust_radius=radius,
+                        continuation_coordinate=selected_coordinate,
+                        initial_spin_step=initial_step, minimum_spin_step=minimum_step,
+                        maximum_spin_step=maximum_step),
+                    context=(coordinates=accepted_coordinates, roots=accepted_roots,
+                        continuation_root_tolerance=continuation_root_tolerance,
+                        terminal_rows=terminal_extrapolation_rows,
+                        seed_spin=seed_result.seed_spin, provenance=float64_provenance),
+                    failed_primary=final_primary, failed_guard=guard)
+            end
             if T === Float64 && automatic_precision_fallback &&
                     guard_root_equation == :leaver_continued_fraction
                 return _automatic_precision_fallback(
@@ -2126,7 +2575,29 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
                 terminal_label_uncertain = true
             end
         end
-        stop_reason = terminal_label_uncertain ?
+        # Next to the NIA cut the Float64 continued fraction can admit a root
+        # that is not there in higher precision (l=2, m=0, n=19 near a=0.98).
+        # A re-emerged segment's Float64 root within 2h of the axis is kept
+        # only when a BigFloat re-polish reproduces it to the stability gate.
+        near_axis_check = nothing
+        if segment >= 1 && T === Float64 && (accepted || conditioned_root) &&
+                root_equation == :leaver_continued_fraction &&
+                _branch_sign(mode) * real(guard.omega) <
+                2 * T(_root_derivative_step(T, guard.omega)) *
+                    _near_extremal_derivative_scale(mode, aT)
+            near_axis_check = _near_axis_precision_check(
+                mode, aT, guard.omega, polish_options;
+                precision_bits=fallback_precision_bits,
+                root_tolerance=tolerance_root,
+                stability_tolerance=tolerance_stability)
+            if !near_axis_check.verified
+                accepted = false
+                conditioned_root = false
+            end
+        end
+        stop_reason = near_axis_check !== nothing &&
+            !near_axis_check.verified ? :near_axis_precision_unverified :
+            terminal_label_uncertain ?
             :terminal_extrapolation_label_uncertain :
             accepted ? :accepted : conditioned_root ?
             :conditioned_near_extremal_cf_floor :
@@ -2167,6 +2638,15 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
                     label_contract.schwarzschild_sequence_index,
                 schwarzschild_multiplicity=
                     label_contract.schwarzschild_multiplicity,
+                sequence_segment=segment,
+                near_axis_precision_check=near_axis_check,
+                near_axis_position_check=hasproperty(guard, :position_check) ?
+                    guard.position_check : nothing,
+                final_position_branch_guard,
+                continuation_axis_touches=guess === nothing ?
+                    count(r -> r.accepted, continuation_state.nia_restart_rows) : 0,
+                nia_restart_rows=guess === nothing ?
+                    continuation_state.nia_restart_rows : NamedTuple[],
                 family=_near_extremal_family(mode, aT, guard.omega),
                 spin_path=accepted_spins,
                 coordinate_path=accepted_coordinates,

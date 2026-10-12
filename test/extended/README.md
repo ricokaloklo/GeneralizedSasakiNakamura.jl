@@ -106,7 +106,9 @@ marked "frozen self-value", with looser tolerances.
 * `LEGACY_OVERTONES`: September-24 legacy bundle (separate implementation, cross-checked against the published
   rows at n = 8, 9, 20): the high-precision overtone reference table (2026-09-24, not distributed); atol 1e-9.
   The co-rotating mirror rows at a = -0.5 keep the legacy complete-spectrum labels explicitly.
-* `AXISYMMETRIC_N10`: `.../qnm_axisymmetric_reference_20260924.tsv` (legacy catalogue; The independent comparison confirmed the target).
+* `AXISYMMETRIC_N10`: `.../qnm_axisymmetric_reference_20260924.tsv` (legacy catalogue; the independent comparison confirmed the target).
+  It is the re-emerged segment `10₁` (Cook & Zalutskiy), checked as `qnm_frequency(QNMMode(-2, 2, 0, 10), 0.5; segment=1)`
+  with atol 1e-9. The NIA endpoints of segment 0 (n = 9, 10, 15) use Cook & Zalutskiy (PRD 94, 104074) Table II at atol 1e-5.
 * `Q068`, `Q068_STENCIL`: `cloud_refs/qnm068_bridge_reference/{q068_root.json,stencil_reference.tsv}`
   (independent direct solver, dps 40/60). Its excitation factor uses a denominator 2 omega;
   the detailed Teukolsky result uses 2 i omega, so the comparison divides the reference by i.

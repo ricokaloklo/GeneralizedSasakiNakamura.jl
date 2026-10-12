@@ -135,7 +135,8 @@ function Base.show(io::IO, ::MIME"text/plain", result::QNMEndpointResult)
     println(io, "ExtremalQuasiNormalModeEndpoint(")
     println(io, "    parameters = (a = ", result.a,
         ", s = ", result.mode.s, ", l = ", result.mode.l,
-        ", m = ", result.mode.m, ", n = ", result.mode.n, ")")
+        ", m = ", result.mode.m, ", n = ", result.mode.n,
+        _qnm_segment_suffix(result), ")")
     println(io, "    omega = ", _qnm_summary_number(result.frequency))
     println(io, "    lambda = ", _qnm_summary_number(result.lambda))
     println(io, "    spectrum_object = ", result.spectrum_object)
@@ -162,7 +163,8 @@ function Base.show(io::IO, ::MIME"text/plain", result::QNMFailure)
     println(io, "QNMFailure(")
     println(io, "    parameters = (a = ", result.a,
         ", s = ", result.mode.s, ", l = ", result.mode.l,
-        ", m = ", result.mode.m, ", n = ", result.mode.n, ")")
+        ", m = ", result.mode.m, ", n = ", result.mode.n,
+        _qnm_segment_suffix(result), ")")
     println(io, "    stage = ", result.stage)
     if result.frequency isa Number && isfinite(result.frequency)
         println(io, "    omega = ", _qnm_summary_number(result.frequency))
@@ -181,6 +183,12 @@ function Base.show(io::IO, result::QNMResult)
 end
 
 _qnm_summary_number(value::Real) = @sprintf("%.17g", value)
+
+# Segment 0 keeps the historical display; later segments are named inline.
+function _qnm_segment_suffix(result)
+    segment = :segment in propertynames(result) ? result.segment : 0
+    return segment == 0 ? "" : string(", segment = ", segment)
+end
 function _qnm_summary_number(value::Complex)
     real_text = _qnm_summary_number(real(value))
     imaginary = imag(value)
@@ -193,7 +201,8 @@ function Base.show(io::IO, ::MIME"text/plain", result::QNMResult)
     println(io, "QuasiNormalMode(")
     println(io, "    parameters = (a = ", result.a,
         ", s = ", result.mode.s, ", l = ", result.mode.l,
-        ", m = ", result.mode.m, ", n = ", result.mode.n, ")")
+        ", m = ", result.mode.m, ", n = ", result.mode.n,
+        _qnm_segment_suffix(result), ")")
     println(io, "    omega = ", _qnm_summary_number(result.frequency))
     println(io, "    lambda = ", _qnm_summary_number(result.lambda))
     println(io, "    incidence_amplitude = ",
@@ -211,7 +220,8 @@ function Base.show(io::IO, ::MIME"text/plain", result::QNMEstimate)
     println(io, "QuasiNormalModeEstimate(")
     println(io, "    parameters = (a = ", result.a,
         ", s = ", result.mode.s, ", l = ", result.mode.l,
-        ", m = ", result.mode.m, ", n = ", result.mode.n, ")")
+        ", m = ", result.mode.m, ", n = ", result.mode.n,
+        _qnm_segment_suffix(result), ")")
     println(io, "    omega = ", _qnm_summary_number(result.frequency))
     println(io, "    lambda = ", _qnm_summary_number(result.lambda))
     println(io, "    incidence_amplitude = ",

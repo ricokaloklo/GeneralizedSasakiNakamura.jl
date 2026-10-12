@@ -261,6 +261,16 @@ end
     @test all(r -> r.status == :accepted, sequence)
     @test last(sequence).omega ≈ root.omega atol=1e-10
     @test qnm_sequence(QNMMode(-2, 2, 2, 0), Float64[]) == LeaverResult[]
+    # Flat (a, s, l, m, n) entry points agree with the QNMMode form and with qnm.
+    @test qnm_frequency(0.68, -2, 2, 2, 0).omega == root.omega
+    @test qnm_frequency(0.68, -2, 2, 2, 0, mirror).omega == mirror_mode.omega
+    @test qnm_frequency(0.68, -2, 2, 2, 0, :mirror).omega == mirror_mode.omega
+    flat_sequence = qnm_sequence([0.0, 0.3, 0.68], -2, 2, 2, 0)
+    @test [r.omega for r in flat_sequence] == [r.omega for r in sequence]
+    @test qnm_frequency(0.5, -2, 2, 2, 9; convention=:complete_spectrum).omega ==
+        qnm_frequency(QNMMode(-2, 2, 2, 9), 0.5; convention=:complete_spectrum).omega
+    @test qnm_frequency(1.0, -2, 2, 2, 0; segment=1).stop_reason == :segment_unsupported_at_extremal
+    @test_throws ArgumentError qnm_frequency(0.5, -2, 2, 2, 0, :sideways)
     # Angular conversions are inverse to each other.
     for A in (4.0 + 0.0im, 3.7 - 0.2im), c in (0.0 + 0.0im, 0.35 - 0.05im), m in (-2, 0, 2)
         @test lambda_to_angular_A(angular_A_to_lambda(A, c, m), c, m) ≈ A rtol=1e-14
@@ -335,15 +345,15 @@ end
                 @test hard.stop_reason isa Symbol
             end
         end
-        # m = 0, n = 10 at a = 0.5: the spin continuation stops at the NIA collision near a = 0.3911
-        # (documented); if it is ever accepted it must be the catalogued target root.
-        axisymmetric = qnm_frequency(QNMMode(-2, 2, 0, 10), 0.5)
-        if axisymmetric.status == :accepted
-            @test axisymmetric.omega ≈ AXISYMMETRIC_N10 atol=1e-9 rtol=0
-        else
-            @test axisymmetric.status == :failed
-            @test axisymmetric.stop_reason isa Symbol
-        end
+        # m = 0, n = 10 at a = 0.5: segment 0 ends on the NIA near a = 0.3911; the catalogued root is the
+        # re-emerged segment 10_1 (Cook & Zalutskiy), reached with segment = 1.
+        axisymmetric = qnm_frequency(QNMMode(-2, 2, 0, 10), 0.5; segment=1)
+        @test axisymmetric.status == :accepted
+        @test axisymmetric.omega ≈ AXISYMMETRIC_N10 atol=1e-9 rtol=0
+        @test axisymmetric.provenance.sequence_segment == 1
+        @test axisymmetric.provenance.branch_label == :kerr_overtone_n10_1
+        @test axisymmetric.provenance.guess_source == :nia_reemergence_edge_scan
+        @test 0.391144 < axisymmetric.provenance.reemergence.spin < 0.5
         # Other harmonic, high overtone (check_qnm_edges.jl).
         other = qnm(0.5, -2, 3, 3, 10)
         @test other.status in (:accepted, :estimated)
@@ -414,6 +424,192 @@ end
     @test_throws ArgumentError qnm_frequency(mode, 0.5; cf_minimum_iterations=500, cf_maximum_iterations=100)
     @test_throws ArgumentError qnm(0.5, -2, 2, 2, 0, "sideways")
     @test_throws ArgumentError qnm(0.5, -2, 2, 2, 0, :up)
+    @test_throws ArgumentError qnm_frequency(mode, 0.5; segment=-1)
+    @test_throws ArgumentError qnm_frequency(mode, 0.5; segment=2)
+    @test_throws ArgumentError qnm_frequency(mode, 0.5; segment=:next)
+    # 8_0 / 8_1 are a pair split from the algebraically special frequency, not NIA segments.
+    @test_throws ArgumentError qnm_frequency(QNMMode(-2, 2, 2, 8), 0.5; segment=1)
+    @test_throws ArgumentError qnm_frequency(QNMMode(-2, 2, 2, 9), 0.5; segment=1, convention=:complete_spectrum)
+end
+
+# ---------------------------------------------------------------------------------------------------
+# Negative-imaginary-axis (NIA) bookkeeping without root solves (src/QNM/NegativeImaginaryAxis.jl).
+# ---------------------------------------------------------------------------------------------------
+@testset "negative imaginary axis segments (unit)" begin
+    m0 = QNMMode(-2, 2, 0, 10)
+    h = Q._root_derivative_step(Float64, 0.0 - 2.5im)
+    # Endpoint predicate: last accepted root within 2h of the axis, or a predictor on/over it.
+    @test Q._nia_endpoint_detected(m0, 1.5h - 2.5im, 0.01 - 2.5im, :root_line_search_stagnation)
+    @test Q._nia_endpoint_detected(m0, 0.3 - 2.5im, -1e-6 - 2.5im, :root_line_search_stagnation)
+    @test Q._nia_endpoint_detected(m0, 0.3 - 2.5im, 0.29 - 2.5im, :initial_guess_off_branch)
+    @test !Q._nia_endpoint_detected(m0, 0.3 - 2.5im, 0.29 - 2.5im, :root_line_search_stagnation)
+    @test !Q._nia_endpoint_detected(QNMMode(-2, 2, 2, 8), 1e-9 - 2.0im, -1e-6 - 2.0im, :initial_guess_off_branch)
+    @test Q._nia_endpoint_detected(QNMMode(-2, 2, 0, 10, :negative_real), -1.5h - 2.5im, nothing, :root_iteration_limit)
+    # Labels: segment 1 adds the suffix _1; segment 0 leaves every field unchanged.
+    contract0 = Q._schwarzschild_label_contract(m0, :overtone, 0.5)
+    @test Q._schwarzschild_label_contract(m0, :overtone, 0.5; segment=0) == contract0
+    contract1 = Q._schwarzschild_label_contract(m0, :overtone, 0.5; segment=1)
+    @test contract1.branch_label == :kerr_overtone_n10_1
+    @test Base.structdiff(contract1, (branch_label=0,)) == Base.structdiff(contract0, (branch_label=0,))
+    internal = Q._failed_result(QNMMode(-2, 2, 2, 11), 0.5, complex(NaN, NaN), :test,
+        (branch_label=:kerr_overtone_n11_1, sequence_segment=1))
+    relabeled = Q._relabel_result(internal, QNMMode(-2, 2, 2, 10))
+    @test relabeled.provenance.branch_label == :kerr_overtone_n10_1
+    @test relabeled.overtone_index == 10 && relabeled.provenance.sequence_segment == 1
+    # Stencil clamp: all four points omega +- h, +- 2h stay on the physical side of the NIA cut.
+    for (mode, omega) in ((m0, 1e-5 - 2.5im), (QNMMode(-2, 2, 0, 10, :negative_real), -1e-5 - 2.5im))
+        step = Q._stencil_step(mode, omega)
+        @test 0 < step <= abs(real(omega)) / 4
+        @test all(k -> Q._branch_sign(mode) * real(omega + k * step) > 0, (-2, -1, 1, 2))
+    end
+    @test Q._stencil_step(m0, 0.3 - 2.5im) == Q._root_derivative_step(Float64, 0.3 - 2.5im)
+    @test Q._stencil_step(QNMMode(-2, 2, 2, 8), 1e-9 - 2.0im) == Q._root_derivative_step(Float64, 1e-9 - 2.0im)
+    # A start on or beyond the axis is off the branch; no continued fraction is evaluated.
+    off = Q._polish_leaver_root(m0, 0.5, -1e-3 - 2.5im; angular_order=32, sheet_id=:unit,
+        inversion_index=10, cf_tolerance=1e-12, cf_minimum_iterations=300, cf_maximum_iterations=1000,
+        root_tolerance=1e-12, maximum_root_iterations=5, trust_radius=0.2)
+    @test off.stop_reason == :initial_guess_off_branch
+    @test !off.converged && off.evaluation === nothing && isempty(off.history)
+    # Extremal spins have no segment bookkeeping.
+    extremal = qnm_frequency(QNMMode(-2, 2, 2, 0), 1.0; segment=1)
+    @test extremal.status == :failed && extremal.stop_reason == :segment_unsupported_at_extremal
+    @test extremal.provenance.sequence_segment == 1
+    # Display: segment k > 0 is appended to the parameters line; the line count is unchanged.
+    failure(segment) = QNMFailure((a=0.5, mode=m0, frequency=complex(NaN, NaN), stage=:root,
+        stop_reason=:negative_imaginary_axis_gap, segment=segment))
+    text0 = sprint(show, MIME("text/plain"), failure(0))
+    text1 = sprint(show, MIME("text/plain"), failure(1))
+    @test length(split(text1, '\n')) == length(split(text0, '\n'))
+    @test occursin("n = 10, segment = 1)", text1) && !occursin("segment", text0)
+end
+
+# ---------------------------------------------------------------------------------------------------
+# Sequences that end on the NIA (Cook & Zalutskiy, PRD 94, 104074, Table II; Cook Zenodo 14024959 v3).
+# Segment 0 (n_0) of l = 2, m = 0, n = 9, 10, 15 ends on the axis; segment 1 (n_1) re-emerges later.
+# Endpoint spins are extrapolated from the accepted path; 1e-5 is the precision printed in Table II.
+# ---------------------------------------------------------------------------------------------------
+@testset "negative imaginary axis endpoints" begin
+    if at_level(:full)
+        for (m, n, a, a_end, gamma_end) in ((0, 9, 0.5, 0.305661, 2.25), (0, 10, 0.5, 0.391144, 2.5),
+                                           (0, 15, 0.6, 0.489333, 3.72672), (-2, 15, 0.7, NaN, NaN))
+            result = qnm_frequency(QNMMode(-2, 2, m, n), a)
+            p = result.provenance
+            @test result.status == :failed
+            @test result.stop_reason == :negative_imaginary_axis_endpoint
+            @test p.endpoint_kind == :negative_imaginary_axis
+            @test p.sequence_segment == 0 && p.next_segment_hint == 1
+            @test real(last(p.root_path)) > 0
+            @test p.endpoint_spin_bracket[2] - p.endpoint_spin_bracket[1] <= 4 * 1e-6
+            if isnan(a_end)
+                # Cook's {2,-2,15_0} ends close to (not on) the axis; last catalogue point 0.577994 - 3.84682i.
+                @info "l2m-2 n15 segment-0 end" endpoint_spin=p.endpoint_spin endpoint_frequency=p.endpoint_frequency
+            else
+                @test p.endpoint_spin ≈ a_end atol=1e-5
+                @test -imag(p.endpoint_frequency) ≈ gamma_end atol=1e-5
+            end
+        end
+        # Segment 0 is unchanged where it exists.
+        @test qnm_frequency(QNMMode(-2, 2, 0, 9), 0.3).status == :accepted
+        @test qnm_frequency(QNMMode(-2, 2, 0, 10), 0.35).status == :accepted
+        # Segment 1 of n = 9 re-emerges at Cook's 9_1 start (0.404696, -2.38829i).
+        nine = qnm_frequency(QNMMode(-2, 2, 0, 9), 0.5; segment=1)
+        @test nine.status == :accepted
+        @test nine.provenance.reemergence.spin ≈ 0.404696 atol=1e-5
+        @test nine.provenance.reemergence.frequency ≈ -2.38829im atol=1e-5
+        # 9_1 touches the NIA near a = 0.9367 without ending (a tangency, not a mode); the continuation
+        # restarts off the axis and crosses it. Cook Zenodo 14024959 v3 rows (catalogue tolerance 2e-8).
+        nine95 = qnm_frequency(QNMMode(-2, 2, 0, 9), 0.95; segment=1)
+        @test nine95.status == :accepted
+        @test nine95.omega ≈ 0.033427937302155285 - 2.204314203749542im atol=2e-8 rtol=0
+        # Each restart across a detected axis crossing is counted; there is at least the a ~ 0.9367 tangency.
+        @test nine95.provenance.continuation_axis_touches >= 1
+        fifteen95 = qnm_frequency(QNMMode(-2, 2, 0, 15), 0.95; segment=1)
+        @test fifteen95.status == :accepted
+        @test fifteen95.omega ≈ 0.0007778523831778085 - 3.708747044425906im atol=2e-8 rtol=0
+        # 13_0 ends on the pole -3.25i (Re w ~ a_end - a) only 0.0046 before 13_1 starts; segment 0 must stop
+        # there instead of stepping across the gap (Cook & Zalutskiy Table II: 0.489617 and 0.494193).
+        thirteen = qnm_frequency(QNMMode(-2, 2, 0, 13), 0.95)
+        @test thirteen.stop_reason == :negative_imaginary_axis_endpoint
+        @test thirteen.provenance.endpoint_spin ≈ 0.489617 atol=1e-5
+        thirteen1 = qnm_frequency(QNMMode(-2, 2, 0, 13), 0.6; segment=1)
+        @test thirteen1.status == :accepted
+        @test thirteen1.provenance.reemergence.spin ≈ 0.494193 atol=1e-5
+        # 19_1 leaves the pole -4.75i at a = 0.5549 and is still within 1e-5 of it at a = 0.56
+        # (Cook Zenodo 14024959 v3 row).
+        nineteen = qnm_frequency(QNMMode(-2, 2, 0, 19), 0.56; segment=1)
+        @test nineteen.status == :accepted
+        @test nineteen.omega ≈ 6.435702118014181e-6 - 4.749402227644355im atol=2e-8 rtol=0
+        # Close to a = 1 the axis touches of 19_1 accumulate; the continuation reports that instead of an end.
+        nineteen99 = qnm_frequency(QNMMode(-2, 2, 0, 19), 0.99; segment=1)
+        @test nineteen99.stop_reason in (:negative_imaginary_axis_tangent_accumulation, :accepted)
+        if nineteen99.status == :accepted
+            @test nineteen99.omega ≈ 0.00013222133204185177 - 4.715851780243433im atol=2e-8 rtol=0
+        else
+            @test nineteen99.provenance.next_segment_hint === nothing
+        end
+        # Near-axis guard: the BigFloat re-polish reproduces the Cook root of 19_1 at a = 0.56 (Re w ~ 6e-6)
+        # and rejects a start displaced by 1e-6.
+        options = (; angular_order=32, sheet_id=:near_axis_test, inversion_index=19, cf_tolerance=1e-12,
+            cf_minimum_iterations=300, cf_maximum_iterations=48000, root_tolerance=5e-10,
+            maximum_root_iterations=30, trust_radius=0.2, near_as_role=:none)
+        cook56 = 6.435702118014181e-6 - 4.749402227644355im
+        check = Q._near_axis_precision_check(QNMMode(-2, 2, 0, 19), 0.56, cook56, options;
+            precision_bits=128, root_tolerance=1e-12, stability_tolerance=1e-10)
+        @test check.verified
+        moved = Q._near_axis_precision_check(QNMMode(-2, 2, 0, 19), 0.56, cook56 + 1e-6im, options;
+            precision_bits=128, root_tolerance=1e-12, stability_tolerance=1e-10)
+        @test !moved.verified
+        # The BigFloat position certificate accepts the same root (three consistent derivative stencils and a
+        # Newton correction below the stability gate).
+        certified = setprecision(BigFloat, 128) do
+            B = BigFloat
+            Q._polish_frequency_root(QNMMode(-2, 2, 0, 19), B(0.56), Complex{B}(cook56);
+                angular_order=32, sheet_id=:position_test, inversion_index=19, cf_tolerance=B(1e-12),
+                cf_minimum_iterations=600, cf_maximum_iterations=48000, root_tolerance=B(1e-12),
+                maximum_root_iterations=30, trust_radius=B(0.2), position_tolerance=B(1e-10))
+        end
+        @test certified.converged && certified.stop_reason == :root_position_tolerance
+        @test certified.position_check.verified
+        @test abs(ComplexF64(certified.omega) - cook56) <= 2e-8
+        # Gaps and missing segments.
+        gap = qnm_frequency(QNMMode(-2, 2, 0, 9), 0.35; segment=1)
+        @test gap.stop_reason == :negative_imaginary_axis_gap
+        @test qnm_frequency(QNMMode(-2, 2, 2, 0), 0.5; segment=1).stop_reason == :no_further_segment
+        unattributed = qnm_frequency(QNMMode(-2, 2, -2, 15), 0.7; segment=1)
+        @test unattributed.stop_reason == :segment_attribution_unavailable
+        @test any(e -> e.event, unattributed.provenance.reemergence_events)
+        auto_gap = qnm_frequency(QNMMode(-2, 2, 0, 9), 0.35; segment=:auto)
+        @test auto_gap.stop_reason == :negative_imaginary_axis_endpoint
+        @test auto_gap.provenance.sequence_segment == 0
+        auto_second = qnm_frequency(QNMMode(-2, 2, 0, 9), 0.5; segment=:auto)
+        @test auto_second.status == :accepted && auto_second.provenance.sequence_segment == 1
+        @test auto_second.omega == nine.omega
+        # Symmetries and forwarding paths.
+        mirror10 = qnm(0.5, -2, 2, 0, 10, mirror; segment=1)
+        @test mirror10.omega ≈ -conj(AXISYMMETRIC_N10) atol=1e-9 rtol=0
+        @test mirror10.segment == 1 && mirror10.root.provenance.sequence_segment == 1
+        reflected = qnm_frequency(QNMMode(-2, 2, 2, 15), -0.7)
+        direct = qnm_frequency(QNMMode(-2, 2, -2, 15), 0.7)
+        @test reflected.stop_reason == direct.stop_reason
+        @test reflected.provenance.endpoint_spin == direct.provenance.endpoint_spin
+        reflected10 = qnm_frequency(QNMMode(-2, 2, 0, 10), -0.5; segment=1)
+        @test reflected10.omega ≈ AXISYMMETRIC_N10 atol=1e-9 rtol=0
+        @test reflected10.provenance.sequence_segment == 1
+        seed10 = qnm_frequency(QNMMode(-2, 2, 0, 10), 0.5; segment=1)
+        guided = qnm_frequency(QNMMode(-2, 2, 0, 10), 0.5; segment=1, guess=seed10.omega)
+        @test guided.provenance.sequence_segment == 1 && guided.provenance.guess_source == :explicit_guess
+        fallback = Q._automatic_precision_fallback(QNMMode(-2, 2, 2, 0), 0.5, 0.4641230259759384 - 0.0856388349880640im;
+            angular_order=32, sheet_id=:unit_fallback, cf_minimum_iterations=300, cf_maximum_iterations=12000,
+            maximum_root_iterations=30, trust_radius=0.2, fallback_precision_bits=128,
+            float64_provenance=NamedTuple(), cf_tolerance=1e-13, root_tolerance=1e-12,
+            stability_tolerance=1e-10, continuation_coordinate=:spin, convention=:overtone,
+            overtone_index=0, inversion_index=0, segment=1)
+        @test fallback.provenance.sequence_segment == 1
+        sequence = qnm_sequence(QNMMode(-2, 2, 0, 10), 0:0.05:0.5)
+        @test last(sequence).a == 0.4
+        @test last(sequence).stop_reason == :negative_imaginary_axis_endpoint
+        @test all(r -> r.status == :accepted, sequence[1:(end - 1)])
+    end
 end
 
 end # qnm

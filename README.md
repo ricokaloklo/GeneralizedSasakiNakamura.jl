@@ -224,7 +224,16 @@ B^{{\rm GSN}}_{\ell m\omega_q}
 
 `ordinary` is the default branch. `mirror` computes the negative-real branch directly rather than filling its amplitudes by conjugation. Use `detailed=true` only when callable `X`, `Y`, and `R` solutions are needed.
 
-Default overtone labels follow the Python [`qnm`](https://github.com/duetosymmetry/qnm) package (Stein 2019) and the Cook–Zalutskiy catalogue; near the algebraically special frequency, $n = 8$ is Cook's $8_0$. See the [QNM documentation](docs/src/QNM.md) for the labeling convention and for root-only and sequence interfaces.
+When only the frequency is needed, the same five numbers give the root directly:
+
+```julia
+root = qnm_frequency(0.68, -2, 2, 2, 0)                    # (a, s, l, m, n)
+roots = qnm_sequence([0.0, 0.3, 0.68], -2, 2, 2, 0)        # (spins, s, l, m, n)
+```
+
+Overtone labels (`convention`): the default `:overtone` follows the Python [`qnm`](https://github.com/duetosymmetry/qnm) package (Stein 2019) and the Cook–Zalutskiy catalogue. For $s = -2$, $\ell = 2$, $|m| = 2$ co-rotating modes the Schwarzschild root $-2i$ splits into a pair $8_0$, $8_1$; `:overtone` calls $8_0$ $n = 8$, skips $8_1$, and keeps the Schwarzschild numbers above it, while `:complete_spectrum` (Forteza & Mourier) counts $8_1$ as $n = 9$, so its labels from there on are one higher. Elsewhere the two agree.
+
+Segments (`segment`): a few sequences (e.g. $\ell = 2$, $m = 0$, $9 \le n \le 26$) end on the negative imaginary axis at finite spin and reappear at larger spin (Cook's $n_0$ and $n_1$). `segment = 0` (default) is the piece connected to $a = 0$, `segment = 1` the reappearing piece, `segment = :auto` whichever exists at $a$; for example `qnm(0.5, -2, 2, 0, 10; segment=1)`. See the [QNM documentation](docs/src/QNM.md) for the label table and the segment details.
 
 ## Inhomogeneous solvers
 

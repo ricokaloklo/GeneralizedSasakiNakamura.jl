@@ -1,8 +1,12 @@
 function _solve_qnm_root(mode, a, guess, root_options;
-        convention=:overtone, inversion_index=:auto)
-    options = merge(root_options, (; guess, convention, inversion_index))
+        convention=:overtone, inversion_index=:auto, segment=0)
+    options = merge(root_options,
+        (; guess, convention, inversion_index, segment))
     return qnm_frequency(mode, a; options...)
 end
+
+_qnm_root_segment(root) = hasproperty(root, :provenance) ?
+    get(root.provenance, :sequence_segment, 0) : 0
 
 function _qnm_radial_solutions(root)
     inputs = _radial_evaluation_inputs(root)
@@ -105,6 +109,7 @@ function _qnm_branch_observables(root, excitation_options;
             convention=root.convention,
             overtone_index=root.overtone_index,
             inversion_index=root.inversion_index,
+            segment=_qnm_root_segment(root),
             root=root,
             validation=missing,
             excitation=missing,
@@ -127,6 +132,7 @@ function _qnm_branch_observables(root, excitation_options;
             convention=root.convention,
             overtone_index=root.overtone_index,
             inversion_index=root.inversion_index,
+            segment=_qnm_root_segment(root),
             spectrum_object=root.provenance.spectrum_object,
             radial_observables=root.provenance.radial_observables,
             endpoint_method=root.provenance.endpoint_method,
@@ -159,6 +165,7 @@ function _qnm_branch_observables(root, excitation_options;
             convention=root.convention,
             overtone_index=root.overtone_index,
             inversion_index=root.inversion_index,
+            segment=_qnm_root_segment(root),
             root=root,
             validation=missing,
             excitation=missing,
@@ -195,6 +202,7 @@ function _qnm_branch_observables(root, excitation_options;
             convention=root.convention,
             overtone_index=root.overtone_index,
             inversion_index=root.inversion_index,
+            segment=_qnm_root_segment(root),
             root=root,
             validation=missing,
             excitation=missing,
@@ -267,6 +275,7 @@ function _qnm_branch_observables(root, excitation_options;
         convention=root.convention,
         overtone_index=root.overtone_index,
         inversion_index=root.inversion_index,
+        segment=_qnm_root_segment(root),
         validation=validation,
         excitation=excitation,
         status=status,
@@ -330,20 +339,20 @@ function _qnm_selector(branch::Union{Symbol,AbstractString})
 end
 
 function _ordinary_qnm_root(a, s, l, m, n, primary_guess, root_options;
-        convention=:overtone, inversion_index=:auto)
+        convention=:overtone, inversion_index=:auto, segment=0)
     mode = QNMMode(Int(s), Int(l), Int(m), Int(n), :positive_real)
     return _solve_qnm_root(mode, a, primary_guess, root_options;
-        convention, inversion_index)
+        convention, inversion_index, segment)
 end
 
 function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
         ordinary_root=nothing, convention=:overtone,
-        inversion_index=:auto)
+        inversion_index=:auto, segment=0)
     mode = QNMMode(Int(s), Int(l), Int(m), Int(n), :negative_real)
     if abs(a) == one(a) && _extremal_zdm_endpoint_scope(mode, a)
         root = _solve_qnm_root(
             mode, a, mirror_guess, root_options;
-            convention, inversion_index)
+            convention, inversion_index, segment)
         return root, root.omega, nothing
     end
     endpoint_contract = _schwarzschild_label_contract(
@@ -351,7 +360,7 @@ function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
     if mirror_guess === nothing && iszero(a) &&
             endpoint_contract.near_as_role != :none
         root = _solve_qnm_root(mode, a, nothing, root_options;
-            convention, inversion_index)
+            convention, inversion_index, segment)
         return root, root.omega, nothing
     end
     partner_root = if mirror_guess === nothing
@@ -361,16 +370,20 @@ function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
             partner_mode = QNMMode(
                 Int(s), Int(l), -Int(m), Int(n), :positive_real)
             _solve_qnm_root(partner_mode, a, nothing, root_options;
-                convention, inversion_index)
+                convention, inversion_index, segment)
         end
     else
         nothing
     end
+    # The mirror of segment k is -conj of the ordinary segment k; it inherits
+    # the partner's segment label.
+    mirror_segment = partner_root !== nothing ?
+        _qnm_root_segment(partner_root) : segment === :auto ? 0 : segment
     function solve_mirror()
         seed = mirror_guess === nothing ?
             -conj(partner_root.omega) : mirror_guess
         root = _solve_qnm_root(mode, a, seed, root_options;
-            convention, inversion_index)
+            convention, inversion_index, segment=mirror_segment)
         return root, seed, partner_root
     end
     # Keep an automatic high-precision fallback at its actual precision;
@@ -406,6 +419,10 @@ re-polished on the negative-real branch. Amplitudes and frequency derivatives
 are evaluated at that branch; the radial solver may use exact conjugation
 symmetry rather than solve the reflected equation again.
 
+`segment` selects the segment of a sequence that ends on the negative
+imaginary axis (see [`qnm_frequency`](@ref)); the mirror of segment `k` is
+seeded from the ordinary segment `k`.
+
 Use [`qnm_pair`](@ref) only when both branches are required in one result.
 `root_options` and `excitation_options` are optional NamedTuples forwarded to
 `qnm_frequency` and `qnm_excitation_factor`. The no-keyword call uses package
@@ -420,17 +437,18 @@ function qnm(a, s::Integer, l::Integer, m::Integer, n::Integer,
         inversion_index=:auto,
         primary_guess=nothing,
         mirror_guess=nothing,
+        segment=0,
         root_options::NamedTuple=NamedTuple(),
         excitation_options::NamedTuple=NamedTuple(),
         detailed::Bool=false)
     root = if branch == ordinary
         _ordinary_qnm_root(
             a, s, l, m, n, primary_guess, root_options;
-            convention, inversion_index)
+            convention, inversion_index, segment)
     else
         first(_mirror_qnm_root(
             a, s, l, m, n, mirror_guess, root_options;
-            convention, inversion_index))
+            convention, inversion_index, segment))
     end
     return _qnm_branch_observables(
         root, excitation_options; input_a=a, detailed)
@@ -452,15 +470,16 @@ function qnm_pair(a, s::Integer, l::Integer, m::Integer, n::Integer;
         inversion_index=:auto,
         primary_guess=nothing,
         mirror_guess=nothing,
+        segment=0,
         root_options::NamedTuple=NamedTuple(),
         excitation_options::NamedTuple=NamedTuple(),
         detailed::Bool=false)
     ordinary_root = _ordinary_qnm_root(
         a, s, l, m, n, primary_guess, root_options;
-        convention, inversion_index)
+        convention, inversion_index, segment)
     mirror_root, seed, partner_root = _mirror_qnm_root(
         a, s, l, m, n, mirror_guess, root_options;
-        ordinary_root, convention, inversion_index)
+        ordinary_root, convention, inversion_index, segment)
 
     ordinary = _qnm_branch_observables(
         ordinary_root, excitation_options; input_a=a, detailed)
@@ -502,6 +521,7 @@ function qnm_pair(a, s::Integer, l::Integer, m::Integer, n::Integer;
             convention=ordinary_root.convention,
             overtone_index=ordinary_root.overtone_index,
             inversion_index=ordinary_root.inversion_index,
+            segment=_qnm_root_segment(ordinary_root),
             units=:M_equals_one,
         ),
     ))

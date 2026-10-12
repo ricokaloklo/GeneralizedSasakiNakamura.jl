@@ -90,6 +90,8 @@ function _leaver_tail_coefficients(D, order::Int=12)
     coefficients = zeros(C, order + 3)
     shifted = similar(coefficients)
     coefficients[1] = -1
+    # Principal sqrt: its cut lies on the negative imaginary frequency axis.
+    # _polish_leaver_root clamps its difference stencil to the physical side.
     coefficients[2] = sqrt(-(D[1] + D[2] + D[3]))
     iszero(coefficients[2]) && throw(DomainError(coefficients[2],
         "The half-integer asymptotic tail requires nonzero frequency."))
