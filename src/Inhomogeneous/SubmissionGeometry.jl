@@ -85,6 +85,7 @@ mutable struct EccentricGeometryOwner <: AbstractSubmissionGeometryOwner
     closed::Bool
 end
 
+# Numerical context captured when an owner is built; the owner refuses use once it changes.
 function _submission_geometry_context()
     return (precision_bits = precision(BigFloat), rounding_mode = rounding(BigFloat),
         kg_module = KerrGeodesics, kg_version = Base.pkgversion(KerrGeodesics),
@@ -235,6 +236,8 @@ function _inclined_levin_owner_sample(cache, KG::Dict, K::Int, cheby::Bool)
     end
 end
 
+# Classify (e, x) into an orbit family (1e-12 tolerance), check that the mode cache, trajectory and geometry
+# owner belong together, and return (KG, master, cache, family); master is nothing without a geometry owner.
 function _submission_public_route(a, p, e, x, cache, trajectory, geometry_owner)
     circular = isapprox(e, 0.0; atol=1e-12) && isapprox(abs(x), 1.0; atol=1e-12)
     family = circular ? :circular : isapprox(e, 0.0; atol=1e-12) ? :inclined :
@@ -249,10 +252,10 @@ function _submission_public_route(a, p, e, x, cache, trajectory, geometry_owner)
     return (KG=KG, master=master, cache=cache, family=family)
 end
 
+# m-independent geometry of one trapezoidal (N, K) generic sample: trapezoidal weights, the tetrad
+# factors N±, L± along the radial grid, polar trigonometric factors and the rho = -1/(r - i a cos θ) tables.
+# The m-dependent phases and the per-mode scratch are added in _generic_m2_m_cache.
 function _generic_m2_geometry(KG_samp::Dict)
-    # Keep each original Float64 expression and geometry loop reduction order.
-    # Only the independent m-phase calculations and mode scratch allocation move
-    # to _generic_m2_m_cache; the integral/phase/Carter operations are unchanged.
     r = KG_samp["r"]::Vector{Float64}
     rs = KG_samp["rs"]::Vector{Float64}
     theta = KG_samp["θ"]::Vector{Float64}

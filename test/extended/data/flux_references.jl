@@ -1,7 +1,7 @@
 # Reference data and conventions are documented in ../README.md.
 # Totals are (Einf, Lzinf, Qinf, Ehor, Lzhor, Qhor) in units of (mu/M)^2 (per unit mu for Q).
 # EQUATORIAL_TOL10: circular/eccentric totals, normally at tol = 1e-10; the Schwarzschild
-# e = 0.2/0.5 prograde rows were recomputed at 1e-11 after correcting the sideband stop.
+# e = 0.2/0.5 prograde rows are at tol = 1e-11 with the lower-sideband stop rule.
 # These use the same radial solver; they test summation and rotation, not radial accuracy.
 const EQUATORIAL_TOL10 = [
     (a = 0.9, p = 10.0, e = 0.0, x = 1.0, Einf = 5.04909391281715e-05, Lzinf = 0.0016421055336747366, Qinf = 0.0, Ehor = -1.2233659687030685e-07, Lzhor = -3.97872581022324e-06, Qhor = 0.0, modes = 270, src = "flux_compare/modes_circ_a0.9_p10_x1_tol1e-10.tsv"),
@@ -16,7 +16,7 @@ const EQUATORIAL_TOL10 = [
     (a = 0.0, p = 10.0, e = 0.2, x = -1.0, Einf = 6.801042416795504e-05, Lzinf = -0.001973133599879525, Qinf = 0.0, Ehor = 2.4687809667047037e-08, Lzhor = -6.114269723789405e-07, Qhor = 0.0, modes = 6012, src = "flux_compare/modes_ecc_a0_p10_e0.2_xm1_tol1e-10.tsv"),
 ]
 # SPHERICAL_FULLGRID: independent full-grid sums with no stop rule (l <= 30, |m| <= 30, k <= 20, mode tol
-# 1e-10; flux_compare/fullgrid_sph.jl). Rows present when generated; see flux/README.
+# 1e-10).
 const SPHERICAL_FULLGRID = [
     (a = 0.9, p = 10.0, e = 0.0, x = 0.3, Einf = 5.618554878757837e-05, Lzinf = 0.000646193767899363, Qinf = 0.011699047080444962, Ehor = -3.965227832667629e-08, Lzhor = -4.362992151791091e-06, Qhor = 1.882453559809244e-06, modes = 78416, src = "flux_compare/fullgrid_sph_full1.tsv", lmax_layer_Einf = 3.7e-17, kmax_layer_Einf = 3.7e-14),
     (a = 0.9, p = 10.0, e = 0.0, x = -0.5, Einf = 6.777536561971134e-05, Lzinf = -0.0009408357969104948, Qinf = 0.013012432661004047, Ehor = 1.6789007292504778e-07, Lzhor = -8.874482076571335e-06, Qhor = 9.39886553706734e-06, modes = 78416, src = "flux_compare/fullgrid_sph_full1.tsv", lmax_layer_Einf = 7.8e-22, kmax_layer_Einf = 4.2e-15),
@@ -32,13 +32,13 @@ const SPHERICAL_FULLGRID = [
     (a = 0.9, p = 10.0, e = 0.0, x = 0.8, Einf = 5.1784831886311346e-05, Lzinf = 0.0013778022618730474, Qinf = 0.004026547749545965, Ehor = -9.580539476385905e-08, Lzhor = -3.590475854889302e-06, Qhor = -1.2214431626381482e-06, modes = 78416, src = "flux_compare/fullgrid_sph_full3.tsv", lmax_layer_Einf = 4.2e-23, kmax_layer_Einf = 8.5e-24),
 ]
 # GENERIC_FULLGRID: independent full-grid sums with no stop rule for generic orbits (box in `caps`, mode tol
-# 1e-10; flux_compare/fullgrid_gen.jl); `edge_shares` = share of E in each outermost layer.
+# 1e-10); `edge_shares` = share of E in each outermost layer.
 const GENERIC_FULLGRID = [
     (a = 0.9, p = 10.0, e = 0.2, x = 0.3, Einf = 6.109212463332859e-05, Lzinf = 0.0006558678277894474, Qinf = 0.011728850069216078, Ehor = -4.995263639629726e-08, Lzhor = -5.304018277588948e-06, Qhor = 3.246234378421602e-06, modes = 857108, src = "flux_compare/fullgrid_gen_full_x0.3.tsv", caps = "l<=18 |m|<=16 |k|<=18 n<=16", edge_shares = "l:2.8e-12/-1.0e-29 m:2.5e-15/8.6e-24 k:4.8e-12/-4.3e-17 n:1.2e-12/-1.9e-14"),
     (a = 0.9, p = 10.0, e = 0.2, x = -0.3, Einf = 7.15935473380171e-05, Lzinf = -0.00047171267679795774, Qinf = 0.014881404158050355, Ehor = 1.4370137974334867e-07, Lzhor = -9.549013864311374e-06, Qhor = 1.0503447392757338e-05, modes = 857108, src = "flux_compare/fullgrid_gen_full_xm0.3.tsv", caps = "l<=18 |m|<=16 |k|<=18 n<=16", edge_shares = "l:5.0e-12/2.1e-25 m:1.8e-16/5.5e-22 k:7.4e-11/-5.2e-20 n:6.5e-12/6.1e-14"),
 ]
-# CANDIDATE_TOL10: totals at tol = 1e-10 from the private stop-rule candidate trees/fluxP (frozen
-# self-reference of a candidate, NOT independent). Within 3e-11 (inf) of SPHERICAL_FULLGRID where both exist.
+# CANDIDATE_TOL10: totals at tol = 1e-10 from an alternative stop-rule implementation (frozen
+# self-reference, NOT independent). Within 3e-11 (inf) of SPHERICAL_FULLGRID where both exist.
 const CANDIDATE_TOL10 = [
     (a = 0.9, p = 10.0, e = 0.2, x = 0.3, Einf = 6.109212462295629e-05, Lzinf = 0.0006558678277233516, Qinf = 0.011728850066853315, Ehor = -4.995263641313842e-08, Lzhor = -5.304018277468451e-06, Qhor = 3.2462343763535775e-06, modes = 106586, src = "flux_compare/fluxP_ref/modes_gen_a0.9_p10_e0.2_x0.3_tol1e-10.tsv"),
     (a = 0.9, p = 10.0, e = 0.2, x = -0.3, Einf = 7.159354730095115e-05, Lzinf = -0.0004717126767596683, Qinf = 0.014881404149003859, Ehor = 1.4370137971629627e-07, Lzhor = -9.549013864069604e-06, Qhor = 1.0503447389330463e-05, modes = 108578, src = "flux_compare/fluxP_ref/modes_gen_a0.9_p10_e0.2_xm0.3_tol1e-10.tsv"),
@@ -55,7 +55,7 @@ const CANDIDATE_TOL10 = [
     (a = 0.9, p = 6.0, e = 0.0, x = 0.8, Einf = 0.0005971511377918955, Lzinf = 0.007780087296727135, Qinf = 0.017268479588556703, Ehor = -3.764689156929988e-06, Lzhor = -7.193789948882056e-05, Qhor = 1.1660964985473036e-05, modes = 9350, src = "flux_compare/fluxP_ref/modes_sph_a0.9_p6_x0.8_tol1e-10.tsv"),
     (a = 0.9, p = 8.0, e = 0.0, x = -0.5, Einf = 0.0002267962953943657, Lzinf = -0.002132465030545029, Qinf = 0.030315676225289613, Ehor = 1.3392538336847194e-06, Lzhor = -5.044623085343467e-05, Qhor = 5.812157261309248e-05, modes = 7910, src = "flux_compare/fluxP_ref/modes_sph_a0.9_p8_xm0.5_tol1e-10.tsv"),
 ]
-# A0_RULEC_TOL10: a = 0 inclined/generic totals at tol = 1e-10 from the rule-C tree (frozen, informational;
+# A0_RULEC_TOL10: a = 0 inclined/generic totals at tol = 1e-10 (frozen self-values, informational;
 # the a = 0 tests use the rotation identities against EQUATORIAL_TOL10 instead).
 const A0_RULEC_TOL10 = [
     (a = 0.0, p = 10.0, e = 0.2, x = 0.5, Einf = 6.80104243432581e-05, Lzinf = 0.0009865668013382557, Qinf = 0.011218715429590092, Ehor = 2.4687809642526412e-08, Lzhor = 3.057134867990362e-07, Qhor = 3.4764119296169223e-06, modes = 136344, src = "flux_compare/modes_gen_a0_p10_e0.2_x0.5_tol1e-10.tsv"),

@@ -256,6 +256,8 @@ function kerr_geo_eccentric_sample(KG::Dict, N_sample::Int64)
     )
 end
 
+# Dense uniform master grid of an eccentric equatorial orbit: N_sample + 1 points in qr on [0, π],
+# from which subsample_eccentric_sample extracts nested power-of-two grids.
 function kerr_geo_eccentric_sample_dense(KG::Dict, N_sample::Int64)
     ispow2(N_sample) || throw(ArgumentError("N_sample must be a power of 2"))
     N_points = N_sample + 1
@@ -306,6 +308,7 @@ function kerr_geo_eccentric_sample_dense(KG::Dict, N_sample::Int64)
     )
 end
 
+# Every step-th point of the dense eccentric grid, giving N_sample intervals (must divide the stored grid).
 function subsample_eccentric_sample(KG_sample::Dict, N_sample::Int64)
     ispow2(N_sample) || throw(ArgumentError("N_sample must be a power of 2"))
     full_points = length(KG_sample["r"])
@@ -465,6 +468,7 @@ function kerr_geo_inclined_sample(KG::Dict, K_sample::Int64)
     )
 end
 
+# Dense uniform master grid of an inclined circular orbit: K_interval + 1 points in qθ on [0, π].
 function kerr_geo_inclined_sample_dense(KG::Dict, x::Real, K_interval::Int64)
     ispow2(K_interval) || throw(ArgumentError("K_interval must be a power of 2"))
     K_points = K_interval + 1
@@ -508,6 +512,7 @@ function kerr_geo_inclined_sample_dense(KG::Dict, x::Real, K_interval::Int64)
     )
 end
 
+# Every step-th point of the dense inclined grid, giving K_interval intervals (views into the master arrays).
 function subsample_inclined_sample(KG_sample::Dict, K_interval::Int64)
     ispow2(K_interval) || throw(ArgumentError("K_interval must be a power of 2"))
     full_points = length(KG_sample["θ"])
@@ -904,6 +909,7 @@ function _y_sample_isem(Y_soln, KG_sample::Dict, amplitude_key::String; threaded
     )
 end
 
+# Chebyshev table of (Y, Y', X) at M extremal points on [rmin, rmax], evaluated by barycentric interpolation.
 function y_cheb_table(Y_soln, rmin::Float64, rmax::Float64, M::Int)
     xs = [cos(pi * j / (M - 1)) for j in 0:(M - 1)]
     rs = 0.5 .* (rmin + rmax) .+ 0.5 .* (rmax - rmin) .* xs
@@ -945,7 +951,8 @@ const YINTERP_MAX_POINTS = 512
 const YINTERP_CHECK_RTOL = 1e-10
 const YINTERP_CHECK_FRACTIONS = (sqrt(2)/4, sqrt(3)/4, (sqrt(5)-1)/2)
 
-# Resolved high-n calibration required M/phase_extent <= 1.9212; round up to 2.
+# Chebyshev table points per radian of Y phase over the radial range (calibrated at high n to need
+# about 1.92, rounded up to 2).
 const YINTERP_POINTS_PER_PHASE = 2.0
 # On nested radial grids retain old exact or checked values and interpolate only new nodes.
 function refine_generic_y_sample_from_table(Y_soln, tab, previous::Dict, next_sample::Dict, amplitude_key::String)
@@ -972,6 +979,8 @@ end
     min(YINTERP_MAX_POINTS, max(YINTERP_MIN_POINTS,
         ceil(Int, YINTERP_POINTS_PER_PHASE * phase_extent)))
 
+# Build a Chebyshev Y table, check it against direct Y evaluations at three irrational interior points and
+# double the table size until the relative error is <= YINTERP_CHECK_RTOL; table = nothing if YINTERP_MAX_POINTS fails.
 function _checked_generic_y_table(Y_soln, rmin::Float64, rmax::Float64,
                                  phase_extent::Float64)
     M = _generic_y_initial_points(phase_extent)
@@ -1112,6 +1121,8 @@ function refine_eccentric_y_sample(Y_soln, Y_sample::Dict, KG_sample::Dict, N_sa
     return _refine_y_sample(Y_soln, Y_sample, subsample_eccentric_sample(KG_sample, 2N_sample))
 end
 
+# Trapezoidal (qr, qθ) convolution integral for s = -2 on a uniform generic sample, with θ-only factors
+# precomputed once per column.
 @inline function _generic_integral_sample_m2_fast(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64)
     r_vec = KG_samp["r"]::Vector{Float64}
     rs_vec = KG_samp["rs"]::Vector{Float64}
@@ -1307,6 +1318,7 @@ end
     return qr_step * qθ_step * total
 end
 
+# s = +2 counterpart of _generic_integral_sample_m2_fast.
 @inline function _generic_integral_sample_p2_fast(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64)
     r_vec = KG_samp["r"]::Vector{Float64}
     rs_vec = KG_samp["rs"]::Vector{Float64}
@@ -1912,8 +1924,8 @@ end
 
 function _validate_generic_cheby_geometry(geometry, KG_samp, a)
     geometry === nothing && return nothing
-    # The CI provider binds geometry to one actual sample. Keep this keyword
-    # compatible with standalone callers without importing CI into GridSampling.
+    # A precomputed geometry (built in ConvolutionIntegrals) belongs to one sample; check that it
+    # matches this sample and mode. With geometry = nothing the integrands compute everything locally.
     geometry.r === KG_samp["r"] && geometry.rs === KG_samp["rs"] &&
         geometry.theta === KG_samp["θ"] ||
         throw(ArgumentError("Cheby geometry belongs to another orbit sample"))
@@ -2316,6 +2328,7 @@ function integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n::Int64, k
     return Jpp_grid, Jpm_grid, Jmp_grid, Jmm_grid, drphase, dθphase, rphaseL, rphaseR, θphaseL, θphaseR, prefactor
 end
 
+# Trapezoidal qr convolution integral for s = -2 on a uniform eccentric equatorial sample.
 @inline function _eccentric_integral_sample_m2_fast(KG_samp, Y_samp,
         SH, n::Int64)
     r_vec = KG_samp["r"]::Vector{Float64}
@@ -2394,6 +2407,7 @@ end
     return qstep * total
 end
 
+# s = +2 counterpart of _eccentric_integral_sample_m2_fast.
 @inline function _eccentric_integral_sample_p2_fast(KG_samp, Y_samp,
         SH, n::Int64)
     r_vec = KG_samp["r"]::Vector{Float64}
@@ -3661,6 +3675,7 @@ function carter_ingredients_sample(KG_samp, a, m, omega)
     return Lmnk
 end
 
+# Dense uniform master grid of a generic orbit: (N_interval + 1) x (K_interval + 1) points in (qr, qθ).
 function kerr_geo_generic_sample_dense(KG::Dict, N_interval::Int64, K_interval::Int64)
     ispow2(N_interval) || throw(ArgumentError("N_interval must be a power of 2"))
     ispow2(K_interval) || throw(ArgumentError("K_interval must be a power of 2"))
@@ -3725,6 +3740,7 @@ function kerr_geo_generic_sample_dense(KG::Dict, N_interval::Int64, K_interval::
     )
 end
 
+# Every stepN-th radial and stepK-th polar point of the dense generic grid (must divide the stored grid).
 function subsample_generic_sample(KG_sample::Dict, N_interval::Int64, K_interval::Int64)
     ispow2(N_interval) || throw(ArgumentError("N_interval must be a power of 2"))
     ispow2(K_interval) || throw(ArgumentError("K_interval must be a power of 2"))

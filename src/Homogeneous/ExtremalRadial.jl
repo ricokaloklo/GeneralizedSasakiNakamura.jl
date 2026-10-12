@@ -20,6 +20,11 @@ const _NORMALIZATION_PRECISION_BITS = 384
 const _NORMALIZATION_SERIES_ORDER = 48
 const _SERIES_ORDER = 28
 
+"""
+    is_exact_extremal_spin(a)
+
+True when `a` is exactly +1 or -1.
+"""
 is_exact_extremal_spin(a) = isreal(a) && isone(abs(real(a)))
 
 function _checked_extremal_sign(a)
@@ -28,9 +33,15 @@ function _checked_extremal_sign(a)
     return sign(real(a))
 end
 
+"""
+    extremal_horizon_detuning(a, m, omega)
+
+Horizon detuning `2omega - m sign(a)`, i.e. `2(omega - m Omega_H)` at exact extremality.
+"""
 extremal_horizon_detuning(a, m::Integer, omega) =
     2omega - m * _checked_extremal_sign(a)
 
+# Rejects the synchronous frequency omega = m Omega_H, a branch point of the extremal problem.
 function _require_nonsynchronous(a, m, omega)
     detuning = extremal_horizon_detuning(a, m, omega)
     iszero(detuning) && throw(DomainError(omega,
@@ -39,6 +50,7 @@ function _require_nonsynchronous(a, m, omega)
     return detuning
 end
 
+# (alpha, beta) of the horizon behavior exp(alpha/h) h^beta, h = r - 1, for each branch.
 function _branch_parameters(s::Int, m::Int, a, omega, branch::Symbol)
     detuning = _require_nonsynchronous(a, m, omega)
     if branch === :ingoing
@@ -49,6 +61,12 @@ function _branch_parameters(s::Int, m::Int, a, omega, branch::Symbol)
     throw(ArgumentError("extremal horizon branch must be :ingoing or :outgoing"))
 end
 
+"""
+    extremal_teukolsky_horizon_coefficients(s, m, a, omega, lambda, branch; order)
+
+Exact-extremal Teukolsky horizon expansion `R = exp(alpha/h) h^beta sum_n c_n h^n`, `h = r - 1`, for
+`branch = :ingoing` or `:outgoing` (`c_0 = 1`). Returns `(alpha, beta, coefficients)`.
+"""
 function extremal_teukolsky_horizon_coefficients(
         s::Int, m::Int, a, omega, lambda, branch::Symbol;
         order::Int=_NORMALIZATION_SERIES_ORDER)
@@ -79,12 +97,19 @@ function extremal_teukolsky_horizon_coefficients(
     return (alpha=alpha, beta=beta, coefficients=coefficients)
 end
 
+"""
+    extremal_synchronous_exponents(s, lambda, omega)
+
+Power-law exponents `k` of the horizon solutions at the synchronous frequency, the roots of
+`k^2 + (2s + 1) k + 4omega^2 - lambda = 0`.
+"""
 function extremal_synchronous_exponents(s::Int, lambda, omega)
     discriminant = (2s + 1)^2 - 4 * (4omega^2 - lambda)
     root = sqrt(complex(discriminant))
     return ((-(2s + 1) + root) / 2, (-(2s + 1) - root) / 2)
 end
 
+# Value and h derivative of sum coefficients[n] h^(n-1).
 function _poly_pair(coefficients, h)
     value = coefficients[end]
     derivative = zero(eltype(coefficients))
@@ -95,6 +120,11 @@ function _poly_pair(coefficients, h)
     return value, derivative
 end
 
+"""
+    extremal_teukolsky_horizon_state(s, m, a, omega, lambda, r, branch; order)
+
+`(R, dR/dr)` of the exact-extremal horizon branch at radius `r`.
+"""
 function extremal_teukolsky_horizon_state(
         s::Int, m::Int, a, omega, lambda, r, branch::Symbol;
         order::Int=_NORMALIZATION_SERIES_ORDER)
@@ -114,6 +144,7 @@ end
 _bigreal(x::Real) = BigFloat(x)
 _bigcomplex(z) = Complex{BigFloat}(BigFloat(real(z)), BigFloat(imag(z)))
 
+# The horizon branch converted to the GSN pair (X, dX/dr*), before normalization.
 function _raw_extremal_gsn_horizon_state(
         s::Int, m::Int, a, omega, lambda, r, branch::Symbol;
         order::Int=_NORMALIZATION_SERIES_ORDER)
@@ -125,6 +156,7 @@ function _raw_extremal_gsn_horizon_state(
     return matrix \ radial
 end
 
+# Factor that removes the leading horizon behavior of the raw GSN branch, leaving a constant as h -> 0.
 function _leading_factor(a, m, omega, h, branch::Symbol)
     detuning = extremal_horizon_detuning(a, m, omega)
     if branch === :ingoing
@@ -139,6 +171,13 @@ function _normalization_sample(s, m, a, omega, lambda, h, branch, order)
     return state[1] * _leading_factor(a, m, omega, h, branch)
 end
 
+"""
+    extremal_horizon_normalization(s, m, a, omega, lambda, branch; precision_bits, order)
+
+Leading amplitude of the raw GSN horizon branch, extrapolated to `h = r - 1 -> 0` by Richardson
+extrapolation of samples at `h`, `h/2`, `h/4` in BigFloat arithmetic. Returns
+`(value, drift, base_h, precision_bits, order)`, with `drift` an estimate of the extrapolation error.
+"""
 function extremal_horizon_normalization(
         s::Int, m::Int, a, omega, lambda, branch::Symbol;
         precision_bits::Int=_NORMALIZATION_PRECISION_BITS,
@@ -169,6 +208,12 @@ function extremal_horizon_normalization(
     end
 end
 
+"""
+    extremal_gsn_horizon_state(s, m, a, omega, lambda, r, branch; order, normalization=nothing)
+
+Normalized GSN horizon state `(X, dX/dr*)` of `branch` at radius `r`; pass `normalization` to reuse
+a result of `extremal_horizon_normalization`.
+"""
 function extremal_gsn_horizon_state(
         s::Int, m::Int, a, omega, lambda, r, branch::Symbol;
         order::Int=_NORMALIZATION_SERIES_ORDER, normalization=nothing)
@@ -181,6 +226,7 @@ function extremal_gsn_horizon_state(
     return raw / scale
 end
 
+# Decomposes a GSN state at r into the normalized ingoing and outgoing horizon branches.
 function _horizon_decomposition(
         s, m, a, omega, lambda, state, r;
         order, ingoing_normalization, outgoing_normalization)
@@ -196,6 +242,7 @@ function _horizon_decomposition(
     return (ingoing=coefficients[1], outgoing=coefficients[2])
 end
 
+# Asymptotic GSN solution f(r) exp(+-i omega r*) at infinity and its r* derivative, for each branch.
 function _infinity_pair(s, m, a, omega, lambda, r, rs, order, branch)
     coefficient = branch === :outgoing ?
         Solutions.coefficient_sequence(Solutions.outgoing_coefficient_at_inf,
@@ -213,6 +260,7 @@ function _infinity_pair(s, m, a, omega, lambda, r, rs, order, branch)
     )
 end
 
+# Decomposes a GSN state at large r into the ingoing and outgoing infinity solutions.
 function _infinity_decomposition(s, m, a, omega, lambda, state, r, rs, order)
     state = SVector(state[1], state[2])
     ingoing = _infinity_pair(
@@ -224,6 +272,8 @@ function _infinity_decomposition(s, m, a, omega, lambda, state, r, rs, order)
     return (ingoing=coefficients[1], outgoing=coefficients[2])
 end
 
+# Piecewise Taylor solution in r: each patch holds a series about `center` valid on [left, right].
+# The solution returns (X, dX/dr*) for :gsn, or converts the Teukolsky pair with `transform`.
 struct ExtremalSeriesPatch{T,C}
     left::T
     right::T
@@ -264,6 +314,7 @@ function (solution::ExtremalSeriesSolution)(rs)
     throw(DomainError(rs, "requested point lies outside the extremal series solution"))
 end
 
+# Taylor coefficients about r0 of y'' = A(r) y' + B(r) y with (y, y') = state at r0.
 function _ode_series_coefficients(A, B, r0, state, order)
     Aseries = taylor_expand(A, r0; order=order)
     Bseries = taylor_expand(B, r0; order=order)
@@ -283,6 +334,7 @@ function _ode_series_coefficients(A, B, r0, state, order)
     return coefficients
 end
 
+# Relative size of the last three terms at the step, used as the truncation-error estimate.
 function _patch_tail(coefficients, step)
     order = length(coefficients) - 1
     tail = sum(abs(coefficients[index + 1] * step^index)
@@ -292,6 +344,8 @@ function _patch_tail(coefficients, step)
     return tail / scale
 end
 
+# Propagates from rstart to rend with Taylor patches; each step is at most 0.22 (r - 1) and is halved
+# until the tail estimate is below tolerance.
 function _series_propagate(A, B, a, rstart, rend, state;
         representation::Symbol, transform=identity, order::Int=_SERIES_ORDER,
         tolerance=1e-12)
@@ -326,6 +380,8 @@ function _series_propagate(A, B, a, rstart, rend, state;
     return ExtremalSeriesSolution(a, patches, representation, transform)
 end
 
+# Series solution of the GSN equation in r (:gsn) or of the Teukolsky equation (:teukolsky, converted
+# back to GSN), started from the horizon state (IN) or the infinity state (UP).
 function _series_solution(s, m, a, omega, lambda, rsin, rsout,
         boundary::Symbol, representation::Symbol, horizon_state, infinity_state;
         order, tolerance)
@@ -361,6 +417,7 @@ function _series_solution(s, m, a, omega, lambda, rsin, rsout,
         initial; representation=:teukolsky, transform, order, tolerance)
 end
 
+# Numerical integration in r* of the linear GSN equation or of its Riccati form.
 function _differential_solution(s, m, a, omega, lambda, rsin, rsout,
         boundary::Symbol, method::Symbol, horizon_state, infinity_state;
         data_type, ode_algorithm, tolerance)
@@ -382,6 +439,15 @@ function _differential_solution(s, m, a, omega, lambda, rsin, rsout,
     return Solutions.Xsoln_from_Phisoln(phi_solution), phi_solution
 end
 
+"""
+    solve_extremal_gsn(s, m, a, omega, lambda, boundary, rsin, rsout; method=:gsn_isem, kwargs...)
+
+Exact-extremal (`|a| = 1`) GSN solution with `boundary = :IN` or `:UP`, computed on `[rsin, rsout]` by
+`method` (`:gsn_isem` Taylor patches on the GSN equation, `:isem` patches on the Teukolsky equation,
+`:linear` or `:riccati` ODE integration) and extended outside by the horizon and infinity
+expansions. Returns a NamedTuple with the solution, unit transmission amplitude, the incidence and
+reflection amplitudes and the horizon normalizations.
+"""
 function solve_extremal_gsn(
         s::Int, m::Int, a, omega, lambda, boundary::Symbol,
         rsin, rsout;

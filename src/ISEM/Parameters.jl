@@ -52,6 +52,7 @@ function Base.show(io::IO, ::MIME"text/plain", para::ISEMParameters)
     println(io, "  lambda  = ", para.lambda,)
 end
 
+# Spheroidal eigenvalue lambda (direct solver for real a*omega and |s| <= 2) and kappa = sqrt(1 - a^2).
 @inline function _core_parameters(s, l, m, a, omega)
     c = a * omega
     lambda = if c isa Real && s in (-2, -1, 0, 1, 2)
@@ -64,6 +65,8 @@ end
     return lambda, kappa
 end
 
+# ISEM parameters epsilon = 2 omega and tau = (epsilon - m a)/kappa; rho_parameters adds the contour
+# phase z = omega/|omega| (1 for real omega).
 function isem_parameters(params::TeukolskyParameters)
     s = params.s
     l = params.l

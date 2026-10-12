@@ -18,8 +18,6 @@ export inclined_mode_flux
 export inclined_mode_summation
 export generic_mode_summation
 
-_relerr(a, b) = abs(a - b) / max(abs(b), eps(Float64))
-
 _next_pow2_at_least(n::Integer) = max(1, 2 ^ (ceil(Int, log2(max(1, n))) + 1))
 
 function _fit_shell_estimate(model, idxs, vals, next_index, p0, fallback)
@@ -34,14 +32,6 @@ function _fit_shell_estimate(model, idxs, vals, next_index, p0, fallback)
     catch
         return fallback
     end
-end
-
-function _median_sorted(vals::Vector{Float64})
-    n = length(vals)
-    n == 0 && return 0.0
-    sorted = sort(vals)
-    mid = n ÷ 2
-    return isodd(n) ? sorted[mid + 1] : 0.5 * (sorted[mid] + sorted[mid + 1])
 end
 
 _use_levin_tail(index::Int; nmin::Int = 50) = index >= nmin
@@ -137,11 +127,12 @@ end
 # on the side of m* an m shell counts toward the m streak only once |m| >= |m*|.
 @inline _before_omega_zero(m::Int, m_omega_zero::Float64) = m * m_omega_zero > 0 && abs(m) < abs(m_omega_zero)
 
-# Walk ls, calling eval_l(l) (which returns the mode's energy flux), until minimum_consecutive consecutive modes have
-# |flux| <= threshold. Returns the last l walked.
+# Defaults of the generic-orbit stopping parameters `beta` (tail budget) and `deep` (deep stop).
 const DEFAULT_GENERIC_BETA = 1e-4
 const DEFAULT_GENERIC_DEEP = 1e-5
 
+# Walk ls, calling eval_l(l) (which returns the mode's energy flux), until minimum_consecutive consecutive modes have
+# |flux| <= threshold, or (deep > 0) one mode has |flux| <= deep * threshold. Returns the last l walked.
 function _l_walk(eval_l, ls, threshold, minimum_consecutive::Int; deep = 0.0)
     below_count = 0
     last_l = first(ls) - step(ls)
@@ -156,8 +147,8 @@ end
 
 # l walk of one k != 0 branch; each mode is evaluated at most once, and every segment stops after minimum_consecutive
 # modes below threshold. Infinity (from_bottom = false): up from the peak, then down from the peak towards lmin.
-# Peak discovery retains the shell cutoff and original confirmation count; a larger tail
-# budget cannot bound an unvisited interior peak between stopped bottom and descent walks.
+# Walks that search for the peak use search_threshold (the plain shell cutoff) without the deep stop, since a
+# larger tail budget cannot bound an unvisited interior peak between the stopped bottom and descent walks.
 # Horizon (from_bottom = true): Kerr horizon modes below the peak are not suppressed and often peak at lmin, so first
 # walk up from lmin as for k = 0; if that stops below the peak, walk down from the peak to where it stopped, then up
 # from the peak.
@@ -219,6 +210,8 @@ function _record_current_mode!(h5, record::Bool, boundary::AbstractString, n::In
     return nothing
 end
 
+# Power-of-two trapezoidal grid sizes (N, K) for mode (m, n, k): about `scale` points per unit of the largest
+# harmonic index, at least minN and minK. Also returns the unrounded targets.
 function recommended_mode_grid_sizes(m::Integer, n::Integer, k::Integer; minN::Int = 256, minK::Int = 64, scale::Int = 10)
     targetN = max(minN - 1, scale * max(abs(m), abs(n)))
     targetK = max(minK - 1, scale * max(abs(m), abs(k)))
@@ -230,13 +223,14 @@ function recommended_mode_grid_sizes(m::Integer, n::Integer, k::Integer; minN::I
     )
 end
 
-# Match the public ISEM route before allocating a mode cache.
+# Classify the orbit as the public ISEM route does (1e-12 tolerance), before allocating a mode cache.
 function _mode_flux_cache_family(e, x)
     equatorial = isapprox(abs(x), 1.0; atol = 1e-12)
     circular = isapprox(e, 0.0; atol = 1e-12)
     return circular ? (equatorial ? :circular : :inclined) : (equatorial ? :eccentric : :generic)
 end
 
+# Near-zero but nonzero e is routed through its own e = 0 orbit and must not share the raw-e geometry.
 function _mode_flux_share_geometry(e)
     return !(!isequal(e, 0.0) && isapprox(e, 0.0; atol = 1e-12))
 end
@@ -274,6 +268,7 @@ function _circular_mode_flux_scoped(scope, a, p, l, m; x=1.0)
     )
 end
 
+# Infinity and horizon fluxes of the circular-orbit mode (l, m) (s = -2 and s = +2), in a submission scope.
 function circular_mode_flux(a, p, l, m; submission = nothing, x=1.0, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing, Nmax = submission === nothing ? 2^14 : submission.Nmax, Kmax = submission === nothing ? 2^12 : submission.Kmax)
     scope, owned = ensure_public_submission(submission, a, p, 0.0, x; Nmax, Kmax, stop_requested, lifecycle_observer, geometry_observer)
     return _with_public_scope(scope, owned) do
@@ -317,6 +312,7 @@ function _eccentric_mode_flux_scoped(scope, a, p, e, l, m, n; x=1.0)
     )
 end
 
+# Infinity and horizon fluxes of the eccentric equatorial mode (l, m, n), in a submission scope.
 function eccentric_mode_flux(a, p, e, l, m, n; submission = nothing, x=1.0, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing, Nmax = submission === nothing ? 2^14 : submission.Nmax, Kmax = submission === nothing ? 2^12 : submission.Kmax)
     scope, owned = ensure_public_submission(submission, a, p, e, x; Nmax, Kmax, stop_requested, lifecycle_observer, geometry_observer)
     return _with_public_scope(scope, owned) do
@@ -410,6 +406,8 @@ function _circular_mode_summation_scoped(scope, a, p; x=1.0, tol = 1e-8, lmax = 
     )
 end
 
+# Total circular-orbit fluxes: sum m = 1..l (doubled for -m) over l shells until min_consecutive shells are
+# below tol times the running total, separately at infinity and at the horizon.
 function circular_mode_summation(a, p; submission = nothing, x=1.0, tol = 1e-8, lmax = 30, min_consecutive = 5, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing, Nmax = submission === nothing ? 2^14 : submission.Nmax, Kmax = submission === nothing ? 2^12 : submission.Kmax)
     scope, owned = ensure_public_submission(submission, a, p, 0.0, x; Nmax, Kmax, stop_requested, lifecycle_observer, geometry_observer)
     return _with_public_scope(scope, owned) do
@@ -918,6 +916,8 @@ function _eccentric_mode_summation_scoped(scope, a, p, e; x=1.0, N = 64, N0 = N,
     end
 end
 
+# Total eccentric equatorial fluxes: n = 0 shell, then n = 1, 2, ... shells (each over m >= 1, m <= -1 and l),
+# until minimum_consecutive + 1 n shells are below tol times the branch total. See Teukolsky_pointparticle_flux.
 function eccentric_mode_summation(a, p, e; submission = nothing, x=1.0, N = 64, N0 = N, Nmax = submission === nothing ? 2^14 : submission.Nmax, tol = 1e-8, lmax = 30, nmax = 500, minimum_consecutive = 2, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, mode_abs_floor = 1e-16, zero_low_flux = false, threaded_sampling = false, tail_levin = :auto, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = 1e-16, levin_local_n::Int = ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, levin_max_depth::Int = 8, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing, Kmax = submission === nothing ? 2^12 : submission.Kmax)
     scope, owned = ensure_public_submission(submission, a, p, e, x; Nmax, Kmax, stop_requested, lifecycle_observer, geometry_observer)
     return _with_public_scope(scope, owned) do
@@ -1023,6 +1023,7 @@ function _inclined_mode_flux_scoped(scope, a, p, x, l, m, k; K = 16, Kmax = 2^12
     )
 end
 
+# Infinity and horizon fluxes of the inclined circular mode (l, m, k), in a submission scope.
 function inclined_mode_flux(a, p, x, l, m, k; submission = nothing, K = 16, Kmax = submission === nothing ? 2^12 : submission.Kmax, sample_tol = 1e-3, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing, Nmax = submission === nothing ? 2^14 : submission.Nmax)
     scope, owned = ensure_public_submission(submission, a, p, 0.0, x; Nmax, Kmax, stop_requested, lifecycle_observer, geometry_observer)
     return _with_public_scope(scope, owned) do
@@ -1429,6 +1430,7 @@ function _inclined_mode_summation_scoped(scope, a, p, x; K = 16, K0 = K, Kmax = 
     end
 end
 
+# Total inclined circular fluxes, summed over k shells as the eccentric summation sums n shells.
 function inclined_mode_summation(a, p, x; submission = nothing, K = 16, K0 = K, Kmax = submission === nothing ? 2^12 : submission.Kmax, tol = 1e-8, lmax = 30, kmax = 20, minimum_consecutive = 2, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, mode_abs_floor = 1e-16, zero_low_flux = false, threaded_sampling = false, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing, Nmax = submission === nothing ? 2^14 : submission.Nmax)
     scope, owned = ensure_public_submission(submission, a, p, 0.0, x; Nmax, Kmax, stop_requested, lifecycle_observer, geometry_observer)
     return _with_public_scope(scope, owned) do
@@ -2206,6 +2208,8 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
     end
 end
 
+# Total generic-orbit fluxes, summed over n, k, m and l shells with the stopping rules described in
+# Teukolsky_pointparticle_flux. Equatorial and e = 0 orbits are passed to the eccentric and inclined summations.
 function generic_mode_summation(a, p, e, x; submission = nothing, N0 = 64, K0 = 16, Nmax = submission === nothing ? 2^14 : submission.Nmax, Kmax = submission === nothing ? 2^12 : submission.Kmax, tol = 1e-8, lmax = 30, kmax = 20, nmax = 500, minimum_consecutive = 2, sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, mode_abs_floor = 1e-16, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, beta = DEFAULT_GENERIC_BETA, deep = DEFAULT_GENERIC_DEEP, tail_levin = :auto, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = 1e-16, levin_local_n::Int = ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, levin_max_depth::Int = 8, progress_interval::Int = 0, progress_path = nothing, stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing)
     scope, owned = ensure_public_submission(submission, a, p, e, x; Nmax, Kmax, stop_requested, lifecycle_observer, geometry_observer)
     return _with_public_scope(scope, owned) do

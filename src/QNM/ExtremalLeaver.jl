@@ -58,7 +58,7 @@ function extremal_radial_residual(s::Integer, m::Integer, omega::Complex{T},
         v = Complex{T}[v[2], v[3], v[4], vn]
         u, v = _orthonormal_pair(u, v)
     end
-    # windows now hold (a3, a2, a1, a0)
+    # After the loop the windows hold (a3, a2, a1, a0).
     al1, be1, ga1, _, _ = _extremal_five_term(s, m, omega, lambda, one(T))
     al2, be2, ga2, de2, _ = _extremal_five_term(s, m, omega, lambda, T(2))
     row1(w) = al1 * w[2] + be1 * w[3] + ga1 * w[4]
@@ -68,6 +68,8 @@ function extremal_radial_residual(s::Integer, m::Integer, omega::Complex{T},
     return (e11 * e22 - e12 * e21) / scale
 end
 
+# Secant iteration on `extremal_radial_residual` at one truncation depth, with
+# steps capped at `trust_radius`.
 function _extremal_secant(mode::QNMMode, seed::Complex{T}; depth::Int,
         angular_order::Int, sheet_id::Symbol, root_tolerance::T,
         maximum_iterations::Int, trust_radius::T) where {T<:AbstractFloat}

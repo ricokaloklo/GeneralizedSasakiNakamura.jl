@@ -184,11 +184,6 @@ end
 @inline _local_error(step) =
     step.score + step.roundoff + step.coefficient_condition + eps(Float64)
 
-# Real-axis evaluation steps from the junction towards the target; every step
-# but the last is a full step (safety times the distance to the nearest
-# singular point, direction +-1) and does not depend on the target, so each
-# side keeps the full steps already taken and an evaluation only adds the
-# remaining ones. Results are identical to walking from the junction.
 # First-order estimate of the relative X error of a walked state. A local error
 # of relative size e at a node perturbs X by a solution Z with
 # |W(X,Z)| <= 2e|X||X'|, and Z/X then changes by W(X,Z) * integral(W/X^2), W given
@@ -205,6 +200,11 @@ end
 
 _WalkError() = _WalkError(0.0im, 0.0, 0.0, 0.0)
 
+# Real-axis evaluation steps from the junction towards the target; every step
+# but the last is a full step (safety times the distance to the nearest
+# singular point, direction +-1) and does not depend on the target, so each
+# side keeps the full steps already taken and an evaluation only adds the
+# remaining ones. Results are identical to walking from the junction.
 mutable struct _RealAxisWalk
     x::Vector{ComplexF64}
     state1::Vector{DirectComplexRationalState}
@@ -232,6 +232,14 @@ end
 _RealAxisWalk(x, state) = _RealAxisWalk(
     ComplexF64[x], [state], [state], [0], [_WalkError()])
 
+"""
+    DirectComplexRationalEvaluator
+
+Real-axis evaluator of a two-ray rational route: starts from the matched state
+at `match_x` and steps along real x, caching the steps taken on each side of
+the junction. Called with r* (a number or a vector), it returns X, dX/dr* and
+an error estimate.
+"""
 struct DirectComplexRationalEvaluator{P,C,S}
     params::P
     coefficients::C
@@ -307,6 +315,9 @@ end
 
 @inline _ray_sign(q) = real(q) >= 0 ? 1.0 : -1.0
 
+# Complex direction of an r* ray on which q r* stays real, with nonnegative real
+# part. Close to the negative imaginary axis a fixed lateral direction is used,
+# tilted from the real axis towards the Stokes direction by 3pi/8.
 function _two_ray_direction(q)
     iszero(q) && throw(DomainError(q, "two-ray phase frequency cannot be zero."))
     if imag(q) < 0 &&
@@ -479,6 +490,10 @@ function _integrate_infinity_path(
     )
 end
 
+# Integrate x along r* = rho * direction from the junction x = match_x with
+# adaptive RK4 (rho < 0 towards the horizon, rho > 0 towards infinity, the
+# latter in log u, u = 1/(1 - x)), tracking log x and log(1 - x) continuously.
+# An existing rotated path can be extended to a larger |rho|.
 function _integrate_coordinate_path(
     params,
     q,
@@ -965,6 +980,9 @@ function _factorized_horizon_solution(
     )
 end
 
+# Horizon Frobenius solution; the factorized double-double recurrence (and its
+# logarithmic form at an integer resonance) is used when the plain recurrence
+# is truncated by a small denominator or loses Float64 credibility.
 function _complex_horizon_solution(
     coefficients,
     branch::Symbol,
@@ -1157,6 +1175,8 @@ function _infinity_check_from_ab(
     )
 end
 
+# Infinity local solution, in the scaled variable (1 - x)/omega for small
+# |omega|, strong damping, or when the unscaled recurrence loses credibility.
 function _complex_infinity_solution(coefficients, branch::Symbol, order::Int)
     omega = coefficients.params.omega
     strongly_damped = imag(omega) < -0.5
@@ -1360,6 +1380,8 @@ function _select_rotated_horizon_path(
         "$(best === nothing ? Inf : best.pair_abel_error).")
 end
 
+# Horizon endpoint seed on a rotated ray. For near-extremal spin with small |p|
+# a real-axis seed is tried first, and either serves as the other's fallback.
 function _select_horizon_path(
     coefficients,
     solutions,
@@ -1461,6 +1483,9 @@ end
     kind == :infinity_out ? :out :
     throw(ArgumentError("principal MST infinity kind must be in or out."))
 
+# Infinity seed on the principal MST axis: the outgoing local solution is
+# replaced by the combination of the local pair proportional to the principal
+# MST state, and its Abel error enters the score.
 function _principal_mst_candidate!(
     coefficients,
     plan,
@@ -2488,6 +2513,8 @@ function _scaled_abel_ratio(state1, state2, exact_denominator)
     return ratio
 end
 
+# Rescale `state2` so the pair's Wronskian equals the exact Abel value; returns
+# the corrected state, the ratio and its error before and after correction.
 function _abel_normalize_second(state1, state2, exact_denominator)
     numerical = state1.X * state2.dXdx - state2.X * state1.dXdx
     ratio = ComplexF64(numerical / exact_denominator)
@@ -2519,6 +2546,7 @@ end
         message == "nonfinite Abel-normalized basis state."
 end
 
+# Coefficients of `target` in the basis (basis1, basis2) from Wronskians.
 @inline function _connection_coefficients(target, basis1, basis2, denominator)
     incidence = (target.X * basis2.dXdx - basis2.X * target.dXdx) /
         denominator
@@ -2675,6 +2703,9 @@ function _solve_horizon_angle_at_match(
     ))
 end
 
+# IN near extremal spin matched at r* = 0 on a horizon ray without angle offset:
+# re-solve the horizon side with growing angle offsets and adopt a candidate
+# when two consecutive offsets agree and both differ from the original match.
 function _horizon_stokes_consensus_retry(
     coefficients,
     locals,
@@ -2799,6 +2830,9 @@ end
         result.matching_condition >= _MATCH_CONSENSUS_UP_CONDITION_MIN
 end
 
+# When the match is ill-conditioned, re-solve at junctions shifted by fractions
+# of log(25)/|Im omega| and adopt the lower-condition member of the
+# best-agreeing pair when it is clearly separated from the original.
 function _matching_consensus_retry(
     coefficients,
     locals,
@@ -2895,6 +2929,14 @@ function _matching_consensus_retry(
     )
 end
 
+"""
+    direct_complex_offpole_match_plateau_candidate(evaluator, branch, retry_cache=nothing; early_stability_max)
+
+Matches at junctions r* = f log(25)/|Im omega| (f = 0, -0.25, -0.5, -0.75 for
+UP; 0.25, 0.5, 0.75, 1 for IN), reusing cached matches. Returns the
+lower-condition member of the best-agreeing pair with all candidates and
+agreement diagnostics.
+"""
 function direct_complex_offpole_match_plateau_candidate(
     evaluator,
     branch,
@@ -3037,6 +3079,10 @@ end
         Int(solution.resonance_order) : 0
 end
 
+# One two-ray match at the real junction r* = match_rstar: endpoint seeds on the
+# horizon and infinity rays, propagation to the junction (or to the seed for
+# endpoint matching), Abel normalization, connection coefficients and their
+# error estimates.
 function _solve_at_match(
     coefficients,
     locals,
@@ -3462,13 +3508,16 @@ end
 # junctions are spaced finely; the search only runs when the default fails.
 const _JUNCTION_SEARCH_X = Tuple(0.02:0.02:0.98)
 
+# A match whose raw Abel pair check stays within the infinity target.
+@inline _certified_pair(result, settings) =
+    result.abel_raw_error <= settings.infinity_target
+
 # Junctions are tried in order of distance from the default one, so the rays
 # stay in the homotopy class of the real-frequency continuation (junctions on
 # the far side of the x(r = +-ia) singular points match another branch). A
-# junction is accepted when its rays do not wind around the horizon and the
-# matching conditioning leaves the route's accuracy target.
-@inline _certified_pair(result, settings) =
-    result.abel_raw_error <= settings.infinity_target
+# junction is accepted when its rays do not wind around the horizon, the
+# matching conditioning keeps the route's accuracy target and its pair is
+# certified.
 
 function _junction_search(coefficients, locals, branch, params, settings,
         default_x)
@@ -3645,6 +3694,17 @@ function _balance_junction(coefficients, locals, branch, selected, settings,
         (merge(base, (; incidence=best.value, incidence_error=best.error)), 1)
 end
 
+"""
+    direct_complex_rational_build(s, l, m, a, omega, branch; lambda, nu, N, tol, xm)
+
+Two-ray rational construction of the IN or UP GSN solution at complex `omega`:
+horizon and infinity endpoint series are seeded on r* rays on which the local
+phase stays real, propagated to a real junction and matched there. Without
+`xm` the junction starts at r* = 0 (x = 0.7 near the real axis) and may move
+through the junction search, condition and consensus retries and burial
+balancing. Returns the parameters, controls, coefficients, real-axis
+evaluator, unit-transmission amplitudes, metadata and a retry cache.
+"""
 function direct_complex_rational_build(
     s::Integer,
     l::Integer,
@@ -3883,6 +3943,13 @@ end
 
 const _UP_HORIZON_IN_ENDPOINT_SCORE_MAX = 1.0e-11
 
+"""
+    direct_complex_up_horizon_in_candidate(evaluator, metadata)
+
+UP amplitudes recomputed with a freshly seeded and propagated horizon-in
+solution, matched against the stored horizon-out and infinity-out states at
+the route junction.
+"""
 function direct_complex_up_horizon_in_candidate(evaluator, metadata)
     params = evaluator.params
     coefficients = evaluator.coefficients
@@ -3945,6 +4012,11 @@ function direct_complex_up_horizon_in_candidate(evaluator, metadata)
     )
 end
 
+"""
+    direct_complex_up_initial_match_candidates(evaluator)
+
+UP matches at r* = -0.5 L, -0.25 L and 0 with L = log(25)/|Im omega|.
+"""
 function direct_complex_up_initial_match_candidates(evaluator)
     params = evaluator.params
     coefficients = evaluator.coefficients
@@ -3967,7 +4039,7 @@ end
 # where both series pass the exact-ODE certificate used for route seeds; below
 # that node states come from the series, so they do not depend on the order of
 # evaluation and need none of the small steps that lose certification as
-# x -> 0 at strong damping. Without a certified node the walk is used as before.
+# x -> 0 at strong damping. Without a certified node, states come from the walk.
 function _horizon_anchor!(evaluator::DirectComplexRationalEvaluator)
     return lock(evaluator.walk_lock) do
         cached = evaluator.horizon[]
@@ -4054,6 +4126,8 @@ function _horizon_anchor_state(anchor, coefficients, x::Float64)
     return (; X, dXdx, error, patches=anchor.patches)
 end
 
+# State and error estimate at real x: from the horizon anchor below it, else by
+# extending the cached walk from the junction and taking the remaining steps.
 function _state_x(evaluator::DirectComplexRationalEvaluator, x::Real)
     target = Float64(x)
     0 < target < 1 ||
@@ -4130,6 +4204,11 @@ function _state_x(evaluator::DirectComplexRationalEvaluator, x::Real)
     )
 end
 
+"""
+    direct_complex_rational_state_r(evaluator, r)
+
+X, dX/dr*, error estimate and step count of a rational route at real r > r_+.
+"""
 function direct_complex_rational_state_r(
     evaluator::DirectComplexRationalEvaluator,
     r::Real,
@@ -4149,6 +4228,9 @@ function direct_complex_rational_state_r(
     )
 end
 
+# Batch evaluation at sorted targets on each side of the junction, each
+# propagated from the previous one and restarted from the junction every
+# `chain_max` targets or after a patch-limit failure.
 function _states_x(
     evaluator::DirectComplexRationalEvaluator,
     targets::AbstractVector{<:Real},

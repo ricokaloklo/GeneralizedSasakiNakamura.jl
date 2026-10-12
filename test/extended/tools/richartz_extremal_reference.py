@@ -3,9 +3,7 @@
 # Convergent-subspace condition: backward recursion of two solutions with QR at every step, then the
 # 2x2 boundary determinant of rows (3.2), (3.3). Angular eigenvalue by the spin-weighted spherical
 # spectral method. Reproduces Tables I, V, VI of the paper (s = -2) to the printed six decimals.
-# Usage: from richartz_reference import solve; solve(-2, l, m, seed, N=8000) -> (omega, A, |det|)
-# Extremal Kerr (a = M = 1) QNM: Richartz five-term recurrence around r = 2M;
-# the convergent subspace is tracked by backward recursion of two solutions with Gram-Schmidt at every step.
+# Usage: from richartz_extremal_reference import solve; solve(-2, l, m, seed, N=8000) -> (omega, A, |det|)
 import numpy as np
 
 

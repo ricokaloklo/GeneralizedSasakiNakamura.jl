@@ -24,6 +24,10 @@ using ..DirectParameters: direct_spin_regime
 export factor_values_complex_dd
 export near_extreme_prepare, near_extreme_selected
 
+# Near-extremal horizon coefficients. Per-spin binary tables store the horizon
+# A and B rational functions with common powers of kappa = cos(nu) factored out of
+# numerator and denominator, avoiding the cancellation of the generic tables as kappa -> 0.
+# DIRECT_GSN_NEAR_EXTREME_COMPENSATED (default "1", read at load time) enables this.
 const TABLE_DIR = joinpath(@__DIR__, "Generated")
 const TABLE_MAGIC = UInt8[0x44, 0x47, 0x4e, 0x46, 0x43, 0x54, 0x31, 0x00]
 const CERTIFICATE_ORDER = 24
@@ -114,6 +118,8 @@ function float_powers(value, maximum_power)
     return powers
 end
 
+# Factored horizon coefficients for real parameters in binary64, with the
+# kappa powers restored by scale_factor!.
 function factor_values(params)
     table = factor_table(params.s)
     sine = sin(params.nu)
@@ -151,6 +157,7 @@ function factor_values(params)
     return values
 end
 
+# As factor_values, with the monomial sums in double-double.
 function factor_values_dd(params)
     table = factor_table(params.s)
     sine = sin(params.nu)
@@ -196,6 +203,7 @@ function complex_powers_dd(value::DDComplex, maximum_power)
     return powers
 end
 
+# Double-double square root by three Newton steps from `initial`.
 function sqrt_dd(value::DDComplex, initial::Float64)
     root = DDComplex(initial)
     @inbounds for _ in 1:3
@@ -219,6 +227,8 @@ function pow_dd(value::DDComplex, exponent::Int)
     return result
 end
 
+# Factored horizon coefficients in double-double for complex omega and lambda,
+# returned unrounded as DDComplex values.
 function factor_values_complex_dd(params)
     table = factor_table(params.s)
     one = DDComplex(1)
@@ -276,6 +286,7 @@ function factor_values_complex_dd(params)
     return values
 end
 
+# Multiply the A and B numerator blocks by cos(nu)^(numerator power - denominator power).
 function scale_factor!(values, cosine, powers, spin)
     ap, aq, bp, bq = powers
     a_scale = cosine^(ap - aq)
@@ -286,6 +297,7 @@ function scale_factor!(values, cosine, powers, spin)
     return values
 end
 
+# Wrap packed factored values as a horizon (:hc) endpoint coefficient set.
 function factor_horizon(values, spin)
     b_length = spin == 0 ? 11 : 17
     q_start = 23 + b_length
@@ -308,6 +320,8 @@ function scaled_delta(left, right)
     return maximum(abs.(left .- right)) / scale
 end
 
+# Relative difference of two horizon coefficient sets, compared through their
+# A and B series to order CERTIFICATE_ORDER.
 function endpoint_delta(left, right)
     a_terms, b_terms = direct_ab_term_counts(:H, CERTIFICATE_ORDER)
     left_a = Vector{ComplexF64}(undef, a_terms)
@@ -328,6 +342,10 @@ function near_extreme_selected(coefficients::DirectCoefficientSet)
         getproperty(metadata, :near_extreme_compensated)
 end
 
+# For validated spins near extremality, compare the generic horizon coefficients
+# with the factored ones; if they differ by more than the certificate limit (the
+# generic table has lost accuracy), substitute the factored double-double set.
+# `near_extreme_compensated` in the metadata marks full compensation.
 function near_extreme_prepare(coefficients::DirectCoefficientSet, controls)
     COMPENSATED_ENABLED || return coefficients
     getproperty(controls, :lfe) && return coefficients

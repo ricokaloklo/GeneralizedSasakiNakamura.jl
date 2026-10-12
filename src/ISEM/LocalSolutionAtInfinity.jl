@@ -11,6 +11,8 @@ const C0 = 0.0 + 0.0im
 const C1 = 1.0 + 0.0im
 const I1 = 1.0im
 
+# Asymptotic series in 1/x of the infinity IN solution, truncated at the order minimizing
+# R_n = |a_n/tol|^(1/n); returns (coefficients, order, R). bn_inf is the OUT analogue.
 function an_inf(s, epsilon, tau, kappa, lambda, tol=1e-15, N=500, patience=20)
     a = Vector{ComplexF64}(undef, N+1)
     a[1] = C1
@@ -93,6 +95,8 @@ function evaluate_series_inverse_x(x, coeffs::AbstractVector)
     return (fx, fpx, fppx)
 end
 
+# P_in = (-x)^(s - 1 + i(tau - epsilon)) g(1/x) and
+# P_out = exp(-2i epsilon kappa x) (-x)^(-s - 1 + i(epsilon + tau)) g(1/x).
 function evaluate_inf_in(x, s, epsilon, tau, coeffs)
     P, Pp, Ppp = evaluate_series_inverse_x(x, coeffs)
     α = -I1 * epsilon + s + I1 * tau - 1
@@ -118,6 +122,8 @@ function evaluate_inf_out(x, s, epsilon, tau, kappa, coeffs)
     return (y, yp, ypp)
 end
 
+# Residual of the equation for the series part g (q3, q4 for IN; q5, q6 for OUT); the tuple methods
+# check the full P equation.
 function error_inf_in(x, s, epsilon, tau, kappa, lambda, coeffs)
     P, Pp, Ppp = evaluate_series_inverse_x(x, coeffs)
     q3, q4 = calculate_q3_q4(x, s, epsilon, kappa, tau, lambda)
@@ -152,6 +158,7 @@ function error_inf_out((x, P, Pp, Ppp), s, epsilon, tau, kappa, lambda)
     return _relative_residual(term1, term2, term3)
 end
 
+# Grows R by 10% until the series residual at x = -R is below tol.
 function convergence_radius_an_inf(R, s, epsilon, tau, kappa, lambda, coeffs, tol = 1e-15)
     err = error_inf_in(- R, s, epsilon, tau, kappa, lambda, coeffs)
     while err > tol
@@ -170,6 +177,7 @@ function convergence_radius_bn_inf(R, s, epsilon, tau, kappa, lambda, coeffs, to
     return R
 end
 
+# The same series for the rotated contour; the recurrence does not depend on z.
 function inf_in_coeffs(s, epsilon, tau, kappa, lambda, z, Nmax::Integer = 500; tol = 1e-15, patience = 20)
     coeffs = Vector{ComplexF64}(undef, Nmax + 1)
     coeffs[1] = 1.0 + 0.0im

@@ -8,6 +8,7 @@ export C_generic, C_inf, C_zero, _f1, _f2, _f3, _f4,
 
 @inline _scaled(x, factor) = x * factor
 
+# iota(x) cancels the x dependence of the Wronskian of two P solutions.
 @inline
 function _iota(x, s, epsilon, tau, kappa)
     ι = exp(2im * kappa * x * epsilon) * (1 - x)^(s - 1im * tau + 1im * epsilon + 1) * (- x)^(1 - s - 1im * tau - 1im * epsilon)
@@ -26,6 +27,8 @@ function C_generic(x, P1, P2, P3, P4)
     return inner_product(P1, P2, x) / inner_product(P3, P4, x)
 end
 
+# Connection coefficients from the Wronskian of P1 and P2, normalized by that of the infinity (C_inf)
+# or horizon (C_zero) basis pair; the methods with z take the contour coordinate rho.
 @inline
 function C_inf(x, P1, P2, s, epsilon, tau, kappa)
     return _iota(x, s, epsilon, tau, kappa) * inner_product(P1, P2, x) / (2im * epsilon * kappa)
@@ -46,6 +49,8 @@ function C_zero(rho, P1, P2, s, epsilon, tau, kappa, z)
     return (-z) * _iota(-rho/z, s, epsilon, tau, kappa) * inner_product(P1, P2, rho) / (s + 1im * (epsilon + tau))
 end
 
+# Factors converting P-space coefficients into Teukolsky amplitudes: B_trans = f1, B_inc = C_inf f3,
+# B_ref = C_inf f4, C_trans = f4, C_ref = C_zero f1, C_inc = C_zero f2.
 @inline
 function _f1(s, epsilon, tau, kappa)
     rp = 1 + kappa

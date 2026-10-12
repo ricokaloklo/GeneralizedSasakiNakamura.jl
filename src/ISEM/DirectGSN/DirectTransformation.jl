@@ -94,6 +94,7 @@ function direct_teukolsky_horizon_pair(s, m, a, omega, lambda, r::Real)
         max(tin, tout))
 end
 
+# Teukolsky solution callables: r -> (R, R', R'', error), r -> (R, R') and r -> R.
 struct DirectTeukolskySolution{F,G,H}
     tuple_value::F
     pair_value::G
@@ -102,6 +103,7 @@ end
 
 (solution::DirectTeukolskySolution)(r) = solution.tuple_value(r)
 
+# Asymptotic Teukolsky series at infinity in z = 1 / (omega r), valid for |z| <= radius.
 struct DirectTeukolskyInfinitySeries{P}
     params::P
     coefficients::Vector{ComplexF64}
@@ -143,6 +145,8 @@ function direct_teukolsky_infinity_series(p, order, tolerance)
     return DirectTeukolskyInfinitySeries(p,coefficient,radius,Float64(tolerance))
 end
 
+# (R, dR/dr, error estimate) from the series, or `nothing` if r is outside the
+# radius or the truncation error exceeds the tolerance.
 function (series::DirectTeukolskyInfinitySeries)(r)
     p = series.params
     z = inv(p.omega*r)
@@ -183,6 +187,8 @@ struct DirectTeukolskyPairEvaluator{R,C,T,E}
     infinity_scale::ComplexF64
 end
 
+# Use the infinity series where it applies (UP, real omega); otherwise convert
+# the GSN state at r to (R, R').
 function _teukolsky_pair_with_error(e::DirectTeukolskyPairEvaluator,r)
     if e.infinity_series !== nothing
         endpoint = e.infinity_series(r)
@@ -221,6 +227,7 @@ function (e::DirectTeukolskyTupleEvaluator)(r)
     return (R, Rp, Rpp, error)
 end
 
+# Compactified coordinate x = (r - r_+) / (r - r_-) in [0, 1), and y = 1 - x.
 direct_y_from_x(x) = one(x) - x
 direct_x_from_y(y) = one(y) - y
 
@@ -269,6 +276,7 @@ function direct_dx_drstar(a_or_params, x)
         (kappa + (x - one(x))^2 + 2 * kappa^2 * x - kappa * x^2)
 end
 
+# x = 1 / (1 + exp(-t)), y = 1 - x, log x and log y, evaluated without overflow.
 @inline function _logit_parts(t)
     if t >= 0.0
         inverse = exp(-t)
@@ -295,6 +303,7 @@ end
     return 2kappa * exp(t) + (rplus / kappa) * y + 2x
 end
 
+# r*(t) and dr*/dt for x = logistic(t).
 @inline function _rstar_parts(kappa, rplus, logkappa2,
         rplus_over_kappa, t)
     x, y, log_x, log_y = _logit_parts(t)
@@ -305,6 +314,8 @@ end
     return value, slope
 end
 
+# Invert r*(x) with a safeguarded Newton iteration in t = logit(x), starting from
+# the horizon or far-zone asymptotic estimate; falls back to r_from_rstar.
 function _x_from_rstar(params, target)
     kappa = params.kappa
     a = params.a
@@ -402,6 +413,7 @@ function direct_state_r(route::DirectConjugatedRoute, r)
     return (X=state.X, dXdr=state.dXdx * direct_dx_dr(route.params, x))
 end
 
+# Note: takes x (not r*) and returns X with dX/dr*.
 function direct_state_rstar(route::DirectRoute, x)
     state = direct_state(route, x)
     return (X=state.X, dXdrstar=state.dXdx * direct_dx_drstar(route.params, x))
@@ -450,12 +462,15 @@ function _teukolsky_transformation_module()
     return getfield(matching, :TeukolskyTransformation)
 end
 
+# X and dX/dr* at r; dx/dr* = 2 kappa x / (r^2 + a^2).
 function _direct_r_state(route::DirectRoute, r)
     x = direct_r_to_x(route.params, r)
     state = direct_state(route, x; radius=r)
     return state.X, state.dXdx * (2route.params.kappa*x/(r^2+route.params.a^2))
 end
 
+# r* -> (X, dX/dr*, 0.0). Points in the MST region, or beyond the matching point
+# when the route has an endpoint basis or plan, are evaluated through r.
 function direct_gsn_solution_rstar(route::DirectRoute)
     return rs -> begin
         x = _x_from_rstar(route.params, rs)
@@ -490,6 +505,8 @@ function _unit_gsn_solution(route::DirectRoute)
     end
 end
 
+# The unit-transmission normalisation divides by solution_scale; it is used only
+# if the rescaled state stays at least exp(32) below floatmax at sample points.
 const _UNIT_STATE_LOG_MARGIN = 32.0
 
 @inline function _unit_point_safe(route::DirectRoute, x, limit)
@@ -526,6 +543,8 @@ function _unit_state_safe(route::DirectRoute)
     return _unit_basis_safe(route, route.endpoint_bridge, limit)
 end
 
+# Wrap a route as the package's GSNRadialFunction, with unit GSN transmission when
+# representable and the route diagnostics in the metadata.
 function direct_gsn_radial_function(route::DirectRoute)
     controls = route.controls
     root = _root_module()
@@ -673,6 +692,8 @@ function _direct_teukolsky_solution(route::DirectRoute, scale_value, pair_conver
     return DirectTeukolskySolution(tuple_value, pair_value, radial_value)
 end
 
+# Converter (r, X, dX/dx) -> (R, R'): closed forms for s = -2, 0, +2, otherwise
+# the generic GSN-to-Teukolsky conversion matrix.
 function _direct_teukolsky_converter(p)
     if p.s == -2
         return DirectTeukolskySMinus2Converter(p.m, p.a, p.omega, p.lambda)
@@ -682,18 +703,6 @@ function _direct_teukolsky_converter(p)
         return DirectTeukolskySZeroConverter(p.a)
     end
     return DirectTeukolskyGenericConverter(p)
-end
-
-function _direct_teukolsky_matrix_entry_function(p)
-    p.s == -2 && return _direct_teukolsky_matrix_function_sminus2(p.m, p.a, p.omega, p.lambda)
-    return r -> Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(
-        p.s,
-        p.m,
-        p.a,
-        p.omega,
-        p.lambda,
-        r,
-    )
 end
 
 struct DirectTeukolskyGenericConverter{P}
@@ -899,38 +908,6 @@ function (c::DirectTeukolskySPlus2Converter)(r, X, dXdx)
     )
 end
 
-function _direct_teukolsky_matrix_function_sminus2(m, a, omega, lambda)
-    a2 = a^2
-    a3 = a2 * a
-    a4 = a2^2
-    a5 = a4 * a
-    a6 = a3^2
-    a7 = a6 * a
-    a8 = a4^2
-    m2 = m * m
-    lambda2 = lambda * lambda
-    omega2 = omega * omega
-    omega3 = omega2 * omega
-    return r -> _direct_teukolsky_matrix_sminus2(
-        m,
-        a,
-        omega,
-        lambda,
-        r,
-        a2,
-        a3,
-        a4,
-        a5,
-        a6,
-        a7,
-        a8,
-        m2,
-        lambda2,
-        omega2,
-        omega3,
-    )
-end
-
 function _direct_teukolsky_matrix_sminus2(m, a, omega, lambda, r)
     a2 = a^2
     a3 = a2 * a
@@ -1058,6 +1035,7 @@ function _direct_teukolsky_matrix_sminus2(
     return m11, m12, m21, m22
 end
 
+# Explicit s = -2 GSN-to-Teukolsky conversion applied to (X, dX/dx).
 function _direct_teukolsky_pair_sminus2(
     m,
     a,
@@ -1159,6 +1137,7 @@ function _direct_teukolsky_pair_sminus2(
     return m11 * X + m12_dx * dXdx, m21 * X + m22_dx * dXdx
 end
 
+# Explicit s = +2 GSN-to-Teukolsky conversion applied to (X, dX/dx).
 function _direct_teukolsky_pair_splus2(
     m,
     a,
@@ -1261,6 +1240,8 @@ function _direct_teukolsky_pair_splus2(
     return m11 * X + m12_dx * dXdx, m21 * X + m22_dx * dXdx
 end
 
+# Wrap a route as the package's TeukolskyRadialFunction, normalised to unit
+# Teukolsky (:teukolsky) or unit GSN (:gsn) transmission.
 function direct_teukolsky_radial_function(route::DirectRoute; normalize=:teukolsky)
     root = _root_module()
     factors = _teukolsky_amplitude_factors(route)
@@ -1327,6 +1308,7 @@ function _direct_y_amplitudes(route::DirectRoute)
     error("unsupported direct Y branch.")
 end
 
+# Y-function solution built from the GSN solution; supported for s = -2 IN and s = +2 UP.
 function direct_y_solution(route::DirectRoute; amplitudes=nothing)
     _check_y_branch(route)
     iszero(route.params.omega) && error("direct Y transformation requires nonzero omega.")

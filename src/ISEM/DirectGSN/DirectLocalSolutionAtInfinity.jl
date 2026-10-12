@@ -18,6 +18,7 @@ export direct_infinity_series_value, direct_infinity_series_pair, direct_infinit
 
 _param_kappa(params) = hasproperty(params, :kappa) ? getproperty(params, :kappa) : cos(getproperty(params, :nu))
 
+# (rho, sigma) of the asymptotic form exp(sigma / y) y^rho at y = 1 - x = 0.
 function direct_infinity_exponents(params, branch::Symbol)
     omega = getproperty(params, :omega)
     kappa = _param_kappa(params)
@@ -29,6 +30,9 @@ function direct_infinity_exponents(params, branch::Symbol)
     throw(ArgumentError("infinity branch must be :out/:up or :in/:down."))
 end
 
+# Irregular-singular-point recurrence at y = 0 for the series multiplying
+# exp(sigma / y) y^rho. With `guarded`, stops at the first ill-conditioned
+# denominator or suspicious coefficient and returns (effective order, reason).
 function _infinity_coefficients!(
     coeffs::Vector{ComplexF64},
     a_power,
@@ -140,6 +144,7 @@ function direct_infinity_guarded(
     )
 end
 
+# Laurent coefficients of A and B rewritten for the scaled variable y / variable_scale.
 function _scale_infinity_ab(a_coeffs, b_coeffs, variable_scale)
     scale = ComplexF64(variable_scale)
     iszero(scale) && throw(DomainError(
@@ -157,6 +162,8 @@ function _scale_infinity_ab(a_coeffs, b_coeffs, variable_scale)
     return a_scaled, b_scaled
 end
 
+# Guarded asymptotic series at infinity for the :out/:up or :in/:down branch,
+# optionally in a scaled variable.
 function direct_infinity_local_solution(
     coefficients::DirectCoefficientSet,
     branch::Symbol,
@@ -199,6 +206,8 @@ direct_inf_out_coeffs(coefficients::DirectCoefficientSet, order::Integer) =
 direct_inf_in_coeffs(coefficients::DirectCoefficientSet, order::Integer) =
     direct_infinity_local_solution(coefficients, :in, order).coefficients
 
+# exp(sigma / y) y^rho times the series. The _pair and _triple versions return
+# derivatives with respect to x = 1 - y.
 function direct_infinity_series_value(coeffs, rho, sigma, y)
     return exp(sigma / y) * y^rho * direct_poly_value(coeffs, y)
 end

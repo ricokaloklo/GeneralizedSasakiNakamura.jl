@@ -44,6 +44,7 @@ function _zero_radiative_mode(ω, trajectory; reason = "")
 end
 
 
+# Run f() with the task-local flag :GSN_Y_RADIAL_INFO set to `info`.
 function with_y_radial_info(f, info::Bool)
     return task_local_storage(f, :GSN_Y_RADIAL_INFO, info)
 end
@@ -65,8 +66,8 @@ mutable struct InclinedFluxCache
     geometry_owner::Union{Nothing, InclinedGeometryOwner}
 end
 
-# Preserve existing cache constructor signatures; new submission-aware caches
-# own only their private dictionaries and borrow read-only owner data.
+# The positional constructors build a cache without a geometry owner. The owner-based constructors build a
+# submission-aware cache that owns only its private dictionaries and borrows read-only owner data.
 EccentricFluxCache(samples, levin_samples, adaptive_segments, phase_vectors, phase_factors, factored_factors) =
     EccentricFluxCache(samples, levin_samples, adaptive_segments, phase_vectors, phase_factors, factored_factors, nothing)
 InclinedFluxCache(samples::Dict{Int, Dict}) = InclinedFluxCache(samples, nothing)
@@ -376,6 +377,8 @@ end
 const _INHOMOGENEOUS_ORDINARY_MIN_OMEGA = 0.05
 const _INHOMOGENEOUS_ORDINARY_MAX_L = 4
 
+# Small-frequency-expansion control for the GSN-ISEM Y solve: off for real, low-l (l <= 4) modes with
+# |omega| >= 0.05 and |a| <= 0.95, otherwise left to GSN-ISEM (:auto).
 @inline function _inhomogeneous_sfe_control(l, a, omega)
     regular_low_mode = isreal(omega) &&
         abs(omega) >= _INHOMOGENEOUS_ORDINARY_MIN_OMEGA &&
@@ -383,6 +386,7 @@ const _INHOMOGENEOUS_ORDINARY_MAX_L = 4
     return regular_low_mode ? false : :auto
 end
 
+# GSN-ISEM Y radial function for the source integrals: IN branch for s = -2, UP branch for s = +2.
 @inline function _isem_y_solution(s, l, m, a, omega; lambda = nothing)
     branch = s == -2 ? :IN : s == 2 ? :UP :
         error("ISEM Y interfaces currently support only s = -2 and s = 2.")
@@ -1398,6 +1402,8 @@ function _generic_p2_integral_cached!(cache::GenericM2FluxCache, KG_master::Dict
     return _generic_p2_integral_threaded(mcache, Y_samp, SH_samp, omega, lambda, n, k; new_only)
 end
 
+# Generic-orbit mode flux by nested trapezoidal refinement on subsamples of the dense master grid, doubling
+# N (and K when the polar band looks under-resolved) until the energy flux converges to sample_tol.
 function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_master::Dict, s::Int, l::Int, m::Int, n::Int, k::Int; N0::Int = 64, K0::Int = 16, Nmax::Int = 2^14, Kmax::Int = 2^12, sample_tol::Float64 = 1e-3, tol::Float64 = 1e-8, max_flux::Float64 = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false)
     _check_mode_geometry(cache, KG_master)
     if !(s == -2 || s == 2)
@@ -1652,6 +1658,8 @@ const GENERIC_LEVIN_LOCAL_MIN_LEVEL = 3
 const GENERIC_LEVIN_LOCAL_BUDGET_FRACTION = 0.1
 const GENERIC_LEVIN_TOL_MULTIPLIER = 3.0
 
+# Generic-orbit mode flux with adaptive Levin quadrature in the radial phase (bisection of qr segments) and
+# Clenshaw-Curtis quadrature in the polar phase; stops when the energy flux converges or all leaves are low-flux.
 function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2FluxCache, KG_master::Dict, s::Int, l::Int, m::Int, n::Int, k::Int;
         sample_tol::Float64 = DEFAULT_ADAPTIVE_LEVIN_TOL0,
         tol::Float64 = 1e-8,
@@ -2183,6 +2191,8 @@ function _phase_values_from_derivative(x::Vector{Float64}, gprime_vals::Vector{<
     return g
 end
 
+# Piecewise (local) Levin quadrature: the Chebyshev nodes on [0, π] are sorted ascending and split into short
+# overlapping segments, each with its own differentiation matrix; factors cache the QR solve per phase.
 struct Levin1DLocalSegmentPlan
     idx::UnitRange{Int}
     D::Matrix{Float64}
@@ -2372,6 +2382,7 @@ function levin_1d_integral_local_phase(f_vals::Vector{<:Number}, gprime_vals::Ve
     n = length(f_vals)
     @assert length(gprime_vals) == n "gprime length must match f ($(length(gprime_vals)) ≠ $n)"
     @assert length(g_vals) == n "phase length must match f ($(length(g_vals)) ≠ $n)"
+    # g_vals follow the Chebyshev node order, which starts at q = π.
     n <= 2 && return levin_1d_integral(f_vals, gprime_vals, g_vals[end], g_vals[1])
     plan = _levin_1d_local_plan(n, local_order)
     x = plan.x
@@ -3006,7 +3017,7 @@ function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample; x=1
 end
 
 function convolution_integral_inclined_trapezoidal(a, p, x, s, l, m, k, K_sample)
-    KG = kerr_geo_orbit(a, p, 0.0, x)  # Assume this handles radial-fixed case
+    KG = kerr_geo_orbit(a, p, 0.0, x)  # e = 0: only the polar motion is sampled
     
     # Extract frequencies and compute omega (polar-only mode)
     Frequencies = KG["Frequencies"]
@@ -3663,27 +3674,6 @@ end
 
 @inline function _omega_key(ω)
     return reinterpret(UInt64, Float64(ω))
-end
-
-function _cached_eccentric_levin_factor!(cache::EccentricFluxCache, N::Int, m::Int, n::Int, ω, sign::Int, gprime_vals::Vector{<:Number}, g_vals::Vector{<:Number})
-    key_pos = (N, m, n, 1, _omega_key(ω))
-    positive_factor = get!(cache.levin_phase_factors, key_pos) do
-        _levin_1d_local_phase_factor(gprime_vals, g_vals)
-    end
-    sign == 1 && return positive_factor
-
-    key_neg = (N, m, n, -1, _omega_key(ω))
-    return get!(cache.levin_phase_factors, key_neg) do
-        _conjugate_levin_1d_local_phase_factor(positive_factor)
-    end
-end
-
-function _eccentric_levin_integral(f_vals::Vector{<:Number}, gprime_vals::Vector{<:Number}, g_vals::Vector{<:Number}, cache, N::Int, m::Int, n::Int, ω, sign::Int)
-    if cache isa EccentricFluxCache
-        factor = _cached_eccentric_levin_factor!(cache, N, m, n, ω, sign, gprime_vals, g_vals)
-        return _levin_1d_integral_local_phase_factored(f_vals, factor)
-    end
-    return sign == 1 ? levin_1d_integral_local_phase(f_vals, gprime_vals, g_vals) : levin_1d_integral_local_phase(f_vals, -gprime_vals, -g_vals)
 end
 
 function _internal_radial_phase(KG_samp::Dict, s::Int, a, ω, m)
@@ -4385,9 +4375,8 @@ function convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 25
         if n != 0
             return Dict("Amplitude" => 0.0 + 0.0im, "omega" => nothing, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
         end
-        # The original tolerance-based near-e branch projects onto e=0.
-        # Borrowing the raw-e owner would change that trajectory. Keep its
-        # original private helper; ordinary exact-e=0 still shares geometry.
+        # For 0 < |e| <= 1e-12 the orbit is rebuilt with e = 0; sharing the submission geometry
+        # built for the raw e would use a different trajectory. Exact e = 0 shares the geometry.
         if !isequal(e, 0.0)
             return convolution_integral_inclined_trapezoidal_isem(a, p, x, s, l, m, k, K;
                 Kmax=Kmax, tol=tol, sample_tol=sample_tol, max_flux=max_flux,

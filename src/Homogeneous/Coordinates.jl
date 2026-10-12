@@ -8,6 +8,8 @@ export rstar_from_r, r_from_rstar
 
 _is_exact_extremal_spin(a) = isreal(a) && isone(abs(real(a)))
 
+# Exact extremal spin (|a| = 1, r_+ = 1): closed-form r* as a function of h = r - r_+, its h
+# derivative, and the inversion by Newton's method with a bisection fallback.
 function _rstar_from_exact_extremal_rp(h)
     h < 0 && throw(DomainError(h, "r-r_+ must be nonnegative"))
     h == 0 && return -Inf

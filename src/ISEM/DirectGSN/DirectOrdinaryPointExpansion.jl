@@ -28,6 +28,8 @@ const _SHIFT_EPS_LIMIT = 1e-13
 
 @inline _finite_complex(z) = isfinite(real(z)) && isfinite(imag(z))
 
+# Check the newest series coefficient for non-finite values, over/underflow, or
+# two consecutive coefficient ratios above 1/sqrt(eps); returns :none if it is usable.
 function direct_series_issue(coeffs, index::Integer, scale::Real=1.0)
     coeff = coeffs[index]
     _finite_complex(coeff) || return :nonfinite_coefficient
@@ -55,6 +57,7 @@ function direct_series_issue(coeffs, index::Integer, scale::Real=1.0)
     return :none
 end
 
+# A recurrence denominator is usable if finite and not small relative to `scale`.
 function direct_denom_ok(denominator, scale)
     _finite_complex(denominator) || return false
     denom_scale = max(abs(scale), floatmin(Float64))
@@ -73,6 +76,8 @@ struct DirectPQLayout
     bq_len::Int
 end
 
+# Block lengths of the packed A/B numerator and denominator coefficients for the
+# horizon (:H), infinity (:I) and ordinary-point (:O) tables.
 function direct_pq_layout(s::Integer, group::Symbol)
     if s == 0
         group == :H && return DirectPQLayout(11, 11, 11, 13)
@@ -94,6 +99,8 @@ function direct_split_starts(layout::DirectPQLayout)
     return ap, aq, bp, bq
 end
 
+# Number of Laurent/Taylor terms of A and B needed for a solution series of
+# `order`; endpoint series start at x^-1 and x^-2 (horizon) or y^-1 and y^-4 (infinity).
 function direct_ab_term_counts(group::Symbol, order::Integer)
     order >= 0 || throw(ArgumentError("series order must be non-negative."))
     group == :H && return order + 2, order + 3
@@ -138,6 +145,8 @@ function _check_regular_leading_terms(
     return nothing
 end
 
+# Power series of P/Q by recursive division, after removing a common leading
+# power of the argument from the denominator.
 function direct_rational_series_from_pq_len!(
     out::Vector{ComplexF64},
     out_len::Integer,
@@ -205,6 +214,8 @@ end
     return ComplexF64(source[index - pole_order])
 end
 
+# Taylor shift of a polynomial (times x^pole_order) to the point `center`,
+# written into `work` starting at `start`; returns the number of coefficients.
 function _shift_poly!(
     work::Vector{<:Complex},
     start::Integer,
@@ -230,6 +241,8 @@ function _shift_poly!(
     return count
 end
 
+# Condition number of the Taylor shift: sum of absolute contributions over the
+# magnitude of each shifted coefficient.
 function _shift_condition(
     work::Vector{<:Complex},
     start::Integer,
@@ -256,6 +269,8 @@ function _shift_condition(
     return maximum_condition
 end
 
+# Series division of the shifted numerator by the shifted denominator; returns
+# the largest cancellation ratio met in the recurrence.
 function _shift_series!(
     out::Vector{<:Complex},
     out_len::Integer,
@@ -307,6 +322,8 @@ function _shift_rational!(
     return max(p_condition, q_condition, recurrence_condition)
 end
 
+# Shift in binary64, falling back to 128-bit BigFloat when eps * condition
+# exceeds `eps_limit`; returns the estimated relative error.
 function _accurate_shift_rational!(out, terms, work, rational, pole_order, center, eps_limit)
     condition = _shift_rational!(out, terms, work, rational, pole_order, center)
     error = eps(Float64) * condition
@@ -334,6 +351,8 @@ end
     return !iszero(center) && !isone(center)
 end
 
+# Taylor coefficients of A and B about x0 obtained by shifting the endpoint
+# rational functions. Returns (accepted, A terms, B terms, error estimate).
 function direct_shifted_ab!(
     a_out::Vector{ComplexF64},
     b_out::Vector{ComplexF64},
@@ -360,6 +379,8 @@ function direct_shifted_ab!(
     return accepted, a_terms, b_terms, eps_condition
 end
 
+# As direct_shifted_ab!, for the infinity rational functions about y0; A is negated
+# so that the result is for derivatives in y.
 function direct_shifted_infinity_ab!(
     a_out::Vector{ComplexF64},
     b_out::Vector{ComplexF64},
@@ -469,6 +490,8 @@ function direct_ordinary_ab_series!(
     return a_terms, b_terms
 end
 
+# A and B series in powers of (y - y0), y = 1 - x, obtained from the ordinary
+# table's x-series by the sign changes of d/dy = -d/dx.
 function direct_ordinary_y_ab_series!(
     a_out::Vector{ComplexF64},
     b_out::Vector{ComplexF64},
@@ -489,6 +512,8 @@ function direct_ordinary_y_ab_series!(
     return a_terms, b_terms
 end
 
+# A and B series in the scaled variable u = (1 - x) / omega_scale about u = y0
+# (y0 is given in scaled units); the P/Q blocks are rescaled before division.
 function direct_ordinary_scaled_y_ab_series!(a_out, b_out, pq,
         coefficients::DirectCoefficientSet, y0, omega_scale, order::Integer)
     variable = coefficients.ordinary.variable == :y ?
@@ -545,6 +570,8 @@ function direct_ordinary_ab_series(coefficients::DirectCoefficientSet, x0, order
     return a_coeffs, b_coeffs, pq
 end
 
+# Taylor coefficients of a solution about an ordinary point from the A and B
+# series and the initial value c0 and slope c1.
 function direct_ordinary_point_coeffs!(
     coeffs::Vector{ComplexF64},
     a_coeffs,
@@ -574,6 +601,8 @@ function direct_ordinary_point_coeffs(a_coeffs, b_coeffs, c0, c1, order::Integer
     return direct_ordinary_point_coeffs!(coeffs, a_coeffs, b_coeffs, c0, c1, order)
 end
 
+# Closure p -> coefficient of power p, for a series whose first stored power is
+# `first_power`; zero outside the stored range.
 function direct_endpoint_power_lookup(coeffs, first_power::Integer)
     return p -> begin
         idx = p - first_power + 1
@@ -581,6 +610,8 @@ function direct_endpoint_power_lookup(coeffs, first_power::Integer)
     end
 end
 
+# Horner evaluation of a polynomial, with first (and second) derivatives in the
+# _pair and _triple versions.
 function direct_poly_value(coeffs, z)
     isempty(coeffs) && return 0.0 + 0.0im
     value = coeffs[end]

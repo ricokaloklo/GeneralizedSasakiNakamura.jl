@@ -123,6 +123,9 @@ struct DirectComplexMSTEvaluator{P,M}
     plan::M
 end
 
+# A complex-frequency solution: mode parameters, requested controls, state
+# evaluator on the real axis, backend metadata, route plan, and the GSN and
+# Teukolsky amplitudes in unit-GSN-transmission normalization.
 struct DirectComplexRoute{P,C,F,E,M,Q,T}
     branch::Symbol
     params::P
@@ -155,6 +158,8 @@ const _RATIONAL_INFINITY_STEP_ERROR =
 const _RATIONAL_INFINITY_CERTIFICATE_ERROR =
     "no certified two-ray infinity path;"
 
+# Symbol naming the rational build failure that allows the P-equation
+# fallback, or `nothing` for any other error.
 @inline function _rational_build_fallback_trigger(error)
     error isa ErrorException || return nothing
     error.msg == _RATIONAL_STEP_LIMIT_ERROR &&
@@ -170,6 +175,12 @@ const _RATIONAL_INFINITY_CERTIFICATE_ERROR =
     return nothing
 end
 
+"""
+    direct_complex_controls(; xm, rhom, N, tol, sfe, lfe, TSinInf, TSoutInf, TSinHor, TSoutHor)
+
+Optional controls for `direct_complex_route`; `nothing` leaves a control to
+the backend. Requires `N >= 10` and positive `rhom` and `tol` when given.
+"""
 function direct_complex_controls(;
     xm=nothing,
     rhom=nothing,
@@ -221,6 +232,12 @@ function _validate_mode(s::Int, l::Int, m::Int, a, omega)
     return af, omegac
 end
 
+"""
+    direct_complex_parameters(s, l, m, a, omega, lambda)
+
+Validated mode parameters and derived Kerr quantities (horizons, horizon
+frequency, `p = omega - m*Omega_H`) for a complex-frequency route.
+"""
 function direct_complex_parameters(s::Int, l::Int, m::Int, a, omega, lambda)
     af, omegac = _validate_mode(s, l, m, a, omega)
     _require_binary64_input("lambda", lambda)
@@ -252,6 +269,12 @@ function direct_complex_parameters(s::Int, l::Int, m::Int, a, omega, lambda)
     )
 end
 
+"""
+    complex_contour_parameters(params; rho_match=1.0)
+
+Straight complex contour x = dxdrho*rho used by the P-equation backend, with
+`dxdrho = -conj(omega)/|omega|` and matching radius `rho_match`.
+"""
 function complex_contour_parameters(params::DirectComplexParameters; rho_match=1.0)
     rho = Float64(rho_match)
     isfinite(rho) && rho > 0 ||
@@ -464,6 +487,8 @@ end
     rstars::AbstractVector{<:Real},
 ) = _state_vectors(evaluator, rstars)
 
+# Route from the P-equation builder (backend=:p_equation); the state is
+# normalized to unit GSN transmission.
 function _direct_complex_p_route(
     s::Int,
     l::Int,
@@ -671,6 +696,8 @@ function _principal_sfe_match(params, branch, requested)
     return direct_match(coefficients, branch; controls)
 end
 
+# Replace the incidence and reflection amplitudes of a route on the principal
+# SFE axis by the SFE Direct match, unless sfe=false was requested.
 function _principal_sfe_overlay(route, requested)
     _principal_sfe_axis(route.params.omega) &&
         requested.sfe !== false || return route
@@ -726,6 +753,8 @@ function _principal_sfe_overlay(route, requested)
     )
 end
 
+# Direct GSN match with SFE (principal MST) endpoint solutions, used on the
+# negative imaginary axis for |omega| <= 0.1.
 function _direct_complex_principal_sfe_route(
     s,
     l,
@@ -857,6 +886,7 @@ function _direct_complex_principal_sfe_route(
     )
 end
 
+# Route from the complete MST representation (backend=:mst).
 function _direct_complex_mst_route(
     s::Int,
     l::Int,
@@ -1066,6 +1096,8 @@ function _direct_complex_mst_route(
     )
 end
 
+# Two-ray rational route (default backend) wrapped as a DirectComplexRoute;
+# with `return_retry_cache=true` also returns the data reused by retries.
 function _direct_complex_rational_route(
     s::Int,
     l::Int,
@@ -1249,6 +1281,7 @@ function _direct_complex_rational_route(
     return return_retry_cache ? (; route, retry_cache=build.retry_cache) : route
 end
 
+# Trigger and acceptance thresholds of the consensus retries and fallbacks below.
 const _P_CONSENSUS_KAPPA_MAX = 0.15
 const _P_CONSENSUS_CANCELLATION_MIN = 1.0e5
 const _P_CONSENSUS_DIRECT_RESIDUAL_MAX = 1.0e-5
@@ -1294,8 +1327,6 @@ const _P_NIA_NONROTATING_MAX_ABS_A = 64eps(Float64)
 const _P_NIA_PARTNER_ORDER_AGREEMENT_MAX = 1.0e-9
 const _NIA_SIDE_AGREEMENT_MAX = 1.0e-8
 const _NIA_SIDE_OFFSET_FACTOR = 4.0
-const _NIA_MST_MIN_ABS_IMAG_OMEGA = 1.8
-const _NIA_MST_MAX_ABS_IMAG_OMEGA = 2.2
 const _PRINCIPAL_P_FALLBACK_ORDER = 40
 const _PRINCIPAL_P_FALLBACK_ORDER_DELTA = 8
 const _PRINCIPAL_P_FALLBACK_AGREEMENT_MAX = 1.0e-10
@@ -1598,6 +1629,8 @@ function _tag_principal_build_fallback(
     )
 end
 
+# When the principal-MST route fails: use a dual-order P-equation route if its
+# orders agree, otherwise the rational route with sfe=false.
 function _principal_sfe_build_fallback(
     s,
     l,
@@ -1950,6 +1983,8 @@ function _up_initial_match_route(
         ))
 end
 
+# s = 2 UP after a condition retry: return to the r* = 0 junction when it agrees
+# with two shifted junctions and has a small incidence residual.
 function _try_up_initial_match_consensus(rational::DirectComplexRoute)
     Base.@nospecialize rational
     _up_initial_match_pretrigger(rational) || return rational
@@ -2123,6 +2158,9 @@ function _offpole_match_plateau_route(
         ))
 end
 
+# Re-match at a ladder of junctions along r* and adopt the best-agreeing match
+# when it is continuous across the junction and clearly separated from the
+# selected route.
 function _try_offpole_match_plateau(
     rational::DirectComplexRoute,
     selected::DirectComplexRoute,
@@ -2304,6 +2342,10 @@ function _up_horizon_in_order_route(
     )
 end
 
+# s = -2 UP near extremal spin after a condition retry: recompute the amplitudes
+# with a freshly propagated horizon-in solution at three rational orders
+# (from the route order upwards, else from below it), accepted when
+# consecutive orders agree.
 function _try_up_horizon_in_order_consensus(
     rational::DirectComplexRoute,
     s,
@@ -2804,6 +2846,10 @@ function _p_consensus_route(
     )
 end
 
+# Rebuild the route with the P-equation backend when the rational match looks
+# unreliable (amplitude cancellation near a pole, large matching condition or
+# split mismatch, the negative imaginary axis); the P-equation route is adopted
+# only when its own dual-order or residual checks pass.
 function _try_p_consensus(
     rational::DirectComplexRoute,
     s,
@@ -2945,6 +2991,8 @@ function _try_p_consensus(
         _p_consensus_route(rational, confirmation, metrics) : rational
 end
 
+# After a rational build failure near the negative imaginary axis, adopt a
+# dual-order P-equation route for the amplitudes when the two orders agree.
 function _try_p_nia_build_consensus(
     fallback::DirectComplexRoute,
     s,
@@ -3102,6 +3150,9 @@ function _try_nia_partner(
         route, s, l, m, a, omega, branch)
 end
 
+# For s < 0 on the negative imaginary axis of a Schwarzschild hole, replace the
+# unit-transmission amplitudes by those of the spin partner -s from two
+# P-equation orders that agree.
 function _nia_partner_retry(route, s, l, m, a, omega, branch)
     partner_spin = -s
     tolerance = route.plan.controls.tolerance
@@ -3370,6 +3421,10 @@ function _try_nia_side(
     return Base.inferencebarrier(_nia_side_retry)(route, s, l, m, a, omega)
 end
 
+# UP amplitudes just left of the negative imaginary axis (Re omega < 0) of a
+# rotating hole from the NIA lateral connection: the MST branch strength q on
+# the axis combined with the IN amplitudes at a small positive real offset and
+# the UP amplitudes at two such offsets, accepted when the two agree.
 function _nia_side_retry(route, s, l, m, a, omega)
     omegac = ComplexF64(omega)
     axis_omega = ComplexF64(0, imag(omegac))
@@ -3592,6 +3647,9 @@ function _pole_reciprocal_route(
     )
 end
 
+# With pole normalization at an IN pole (s > 0, a*m > 0, near-extremal spin),
+# take the reflection amplitude as the reciprocal of the UP reflection, accepted
+# when two UP orders agree and the UP route's state matches the IN state.
 function _try_exact_pole_reciprocal(
     route::DirectComplexRoute,
     s,
@@ -3720,8 +3778,10 @@ end
     return requested ? _apply_exact_pole_normalization(route) : route
 end
 
-# The retries are independent of each other, so each is built only when the
-# earlier ones in the selection order leave the rational route unchanged.
+# Consensus retries for the two-ray rational route, in priority order: the UP
+# horizon-in order retry, then a pole dual-order P-equation retry; otherwise
+# the UP initial-match retry is preferred over any other accepted P-equation
+# retry. A retry is built only when no earlier one has already been returned.
 function _select_consensus_retry(rational, s, l, m, a, omega, branch)
     horizon_retry = _try_up_horizon_in_order_consensus(
         rational, s, l, m, a, omega, branch)
@@ -3927,6 +3987,10 @@ function _direct_complex_route_impl(
         ":p_equation."))
 end
 
+# Builder hooks used by `direct_complex_route`: a special-case builder tried
+# first (returns `nothing` to decline), the default builder, and a step that
+# post-processes the built route. DirectNIAAmplitudes registers the first and
+# the last.
 const _SPECIAL_ROUTE_BUILDER = Ref{Any}(
     (args...; kwargs...) -> nothing)
 const _DEFAULT_ROUTE_BUILDER = Ref{Any}(
@@ -3944,6 +4008,18 @@ function _register_post_route_builder!(builder)
     return nothing
 end
 
+"""
+    direct_complex_route(s, l, m, a, omega, branch; backend=:direct_rational, kwargs...)
+
+Build the IN or UP GSN solution at complex `omega` (nonzero imaginary part).
+`backend = :direct_rational` (default) integrates along two physical r* rays
+and matches at a real junction, with consensus retries and fallbacks where the
+match is ill-conditioned; `:mst` uses the complete MST representation and
+`:p_equation` the P-equation builder. Passing route-fixing controls (`xm`, `N`,
+`lambda`, `nu`, `sfe`, ...) disables the retries and fallbacks.
+`pole_normalization=true` sets the incidence amplitude exactly to zero (for
+use at a mode frequency).
+"""
 function direct_complex_route(
     s::Int,
     l::Int,
@@ -4041,6 +4117,13 @@ direct_complex_route_patch_count(
     route::DirectConjugatedRoute{R},
 ) where {R<:DirectComplexRoute} = direct_complex_route_patch_count(route.route)
 
+"""
+    direct_complex_amplitudes(route)
+
+GSN asymptotic amplitudes of a complex-frequency route in unit-transmission
+normalization, with the names of the incidence and reflection amplitudes
+(`Binc`/`Bref` for IN, `Cinc`/`Cref` for UP).
+"""
 function direct_complex_amplitudes(route::DirectComplexRoute)
     names = route.branch == :IN ? (:Binc, :Bref) : (:Cinc, :Cref)
     return (
@@ -4063,6 +4146,12 @@ function direct_complex_amplitudes(
     ))
 end
 
+"""
+    direct_complex_nia_jump(route)
+
+Analytic (MST) jump of the amplitudes across the negative imaginary frequency
+axis for an IN route, from its unit-transmission Teukolsky amplitudes.
+"""
 function direct_complex_nia_jump(route::DirectComplexRoute)
     route.branch == :IN ||
         throw(ArgumentError(
@@ -4083,6 +4172,12 @@ function direct_complex_nia_jump(route::DirectComplexRoute)
     )
 end
 
+"""
+    complex_endpoint_states(route)
+
+Endpoint states of a complex-frequency route: the horizon and infinity
+solutions used in the matching (`missing` where the backend did not record one).
+"""
 function complex_endpoint_states(route::DirectComplexRoute)
     m = route.metadata
     if _metadata_value(m, :backend, nothing) == :direct_gsn_two_ray_rational
@@ -4157,6 +4252,13 @@ direct_complex_evaluate_rstar(
 ) where {R<:DirectComplexRoute} =
     direct_complex_state_rstar(route, rstar).X
 
+"""
+    evaluate_complex_route_on_real_axis(route, coordinates; coordinate=:rstar, state=false)
+
+Evaluate the GSN function of a complex-frequency route at real `coordinates`
+(`coordinate = :rstar` or `:r`). Returns the values of X, or with `state=true`
+named tuples `(X, dXdrstar, error)`.
+"""
 function evaluate_complex_route_on_real_axis(
     route::DirectComplexRoute,
     coordinates;
@@ -4592,6 +4694,12 @@ direct_complex_gsn_radial_function(
     route::DirectConjugatedRoute{R},
 ) where {R<:DirectComplexRoute} = direct_gsn_radial_function(route)
 
+"""
+    direct_complex_gsn_radial(s, l, m, a, omega, branch; kwargs...)
+
+Build a complex-frequency route with `direct_complex_route` (keywords
+are passed through) and return it as a `GSNRadialFunction`.
+"""
 function direct_complex_gsn_radial(s::Int, l::Int, m::Int, a, omega, branch; kwargs...)
     return direct_complex_gsn_radial_function(
         direct_complex_route(s, l, m, a, omega, branch; kwargs...),
@@ -4660,8 +4768,7 @@ direct_gsn_radial_function(route::DirectComplexRoute) =
 # recorded by the two-ray build, or, when the analytic (MST) amplitudes
 # replaced them, the analytic estimate (condition and the agreement of their
 # representations, rescaled to each amplitude, plus the running error bound of
-# their sums where recorded);
-# Inf when neither is recorded.
+# their sums where recorded); Inf when neither is recorded.
 function direct_amplitude_errors(route::DirectComplexRoute)
     metadata = route.metadata
     if _metadata_value(metadata, :amplitude_backend, nothing) ==

@@ -7,6 +7,8 @@ export lfe_f, lfe_gamma, _eta, _psi, A_series, B_series, _chi, _zeta, lfe_in_zer
 _TruncatioN = 20
 _TOLERANCE = 1e-13
 
+# Large-frequency expansion (lfe), for large epsilon*kappa: X = P/f_P(x) (see X_to_P) satisfies
+# X'' = f(x) X, and lfe_f returns f.
 function lfe_f(s, epsilon, tau, kappa, lambda)
     α0 = (s + 1im * (epsilon + tau) + 1) * (s + 1im * (epsilon + tau) - 1) / 4
     α1 = epsilon * (1 + kappa) * (epsilon + tau) + 1im * s * (1im * s + 1im + epsilon * kappa - tau) - lambda
@@ -18,6 +20,7 @@ function lfe_f(s, epsilon, tau, kappa, lambda)
     return f
 end
 
+# Ratios alpha_k/alpha_0 of the numerator of f and the horizon exponent Lambda.
 function lfe_gamma(s, epsilon, tau, kappa, lambda)
     α0 = (s + 1im * (epsilon + tau) + 1) * (s + 1im * (epsilon + tau) - 1) / 4
     α1 = epsilon * (1 + kappa) * (epsilon + tau) + 1im * s * (1im * s + 1im + epsilon * kappa - tau) - lambda
@@ -54,6 +57,8 @@ function _psi(γ, N = 20)
     return - x / xf_sq, - ψ0 * xf_sq, exp(-g)
 end
 
+# Liouville-Green (WKB) correction series in 1/beta about x0; B_series is the analogue about the
+# horizon, built from the Taylor data of _psi.
 function A_series(x0, f, N = 20)
     A = Vector{}(undef, N + 1)
     ft = taylor_expand(x -> (f(x) / f(x0)), x0, order = 2 * N + 2)
@@ -166,6 +171,8 @@ function _zeta(Λ, g, B)
     return zeta1, zeta2
 end
 
+# Horizon IN solution X from the large-frequency series about x = 0, with the radius (from 0.6
+# downward) where its residual is below tol. lfe_out_zero is the OUT analogue.
 function lfe_in_zero(s, epsilon, tau, kappa, lambda, N = _TruncatioN, tol = _TOLERANCE)
     γ = lfe_gamma(s, epsilon, tau, kappa, lambda)
     B, g = B_series(γ, N)
@@ -236,6 +243,8 @@ function lfe_out_zero(s, epsilon, tau, kappa, lambda, N = _TruncatioN, tol = _TO
     return X_out, R
 end
 
+# Liouville-Green solution about x0 matched to (X0, dX0), with the step size where its residual is
+# below tol.
 function lfe_ordinary_point(s, epsilon, tau, kappa, lambda, x0, X0, dX0, N = _TruncatioN, tol = _TOLERANCE)
     N = min(N, _TruncatioN)
     f = lfe_f(s, epsilon, tau, kappa, lambda)
@@ -282,6 +291,7 @@ function lfe_ordinary_point(s, epsilon, tau, kappa, lambda, x0, X0, dX0, N = _Tr
     return X, R
 end
 
+# Converts an X evaluator into a P evaluator, P = f_P(x) X.
 function X_to_P(X, s, epsilon, tau, kappa)
     f = x -> exp(- 1im * x * epsilon * kappa) * (-x)^((s + 1im * (1im + epsilon + tau)) / 2) *
         (1 - x)^((- 1 - s - 1im * epsilon + 1im * tau) / 2)

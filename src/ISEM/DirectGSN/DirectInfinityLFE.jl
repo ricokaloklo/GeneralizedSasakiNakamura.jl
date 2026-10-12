@@ -22,6 +22,11 @@ export lfei_single, lfei_pair, lfei_reach, lfei_reach_pair
 export lfei_anchor, lfei_anchor_pair
 export lfei_value, lfei_state
 
+# Infinity patches for the large-frequency route. Each branch is represented as
+# X = exp(sigma / y) y^rho x^alpha sum c_n y^n (y = 1 - x), where the x^alpha factor
+# carries the horizon phase, and is used from the infinity seed toward the matching
+# point as far as it passes the tail, ODE-residual and nested-order checks.
+
 const LFEI_MIN_ORDER = 24
 const LFEI_ORDER_STEP = 8
 const LFEI_MID_ORDER = 64
@@ -48,6 +53,8 @@ struct InfinityLFEPatch
     scale::ComplexF64
 end
 
+# Double-double power series of a rational endpoint coefficient (leading zero
+# denominator terms removed); `nothing` if the denominator vanishes identically.
 function _rational(rational, count)
     numerator = DDComplex.(rational.numerator)
     denominator = DDComplex.(rational.denominator)
@@ -81,6 +88,8 @@ function _endpoint_ab(coefficients, order)
     return avec, bvec
 end
 
+# Double-double recurrence for the c_n of one branch; _fast_branch is the binary64
+# version used for the order preflight.
 function _branch(avec, bvec, params, branch, order)
     rho64, sigma64 = direct_infinity_exponents(params, branch)
     sign = branch == :out ? 1.0 : -1.0
@@ -184,6 +193,7 @@ function _fast_branch(avec, bvec, params, branch, order)
     return InfinityLFEBranch(branch, rho, sigma, alpha, coeffs)
 end
 
+# X, dX/dx and d2X/dx2 from the series truncated at `degree`.
 function _state(plan::InfinityLFEBranch, y, degree)
     count = min(Int(degree) + 1, length(plan.coeffs))
     coeffs = @view plan.coeffs[1:count]
@@ -268,6 +278,7 @@ function _dd_laurent(values, first_power, y)
     return dc_mul(factor, value)
 end
 
+# ODE residual evaluated in double-double in the y variable.
 function _dd_residual(plan, avec, bvec, y, order)
     z, dz, ddz = _dd_poly(plan.coeffs, y, order)
     inv_y = dc_div(DDComplex(1), DDComplex(y))
@@ -311,6 +322,8 @@ function _reach_check(plan, ab, y)
     return (; accepted, full, tail, residual, check)
 end
 
+# Largest y up to 1 - match_x at which every plan passes _reach_check: grow
+# geometrically from the seed, then refine the first rejection by three bisections.
 function _reach(plans, ab, seed_y, match_x)
     target_y = 1 - Float64(match_x)
     target_y > seed_y * (1 + 100eps(Float64)) || return nothing
@@ -351,6 +364,7 @@ function _reach(plans, ab, seed_y, match_x)
     return accepted
 end
 
+# Least-squares complex factor matching (raw.X, raw.dXdx) to (value, derivative).
 function _fit_scale(raw, value, derivative)
     scale = max(abs(raw.X), abs(raw.dXdx), floatmin(Float64))
     x = raw.X / scale
@@ -374,6 +388,8 @@ function _certify(plan, y, order, A, B)
     return (; accepted, full, tail, residual, check)
 end
 
+# Cheap order-24 test at the matching point: returns order 24 if accepted, 0 to
+# reject, or -1 to defer to _preflight_high.
 function _preflight_low(avec, bvec, params, branch, match_x, A, B)
     order = LFEI_MIN_ORDER
     y = 1 - Float64(match_x)
@@ -391,6 +407,8 @@ function _preflight_low(avec, bvec, params, branch, match_x, A, B)
     return (; order=-1, score)
 end
 
+# Order-48 score sequence: returns LFEI_MID_ORDER or LFEI_MAX_ORDER when the
+# scores are small or still falling, and 0 to reject.
 function _preflight_high(avec, bvec, params, branch, match_x, A, B,
         score24)
     order = LFEI_PREFLIGHT_ORDER
@@ -411,6 +429,7 @@ function _preflight_high(avec, bvec, params, branch, match_x, A, B,
     return 0
 end
 
+# Lowest certified truncation of `plan` at y, copied into a new branch.
 function _select(plan, y, A, B)
     for order in LFEI_MIN_ORDER:LFEI_ORDER_STEP:(length(plan.coeffs) - 1)
         check = _certify(plan, y, order, A, B)
@@ -436,6 +455,7 @@ end
 
 lfei_value(patch::InfinityLFEPatch, x) = lfei_state(patch, x).X
 
+# Patch from the infinity seed directly to match_x for one branch, or `nothing`.
 function lfei_single(coefficients::DirectCoefficientSet, branch,
         seed_y, match_x, scale)
     y = 1 - Float64(match_x)
@@ -514,6 +534,8 @@ function lfei_pair(coefficients::DirectCoefficientSet,
     )
 end
 
+# Patch from the seed as far toward match_x as the series is certified, scaled to
+# match the given seed value and derivative.
 function lfei_reach(coefficients::DirectCoefficientSet, branch,
         seed_y, match_x, seed_X, seed_dXdx)
     y = 1 - Float64(match_x)
@@ -566,6 +588,8 @@ function lfei_reach_pair(coefficients::DirectCoefficientSet,
     )
 end
 
+# As lfei_reach with a given scale, re-checking the hand-off point after the
+# round trip y -> x -> y.
 function lfei_anchor(coefficients::DirectCoefficientSet, branch,
         seed_y, match_x, scale)
     canonical_seed = 1.0 - (1.0 - Float64(seed_y))

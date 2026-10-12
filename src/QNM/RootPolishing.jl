@@ -32,7 +32,7 @@ const _KERR_L2_M2_NEAR_AS_ANCHORS = Dict{Symbol,ComplexF64}(
 # This rounded value is only a seed; the continued fraction is solved anew.
 const _KERR_L2_COUNTER_N8_ANCHOR = 0.098356 - 2.078506im
 
-# Frozen qnm 0.4.4 (commit f3abd18) branch anchors for the counterrotating
+# Branch anchors from the Python qnm 0.4.4 (commit f3abd18) for the counterrotating
 # (s,l,|m|)=(-2,2,2) family.  They select the physical overtone branch only;
 # angular data and the radial continued fraction are recomputed at the target.
 const _COUNTERROTATING_NEAR_EXTREMAL_ANCHORS = Dict(
@@ -77,6 +77,8 @@ function _branch_consistent(mode::QNMMode, omega)
     return real(omega) < 0
 end
 
+# Label metadata for a mode under `convention`: near-algebraically-special role,
+# endpoint kind, branch label and the Schwarzschild sequence index to continue from.
 function _schwarzschild_label_contract(mode::QNMMode, convention::Symbol, a=0;
         segment::Integer=0)
     # Negative public spins are evaluated through (a,m) -> (-a,-m), so the
@@ -225,6 +227,7 @@ function _resolve_continuation_coordinate(value, a, mode::QNMMode)
     return coordinate
 end
 
+# Classify a near-extremal root as zero-damping (:ZDM), damped (:DM) or :unclassified.
 function _near_extremal_family(mode::QNMMode, a, omega)
     abs(a) >= oftype(a, 0.99) || return :unclassified
     kappa = sqrt(max(zero(a), one(a) - a^2))
@@ -388,6 +391,8 @@ function _conditioned_root_stability_limit(mode::QNMMode, a::T,
     return max(stability_tolerance, T(1.0e-6))
 end
 
+# Seed for counterrotating (-2, 2, |2|) overtones at abs(a) >= 0.9999: an anchor
+# value, or linear interpolation in the surface-gravity variable kappa.
 function _counterrotating_near_extremal_seed(
         mode::QNMMode, a::T) where {T<:AbstractFloat}
     mode.s == -2 && mode.l == 2 && abs(mode.m) == 2 || return nothing
@@ -422,6 +427,8 @@ function _counterrotating_near_extremal_seed(
     )
 end
 
+# Evaluate the counterrotating anchor seed directly at the target spin and gate
+# it as accepted, estimated (conditioned) or failed.
 function _counterrotating_conditioned_result(
         mode::QNMMode, a::T, seed;
         convention::Symbol, overtone_index,
@@ -545,6 +552,8 @@ function _continuation_predictor(spins, roots, next_spin)
 end
 
 
+# Not-a-knot cubic spline through the accepted path, evaluated at `target_spin`
+# (interpolating polynomial for fewer than four points).
 function _terminal_extrapolation_predictor(spins, roots, target_spin)
     count = length(spins)
     count >= 4 || return _polynomial_predictor(
@@ -588,6 +597,8 @@ function _terminal_extrapolation_predictor(spins, roots, target_spin)
         right_weight
 end
 
+# Accept a continuation candidate only if it lies within an allowance of the
+# predictor set by the recent root motion.
 function _continuation_branch_guard(spins, roots, next_spin, predictor,
         candidate, root_tolerance)
     T = typeof(real(candidate))
@@ -607,6 +618,9 @@ function _continuation_branch_guard(spins, roots, next_spin, predictor,
         discrepancy=discrepancy, allowance=allowance)
 end
 
+# Damped Newton polish of the Leaver residual with a four-point derivative,
+# optional deflation by `excluded_roots`, and an optional position certificate
+# (`position_tolerance`) for final roots next to the NIA.
 function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
         angular_order::Int,
         sheet_id::Symbol,
@@ -705,8 +719,8 @@ function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
         end
         delta = -deflated_value(evaluation.value, omega) / derivative
         if position_tolerance !== nothing
-            # Keep the original successful first attempt unchanged. At most two
-            # smaller stencils may resolve fourth-order truncation error.
+            # The first stencil is the ordinary one; at most two halved
+            # stencils resolve fourth-order truncation error.
             for stencil_attempt in 0:2
                 if stencil_attempt > 0
                     h /= 2
@@ -726,8 +740,7 @@ function _polish_leaver_root(mode::QNMMode, a::T, initial::Complex{T};
                         8 * xminus.value + xminus2.value) / (12h)
                 end
                 # Final BigFloat roots near the NIA need a position certificate:
-                # residual alone can be tiny while |F/F'| is still material.
-                # All acceptance thresholds remain the caller's original gates.
+                # the residual can be tiny while |F/F'| is still material.
                 cf_valid(e) = isfinite(e.value) && isfinite(e.error) &&
                     e.cf_converged && e.error <= cf_tolerance &&
                     isfinite(e.angular.residual)
@@ -899,6 +912,8 @@ function _mst_incidence_evaluation(mode::QNMMode, a::Float64,
     )
 end
 
+# Newton polish of the GSN incidence amplitude from the MST backend; used for
+# the near-AS pair at small nonzero spin.
 function _polish_mst_incidence_root(mode::QNMMode, a::Float64,
         initial::ComplexF64; angular_order::Int, sheet_id::Symbol,
         root_tolerance::Float64, maximum_root_iterations::Int,
@@ -1076,6 +1091,8 @@ function _schwarzschild_inversion_candidates(overtone::Int)
     return candidates
 end
 
+# Schwarzschild (a = 0) seed for `mode`: a tabulated root, or the overtone
+# sequence generated root by root with deflation of the lower overtones.
 function _schwarzschild_seed(mode::QNMMode, ::Type{T};
         angular_order::Int,
         sheet_id::Symbol,
@@ -1204,6 +1221,8 @@ function _schwarzschild_seed(mode::QNMMode, ::Type{T};
     end
 end
 
+# Re-solve a failed Float64 root in BigFloat with the same acceptance gates, and
+# check that the BigFloat root stays on the Float64 branch.
 function _automatic_precision_fallback(mode::QNMMode, a, omega;
         angular_order, sheet_id, cf_minimum_iterations,
         cf_maximum_iterations, maximum_root_iterations, trust_radius,
@@ -1316,6 +1335,8 @@ function _automatic_precision_fallback(mode::QNMMode, a, omega;
     end
 end
 
+# Root at abs(a) = 1: solve a near-extremal kappa ladder, classify the family,
+# and return the ZDM endpoint or the exact-extremal damped root.
 function _extremal_damped_limit_result(mode::QNMMode, a::T;
         guess,
         convention::Symbol, inversion_index,
@@ -1579,6 +1600,8 @@ function _extremal_ladder_family(mode::QNMMode, a, roots)
     return (family=family, ratios=ratios)
 end
 
+# Map a root solved at (-a, -m) to the requested (a, m); the frequency is
+# unchanged and the angular data are recomputed.
 function _spin_reflected_result(
         requested_mode::QNMMode, requested_a, source::LeaverResult;
         angular_order::Int, sheet_id::Symbol)
@@ -1641,8 +1664,8 @@ end
 Return the QNM frequency of the mode `(s, l, m, n)` at spin `a` as a
 `LeaverResult` (root only, no amplitudes). `branch` is `ordinary` (default) or
 `mirror`; a mirror root without `guess` is seeded from `-conj` of its ordinary
-`(a, -m)` partner, as in [`qnm`](@ref). The `QNMMode` form is equivalent and
-kept for existing code.
+`(a, -m)` partner, as in [`qnm`](@ref). The `QNMMode` form is also accepted;
+there a mirror (`:negative_real`) mode needs an explicit `guess`.
 
 Solve the coupled angular/radial Leaver equations in `M=1` units. Without an
 explicit guess, the labeled Schwarzschild mode is continued in spin. The final
@@ -1655,14 +1678,18 @@ With the default `convention=:overtone`, overtone labels follow the Python
 the `n`-th Schwarzschild root. For `s=-2`, `l=2`, `|m|=2` co-rotating modes the
 algebraically special frequency `-2i` splits into a pair (Cook's 8₀ and 8₁);
 `n=8` returns the less damped 8₀, and 8₁ is `n=9` with
-`convention=:complete_spectrum`.
+`convention=:complete_spectrum`, which numbers every root of that family in
+order of damping (overtone `n >= 9` is complete-spectrum `n+1`).
+`convention=:leaver` only selects the continued-fraction inversion index
+(`inversion_index`); it does not label a mode, requires an explicit `guess`,
+and returns `overtone_index = missing`.
 
 Some sequences end on the negative imaginary axis (NIA) at finite spin and
 re-emerge from it at larger spin (Cook & Zalutskiy's `n₀` and `n₁`). The
 default `segment=0` continues the sequence attached to `a=0`; when it ends on
 the NIA the result fails with `stop_reason=:negative_imaginary_axis_endpoint`
 and records the extrapolated `endpoint_spin`. `segment=1` returns the
-re-emerged `n₁` (currently `m=0` only), and `segment=:auto` returns the first
+re-emerged `n₁` (implemented for `m=0` only), and `segment=:auto` returns the first
 segment that exists at `a`. See the QNM manual page for the stop reasons.
 """
 function qnm_frequency(mode::QNMMode, a; segment=0, kwargs...)
@@ -1867,9 +1894,9 @@ function _continue_in_spin!(state, mode::QNMMode, sequence_target::T;
         failed_spin=nothing)
 end
 
-# Recover only a failed active 128-bit position certificate. This is a complete
-# same-spin finalization transaction, not a promoted derivative or acceptance
-# override. The 192-bit child cannot enter the 128-only recovery again.
+# When the 128-bit position certificate of a final root fails on its
+# derivative, solve again at the same spin in 192-bit arithmetic (explicit
+# guess, no continuation). The 192-bit solve cannot re-enter this recovery.
 function _near_axis_position_precision_recovery(mode::QNMMode, a, omega;
         options, context, failed_primary, failed_guard)
     lower_precision_bits = _precision_bits(BigFloat)
@@ -1886,9 +1913,8 @@ function _near_axis_position_precision_recovery(mode::QNMMode, a, omega;
             precision(imag(result.omega)) == 192 || throw(ErrorException(
                 "Position recovery did not retain its actual 192-bit precision."))
 
-        # Explicit-guess finalization has no continuation history of its own.
-        # Use the parent's real path when present; a one-point parent remains
-        # unavailable, so the full outer resume/fallback guard still applies.
+        # The explicit-guess solve has no continuation history; the branch
+        # guard uses the parent's path when it has at least two points.
         available = length(context.coordinates) >= 2
         branch_guard = available ? merge(_continuation_branch_guard(
             B.(context.coordinates), _complex_of_type.(Ref(B), context.roots),
@@ -1912,8 +1938,8 @@ function _near_axis_position_precision_recovery(mode::QNMMode, a, omega;
             status = :failed
             stop_reason = :near_axis_position_branch_guard
         end
-        # Preserve the parent's original terminal label gate and its estimated
-        # status semantics. A failed child is never upgraded by metadata.
+        # Apply the parent's terminal-extrapolation label gate; a failed
+        # 192-bit solve is never upgraded.
         if status == :accepted && !isempty(context.terminal_rows)
             terminal_row = last(context.terminal_rows)
             kappa = sqrt(max(zero(B), one(B) - precise_a^2)) /
@@ -1941,8 +1967,8 @@ function _near_axis_position_precision_recovery(mode::QNMMode, a, omega;
             branch_guard=branch_guard,
             terminal_label_uncertain=terminal_label_uncertain,
         )
-        # Child metrics/histories win over the old failed finalization. Only
-        # original continuation/seed identity is restored at the top level.
+        # Report the 192-bit solve's metrics and histories, with the parent's
+        # seed and continuation path.
         merged = merge(context.provenance, p, (
             input_type=context.provenance.input_type,
             guess_source=context.provenance.guess_source,
@@ -1969,6 +1995,8 @@ function _near_axis_position_precision_recovery(mode::QNMMode, a, omega;
     end
 end
 
+# Segment-0 (or seeded segment-1) solver behind `qnm_frequency`: seed, spin
+# continuation, final polish with an independent higher-order guard, and gates.
 function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
         convention=:overtone,
         inversion_index=:auto,
@@ -2429,7 +2457,7 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
         end
         final_position_branch_guard = nothing
         if final_position_tolerance !== nothing && guard.converged
-            # Apply the original continuation branch allowance to the final
+            # Apply the continuation's branch allowance to the final
             # correction from the GSN path, without limiting that correction
             # itself by the much smaller convergence/stability tolerance.
             available = length(accepted_coordinates) >= 2
@@ -2575,10 +2603,10 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
                 terminal_label_uncertain = true
             end
         end
-        # Next to the NIA cut the Float64 continued fraction can admit a root
-        # that is not there in higher precision (l=2, m=0, n=19 near a=0.98).
-        # A re-emerged segment's Float64 root within 2h of the axis is kept
-        # only when a BigFloat re-polish reproduces it to the stability gate.
+        # Next to the NIA cut the Float64 continued fraction is poorly
+        # conditioned. A re-emerged segment's Float64 root within 2h of the
+        # axis is kept only when a BigFloat re-polish reproduces it to the
+        # stability gate.
         near_axis_check = nothing
         if segment >= 1 && T === Float64 && (accepted || conditioned_root) &&
                 root_equation == :leaver_continued_fraction &&

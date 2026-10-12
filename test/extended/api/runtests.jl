@@ -1,6 +1,6 @@
 # Public API: exports, enums, struct layouts, show methods, argument validation of the radial interfaces.
-# Field lists are copied from src/GeneralizedSasakiNakamura.jl, src/ISEM/ISEM.jl and src/QNM/Types.jl
-# (2026-10-05); a change to them is an API change and must be deliberate.
+# Field lists are copied from src/GeneralizedSasakiNakamura.jl, src/ISEM/ISEM.jl and src/QNM/Types.jl;
+# a change to them is an API change and must be deliberate.
 
 if !@isdefined(GSN)
     include(joinpath(@__DIR__, "..", "load_package.jl"))

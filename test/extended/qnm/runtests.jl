@@ -1,5 +1,5 @@
 # QNM frequencies, branches, excitation factors and failure modes.
-# References: data/qnm_references.jl (provenance in that file and README.md, section "qnm").
+# References: data/qnm_references.jl (provenance in that file and ../README.md, section "QNM").
 
 if !@isdefined(GSN)
     include(joinpath(@__DIR__, "..", "load_package.jl"))
@@ -46,7 +46,7 @@ mirror_root(a, s, l, m, n; convention=:overtone) =
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Kerr roots against the independent 45-digit Leaver roots (strong_damping_reference/results/qnm_list.json).
+# Kerr roots against independent Leaver radial + angular CF roots (47-57 converged digits).
 # ---------------------------------------------------------------------------------------------------
 @testset "Kerr roots (independent Leaver, 47-57 digits)" begin
     for q in QNM_CLOUD_ROOTS
@@ -69,7 +69,7 @@ end
 # Published tables: Forteza & Mourier (10 digits; atol 2e-10) and Cook's Zenodo catalogue (atol 5e-9).
 # Labels follow Python qnm and Cook: Forteza's ordinary (2,2) n = 9 is Cook's 8_1, taken as n = 9 with convention = :complete_spectrum;
 # Cook's ordinary (2,2) label 19 is the package's overtone 19. A is Leaver's angular separation constant
-# (package convention assumed equal: A -> l(l+1) - s(s+1) as c -> 0; see README "API uncertainties").
+# (package convention assumed equal: A -> l(l+1) - s(s+1) as c -> 0).
 # ---------------------------------------------------------------------------------------------------
 @testset "published QNM tables" begin
     rows = GSN_TEST_LEVEL === :quick ? PUBLISHED_QNM[1:6:end] : PUBLISHED_QNM
@@ -108,8 +108,8 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Legacy-bundle overtone table (separate implementation, 2026-09-24), signed branches, a in {0.5, 0.68, 0.9,
-# -0.5}, l = 2, 3; atol 1e-9 as in check_qnm_results.jl.
+# Overtone table from a separate legacy implementation, signed branches, a in {0.5, 0.68, 0.9, -0.5},
+# l = 2, 3; atol 1e-9.
 # ---------------------------------------------------------------------------------------------------
 @testset "legacy overtone table" begin
     rows = GSN_TEST_LEVEL === :quick ? LEGACY_OVERTONES[1:9:end] : LEGACY_OVERTONES
@@ -118,7 +118,7 @@ end
             mirror_root(r.a, -2, r.l, r.m, r.n; convention=get(r, :convention, :overtone))
         @test isapprox(root.omega, r.omega; atol=1e-9, rtol=0)
     end
-    # Overtones 7..10 are distinct roots on both branches (check_qnm_results.jl).
+    # Overtones 7..10 are distinct roots on both branches.
     for branch in (ordinary, mirror)
         roots = [branch == ordinary ? qnm_frequency(QNMMode(-2, 2, 2, n), 0.5).omega :
             mirror_root(0.5, -2, 2, 2, n).omega for n in 7:10]
@@ -128,8 +128,8 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # qnm(0.68, -2, 2, 2, 0): root, Teukolsky reflection, dB_inc/domega and excitation factor against the
-# independent direct-solver reference (cloud_refs/qnm068_bridge_reference; dps 40/60). The derivative
-# reference is ~1e-10 relative from GSN's stencil (README there), hence rtol 1e-8.
+# independent direct-solver reference (dps 40/60). The derivative reference is ~1e-10 relative from GSN's
+# stencil, hence rtol 1e-8.
 # ---------------------------------------------------------------------------------------------------
 @testset "qnm(0.68) against independent observables" begin
     a = 0.68
@@ -155,7 +155,7 @@ end
     @test isapprox(mirror_mode.omega, -conj(Q068.omega); atol=1e-12, rtol=0)
     @test isapprox(mirror_mode.teukolsky.excitation_factor, -conj(Q068.excitation_teukolsky / im); rtol=1e-8)
     # Stencil points around the root: B_inc/B_trans and B_ref/B_trans, absolute 1e-11 (|B_ref| ~ 0.42;
-    # measured offsets 2e-12..3e-12 pinned, <= 5e-13 public; README there).
+    # measured offsets 2e-12..3e-12 with pinned controls, <= 5e-13 with the public defaults).
     for st in Q068_STENCIL
         R = Teukolsky_radial(-2, 2, 2, a, st.omega, IN)
         binc, bref = teukolsky_ratios(R)
@@ -175,16 +175,16 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # Residues of 1/(i omega B_inc^T) at a = 0.5 against arXiv:2609.09531v1 Table I (7 decimals): with the GSN
-# incidence derivative alpha, c_n = 1 / (i omega (B_inc/B_trans conversion) alpha)
-# (the residue conversion script (2026-09-24, not distributed)). Componentwise 6.5e-8 (printed rounding 5e-8).
+# incidence derivative alpha, c_n = 1 / (i omega (B_inc/B_trans conversion) alpha).
+# Componentwise 6.5e-8 (printed rounding 5e-8).
 # ---------------------------------------------------------------------------------------------------
 @testset "published residues (a = 0.5)" begin
     rows = GSN_TEST_LEVEL === :quick ? filter(r -> r.n == 0, PUBLISHED_RESIDUES) : PUBLISHED_RESIDUES
     for r in rows
         @testset "$(r.branch) n=$(r.n)" begin
             if !r.within_rounding
-                # n = 11, 13 ordinary differ from the printed values by 6.1e-8 / 3.8e-7 in the legacy run:
-                # QNM published-residue backlog: distinguish printed rounding from solver error.
+                # n = 11, 13 ordinary differ from the printed values by 6.1e-8 / 3.8e-7 in a separate
+                # implementation; printed rounding and solver error are not yet distinguished.
                 @test_skip "QNM published-residue backlog, ordinary n=$(r.n)" == ""
             else
                 # These published rows retain the table's complete-spectrum labels.
@@ -283,7 +283,7 @@ end
     @test overtone7.status == overtone10.status == :accepted
     @test abs(overtone10.omega - overtone7.omega) > 0.1
     if at_level(:full)
-        # Match test/runtests.jl: this root was n=30 before overtone relabeling.
+        # As in test/runtests.jl; overtone label in the Python qnm / Cook convention.
         overtone29 = qnm_frequency(QNMMode(-2, 2, 2, 29), 0.5)
         @test overtone29.status == :accepted
         @test overtone29.omega ≈ 0.2725174928809329 - 6.734330683370764im atol=1e-10 rtol=0
@@ -294,7 +294,7 @@ end
         @test overtone8 isa QNMResult
         @test overtone8.omega ≈ omega8 atol=1e-9 rtol=0
     end
-    # Leaver inversion convention reproduces the overtone-convention root (check_qnm_edges.jl).
+    # Leaver inversion convention reproduces the overtone-convention root.
     root8 = qnm_frequency(QNMMode(-2, 2, 2, 8), 0.5)
     leaver = qnm_frequency(QNMMode(-2, 2, 2, 8), 0.5; convention=:leaver, inversion_index=8, guess=root8.omega)
     @test leaver.status == :accepted
@@ -306,8 +306,7 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # Edges: algebraically special frequency, exact-extremal endpoints, near-extremal estimated results,
-# m = 0 overtone 10 continuation, near-extremal n = 10 (documented failure).
-# review.md "Existing QNM limitations" and "Full-call edge inventory".
+# m = 0 overtone 10 continuation, near-extremal n = 10 (known limitation).
 # ---------------------------------------------------------------------------------------------------
 @testset "edges and documented limitations" begin
     special = qnm_frequency(QNMMode(-2, 2, 2, 8), 0.0)
@@ -334,7 +333,7 @@ end
         end
         @test plus.omega ≈ minus.omega rtol=1e-10
         @test plus.excitation_factor ≈ minus.excitation_factor rtol=1e-7
-        # Documented failure ("Full-call edge inventory"): near-extremal n = 10. Whatever the outcome,
+        # Known limitation: near-extremal n = 10. Whatever the outcome,
         # it must be structured: accepted results are finite; failures name their stage.
         if at_level(:extended)
             hard = qnm(0.99999, -2, 2, 2, 10)
@@ -354,7 +353,7 @@ end
         @test axisymmetric.provenance.branch_label == :kerr_overtone_n10_1
         @test axisymmetric.provenance.guess_source == :nia_reemergence_edge_scan
         @test 0.391144 < axisymmetric.provenance.reemergence.spin < 0.5
-        # Other harmonic, high overtone (check_qnm_edges.jl).
+        # Other harmonic, high overtone.
         other = qnm(0.5, -2, 3, 3, 10)
         @test other.status in (:accepted, :estimated)
         @test isfinite(other.excitation_factor)

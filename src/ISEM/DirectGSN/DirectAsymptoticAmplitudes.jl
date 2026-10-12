@@ -8,6 +8,8 @@ export branch_pair_relative_error
 @inline _finite_complex(value) =
     isfinite(real(value)) && isfinite(imag(value))
 
+# Incidence and reflection amplitudes divided by the route's internal solution
+# scale (unit GSN transmission); `nothing` when either is not finite in Float64.
 function _try_unit_pair(route::DirectRoute)
     scale = route.solution_scale
     isfinite(scale) && scale > 0 ||
@@ -31,6 +33,8 @@ function _unit_pair(route::Union{DirectRoute,DirectConjugatedRoute})
     return pair
 end
 
+# Unit-transmission amplitudes as a named tuple, labelled Binc/Bref for the IN
+# branch and Cinc/Cref for the UP branch.
 function direct_asymptotic_amplitudes(
     route::Union{DirectRoute,DirectConjugatedRoute},
 )
@@ -64,6 +68,7 @@ end
 direct_amplitude_pair(route::Union{DirectRoute,DirectConjugatedRoute}) =
     _unit_pair(route)
 
+# (incidence, reflection) from a route, an amplitude named tuple, or any 2-element collection.
 function direct_amplitude_pair(value)
     if value isa NamedTuple && haskey(value, :incidence) && haskey(value, :reflection)
         return (value.incidence, value.reflection)
@@ -71,6 +76,8 @@ function direct_amplitude_pair(value)
     return Tuple(value)
 end
 
+# Largest componentwise difference of two amplitude pairs, relative to the
+# largest amplitude magnitude in either pair.
 function branch_pair_relative_error(candidate, reference)
     cand = direct_amplitude_pair(candidate)
     ref = direct_amplitude_pair(reference)

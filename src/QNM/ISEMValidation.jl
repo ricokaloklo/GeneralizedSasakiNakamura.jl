@@ -34,6 +34,9 @@ function _qnm_conditioned_radial_tolerance(a)
     return clamp(conditioned, 1.0e-14, 1.0e-11)
 end
 
+# Radial solver used for QNM amplitudes: GSN-ISEM with a fixed collocation order
+# away from extremality; the solver default with a kappa-dependent tolerance for
+# kappa <= 0.02, and with its own defaults at abs(a) = 1.
 function _qnm_default_radial_solver(s, l, m, a, omega, boundary;
         solver=GSN_radial)
     tolerance = _qnm_conditioned_radial_tolerance(a)
@@ -99,6 +102,8 @@ function _radial_evaluation_inputs(result::LeaverResult, omega=result.omega)
     )
 end
 
+# Use the IN/UP Wronskian for the incidence amplitude at exact extremality and
+# for conditioned (estimated) roots with abs(a) >= 0.9999 and n >= 4.
 function _use_wronskian_incidence(result::LeaverResult, omega=result.omega)
     result.status == :estimated && abs(result.a) >= oftype(result.a, 0.9999) &&
         result.mode.n >= 4 && return true
@@ -140,6 +145,8 @@ function _extremal_qnm_radial_solver(s, l, m, a, omega, boundary)
     )
 end
 
+# Incidence amplitude from the IN/UP Wronskian, averaged over `evaluation_points`
+# in r*; their spread is returned as `wronskian_drift`.
 function _wronskian_incidence(result::LeaverResult, omega=result.omega;
         radial_solver=GSN_radial, evaluation_points=(0.0, 1.0))
     inputs = _radial_evaluation_inputs(result, omega)
@@ -218,6 +225,8 @@ function _replace_extremal_damped_root_frequency(
     )
 end
 
+# At a = +-1, check (and, for roots not from the exact-extremal recurrence,
+# Newton-correct) a damped root against the GSN Wronskian incidence.
 function _polish_extremal_damped_root_with_gsn(result::LeaverResult;
         incidence_tolerance=1.0e-8,
         wronskian_tolerance=1.0e-8,
@@ -317,10 +326,12 @@ end
 """
     validate_qnm_with_isem(result::LeaverResult; kwargs...)
 
-Validate an accepted Leaver root with the independent public `GSN-ISEM` call
-`GSN_radial(s,l,m,a,omega,IN; method="GSN-ISEM")`. The scaled gate is
-`abs(Ain)/max(abs(Aout),abs(Atrans),1)`; this result never feeds back into the
-Leaver root finder.
+Validate an accepted or estimated Leaver root with the independent public call
+`GSN_radial(s,l,m,a,omega,IN)` (default `method="auto"`, which uses GSN-ISEM).
+At exact extremality, and for conditioned roots with `abs(a) >= 0.9999` and
+`n >= 4`, the incidence amplitude comes from the IN/UP Wronskian instead. The
+scaled gate is `abs(Ain)/max(abs(Aout),abs(Atrans),1) <= incidence_tolerance`;
+this result never feeds back into the Leaver root finder.
 """
 function validate_qnm_with_isem(result::LeaverResult;
         incidence_tolerance=1.0e-8,

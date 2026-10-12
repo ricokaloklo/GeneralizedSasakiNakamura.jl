@@ -10,8 +10,7 @@ const N20_CF_ROOTS = [
     (a=0.68,l=3, m=1, branch=ordinary, omega=0.2536621172978531340-4.190835804026706669im),
     (a=0.9, l=3, m=1, branch=ordinary, omega=0.3592350937767719045-3.022465695416886948im),
 ]
-# QNM_CLOUD_ROOTS: Leaver radial+angular CF roots at dps 50/75, 47-57 converged digits
-# (strong_damping_reference/results/qnm_list.json; method string in the file).
+# QNM_CLOUD_ROOTS: independent Leaver radial+angular CF roots at dps 50/75, 47-57 converged digits.
 const QNM_CLOUD_ROOTS = [
     (id = "Q_a0_n0", s = -2, l = 2, m = 2, a = 0.0, n = 0, omega = complex(0.3736716844180418, -0.0889623156889357), digits = 57.3),
     (id = "Q_a0_n3", s = -2, l = 2, m = 2, a = 0.0, n = 3, omega = complex(0.2515049621855906, -0.7051482024334954), digits = 56.6),
@@ -26,9 +25,9 @@ const QNM_CLOUD_ROOTS = [
     (id = "Q_a09_m2_n0", s = -2, l = 2, m = 2, a = 0.9, n = 0, omega = complex(0.6716142721321627, -0.06486923587579592), digits = 51.3),
     (id = "Q_a09_m2_n5", s = -2, l = 2, m = 2, a = 0.9, n = 5, omega = complex(0.5369167208360969, -0.7487234629285244), digits = 51.9),
 ]
-# SCHWARZSCHILD_SCAN: s=-2, l=2 Leaver roots at dps 25, index = Leaver inversion n
-# (strong_damping_reference/results/qnm_schw_scan.json). Entries with Re < 0 are the mirror roots of the
-# same overtone; the ordinary root is -conj(omega). Index 8 is the near-AS 'unconventional' root.
+# SCHWARZSCHILD_SCAN: independent s=-2, l=2 Leaver roots at dps 25, index = Leaver inversion n.
+# Entries with Re < 0 are the mirror roots of the same overtone; the ordinary root is -conj(omega).
+# Index 8 is the near-AS 'unconventional' root.
 const SCHWARZSCHILD_SCAN = [
     (index = 0, omega = complex(0.3736716844180418, -0.0889623156889357), residual = 0.0),
     (index = 1, omega = complex(0.34671099687916346, -0.2739148752912348), residual = 0.0),
@@ -54,11 +53,10 @@ const SCHWARZSCHILD_SCAN = [
     (index = 21, omega = complex(-0.0869339502862213, -5.332423200561469), residual = 4.680962170594368e-21),
     (index = 22, omega = complex(-0.08645284449817553, -5.583309211067706), residual = 8.084717329260619e-21),
 ]
-# LEGACY_OVERTONES: roots from the September-24 legacy bundle (a separate implementation; solver_success
-# True only) the high-precision overtone reference table (2026-09-24, not distributed); cross-checked against the
-# published tables below at n = 8, 9, 20. Used with atol 1e-9 (check_qnm_results.jl). Labels follow Python qnm /
+# LEGACY_OVERTONES: high-precision overtone roots from a separate legacy implementation (converged roots
+# only), cross-checked against the published tables below at n = 8, 9, 20. Used with atol 1e-9. Labels follow Python qnm /
 # Cook: of the co-rotating (2,2) pair split from -2i, n = 8 is 8_0 and 8_1 is n = 9 with convention = :complete_spectrum;
-# higher overtones continue the Schwarzschild labels, so the bundle's own 10, ..., 20 appear here as 9, ..., 19.
+# higher overtones continue the Schwarzschild labels, so the legacy table's 10, ..., 20 appear here as 9, ..., 19.
 # The co-rotating signed mirror rows at a=-0.5 retain the legacy complete-spectrum n=9/20 labels explicitly.
 const LEGACY_OVERTONES = [
     (a = 0.5, l = 2, m = 2, n = 0, branch = ordinary, omega = complex(0.46412302597593824, -0.08563883498806327)),
@@ -135,8 +133,8 @@ const LEGACY_OVERTONES = [
     (a = 0.5, l = 3, m = 1, n = 10, branch = ordinary, omega = complex(0.38674823990376345, -2.2379080413854715)),
     (a = 0.5, l = 3, m = 1, n = 20, branch = ordinary, omega = complex(0.2456366047649981, -4.576237498297008)),
 ]
-# PUBLISHED_QNM: Forteza & Mourier arXiv:2107.11829 (10 digits) and Cook Zenodo 14024959 tables, copied in
-# the processed published QNM tables (2026-09-24 extraction, not distributed). published_n is the source's own label.
+# PUBLISHED_QNM: Forteza & Mourier arXiv:2107.11829 (10 digits) and Cook Zenodo 14024959 tables.
+# published_n is the source's own label.
 const PUBLISHED_QNM = [
     (source = "Forteza_Mourier_2107.11829", a = 0.05, l = 2, m = 2, n = 8, branch = ordinary, omega = complex(0.0617725879, -1.8876918643), A = complex(3.9983134577, 0.2520717908), published_n = 8),
     (source = "Forteza_Mourier_2107.11829", a = 0.5, l = 2, m = 2, n = 8, branch = ordinary, omega = complex(0.3010183388, -1.6659917852), A = complex(4.1124145133, 2.3757319918), published_n = 8),
@@ -163,9 +161,9 @@ const PUBLISHED_QNM = [
     (source = "Cook_Zenodo_14024959", a = 0.68, l = 3, m = 1, n = 20, branch = ordinary, omega = complex(0.2536621201574646, -4.190835813115001), A = complex(12.926892475218633, 2.8607215479882546), published_n = 20),
     (source = "Cook_Zenodo_14024959", a = 0.9, l = 3, m = 1, n = 20, branch = ordinary, omega = complex(0.35923508463631, -3.02246569088522), A = complex(12.358289136926906, 3.0183035342571585), published_n = 20),
 ]
-# PUBLISHED_RESIDUES: arXiv:2609.09531v1 Table I, a = 0.5, s=-2 l=m=2: residues of 1/(i*w*Binc_T) (7 decimals;
-# the residue conversion script (2026-09-24, not distributed)). within_rounding: legacy comparison flag from
-# the processed published QNM residue table (2026-09-24, not distributed) (n=11, 13 ordinary exceed the printed rounding).
+# PUBLISHED_RESIDUES: arXiv:2609.09531v1 Table I, a = 0.5, s=-2 l=m=2: residues of 1/(i*w*Binc_T) (7 decimals).
+# within_rounding: whether a separate legacy implementation agrees within the printed rounding
+# (n=11, 13 ordinary exceed it).
 # Ordinary n>=9 retain that table's complete-spectrum ordering; the public overtone labels differ by one.
 const PUBLISHED_RESIDUES = [
     (branch = ordinary, n = 0, published = complex(0.0199051, 0.0071751), within_rounding = true),
@@ -193,13 +191,13 @@ const PUBLISHED_RESIDUES = [
     (branch = mirror, n = 8, published = complex(-0.0010012, -0.0013438), within_rounding = true),
     (branch = mirror, n = 9, published = complex(-0.0008764, -0.0010197), within_rounding = true),
 ]
-# AXISYMMETRIC_N10: legacy axisymmetric catalogue (the legacy axisymmetric catalogue table (2026-09-24, not distributed)),
-# a = 0.5, l = 2, m = 0, n = 10 sub-branch 1; the independent comparison confirmed the target root 0.05104369416307408-2.5823555488023175i.
+# AXISYMMETRIC_N10: legacy axisymmetric catalogue, a = 0.5, l = 2, m = 0, n = 10 sub-branch 1 (segment 10_1);
+# an independent root 0.05104369416307408-2.5823555488023175i confirms it.
 const AXISYMMETRIC_N10 = complex(0.05104369416376206, -2.582355548802519)
 # Q068: independent root and Teukolsky observables of qnm(0.68, -2, 2, 2, 0)
-# (cloud_refs/qnm068_bridge_reference/q068_root.json; direct solver dps 40/60).
+# (independent direct solver, dps 40/60).
 const Q068 = (omega = complex(0.523975104290084, -0.08151262363119956), bref_over_btrans = complex(0.19151593958182833, -0.37046374797628673), dbinc_domega = complex(-19.88001898697942, -32.7950708461286), excitation_teukolsky = complex(0.00393984470182207, 0.009466480032561536), E = complex(4.956335794509459, 0.17805217392591272))
-# Q068_STENCIL: B_inc/B_trans and B_ref/B_trans at the exact Float64 stencil points around the root (same file set).
+# Q068_STENCIL: B_inc/B_trans and B_ref/B_trans at the exact Float64 stencil points around the root (same solver).
 const Q068_STENCIL = [
     (label = "centre", omega = complex(0.5239751042900836, -0.08151262363120163), binc = complex(-6.197190533064535e-14, 5.0537451587471465e-14), bref = complex(0.19151593958183652, -0.37046374797628584)),
     (label = "+h", omega = complex(0.5240751042900836, -0.08151262363120163), binc = complex(-0.0019901067636146764, -0.0032746559622185444), bref = complex(0.19142149233803396, -0.370080638527049)),

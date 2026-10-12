@@ -12,6 +12,7 @@ export coefficient_values
 const I = 1im # Mathematica being Mathematica
 const _DEFAULTDATATYPE = ComplexF64 # Double precision by default
 
+# Returns order -> coefficient of `f`, caching the recursion state so earlier orders are not recomputed.
 function coefficient_sequence(f, s, m, a, omega, lambda; data_type=_DEFAULTDATATYPE)
     state_type = NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs),
         Tuple{Vector{data_type}, Vector{data_type}, Vector{data_type}}}
@@ -19,6 +20,7 @@ function coefficient_sequence(f, s, m, a, omega, lambda; data_type=_DEFAULTDATAT
     return order -> f(s, m, a, omega, lambda, order; data_type, workspace)
 end
 
+# Coefficients of orders 0..order as a vector.
 function coefficient_values(f, s, m, a, omega, lambda, order; data_type=_DEFAULTDATATYPE)
     sequence = coefficient_sequence(f, s, m, a, omega, lambda; data_type)
     return data_type[sequence(n) for n in 0:order]

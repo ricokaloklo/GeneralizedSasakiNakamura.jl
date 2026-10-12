@@ -70,6 +70,8 @@ function _amplitude_pair(result::LeaverResult, omega;
     )
 end
 
+# Two-level Richardson extrapolation of derivatives at steps h, h/2, h/4 with
+# leading error O(h^order); `drift` compares the two first-level values.
 function _richardson_derivative(values, order::Int=2)
     factor = 2^order
     first = (factor * values[2] - values[1]) / (factor - 1)
@@ -282,6 +284,10 @@ function _condition_near_extremal_validation(
         inferred_root_shift_tolerance)
 end
 
+# GSN-only excitation factor used by the compact `qnm` result: real-direction
+# Richardson derivative, no Teukolsky bridge. `direction_tolerance`,
+# `bridge_tolerance` and `teukolsky_solver` are accepted so that the same
+# `excitation_options` serve `qnm_excitation_factor`; they are not used here.
 function _qnm_gsn_excitation_factor(result::LeaverResult;
         h=nothing,
         incidence_tolerance=1.0e-8,
@@ -477,6 +483,9 @@ function _mst_amplitude_pair(result, omega)
     )
 end
 
+# Choose one amplitude backend for the whole stencil: the supplied or special
+# solvers, MST amplitudes when the default solver's centre uses them, or the
+# default two-ray GSN-ISEM route.
 function _excitation_pair_function(result, radial_solver, teukolsky_solver,
         incidence_tolerance)
     defaults = radial_solver in (GSN_radial, _qnm_default_radial_solver) &&
@@ -508,10 +517,13 @@ end
 """
     qnm_excitation_factor(result::LeaverResult; kwargs...)
 
-Compute the incidence-amplitude derivative with central differences along the
-real and imaginary frequency directions and Richardson extrapolation over
-`h`, `h/2`, and `h/4`. The returned GSN and Teukolsky factors use their distinct
-package conventions and include an explicit conversion-bridge residual.
+Compute the incidence-amplitude derivative `alpha = dAin/domega` with central
+differences along the real and imaginary frequency directions and Richardson
+extrapolation over `h`, `h/2`, and `h/4`; `alpha` is the mean of the two
+directions and `direction_drift` their mismatch. The excitation factors are
+`B_gsn = Aout/(2 omega alpha)` and `B_teukolsky = Aout/(2i omega alpha)` in the
+respective package normalizations, returned as an `ExcitationFactorResult`
+with an explicit conversion-bridge residual.
 For the standard two-ray and MST routes, the bridge uses one amplitude
 backend throughout the stencil. The MST centre must also pass the incidence
 gate. The bridge tests normalization consistency, not agreement of

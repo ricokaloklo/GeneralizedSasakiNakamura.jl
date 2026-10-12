@@ -13,6 +13,8 @@ const C1 = 1.0 + 0.0im
 const I1 = 1.0im
 
 
+# Taylor coefficients of P about the ordinary point x0 from P(x0) and dP/dx(x0); the method with z
+# does the same in the contour coordinate rho.
 function ordinary_point_coeffs(s, epsilon, tau, kappa, lambda, x0, P, P_prime, N::Integer)
     a = Vector{ComplexF64}(undef, N + 1)
     a[1] = P
@@ -62,6 +64,8 @@ end
     return iszero(cn) ? Inf : (tol / cn)^(1 / n)
 end
 
+# Adaptive order: keep the order with the largest min(left, right) step size, stopping after
+# `patience` orders without improvement.
 function ordinary_point_coeffs_auto(s, epsilon, tau, kappa, lambda, x0, P, P_prime, Nmax::Integer = 100; tol = _TOLERANCE, patience = 12, min_order = 10)
     coeffs = ComplexF64[P, P_prime]
     x0m1 = x0 - 1
@@ -189,6 +193,8 @@ function error_ordinary(rho, rho0, s, epsilon, tau, kappa, lambda, z, coeffs)
     return _relative_residual(term1, term2, term3)
 end
 
+# Positive step sizes towards x = 0 (right) and away from it (left): halve from |x0|/2 until the
+# patch residual is below tol.
 function convergence_radius_x0_right(x0, s, epsilon, tau, kappa, lambda, coeffs, tol = _TOLERANCE)
     R = 0.5 * x0
     err = error_ordinary(x0 - R, x0, s, epsilon, tau, kappa, lambda, coeffs)
@@ -215,6 +221,7 @@ function convergence_radius_x0_left(x0, s, epsilon, tau, kappa, lambda, coeffs, 
     return - R
 end
 
+# Contour step sizes, starting from half the distance to the nearest singular point (rho = 0 or -z).
 function convergence_radius_rho_right(rho0, s, epsilon, tau, kappa, lambda, z, coeffs, tol = _TOLERANCE)
     R = max(0.5 * min(abs(rho0), abs(rho0 + z)), 1e-6)
     err = error_ordinary(rho0 + R, rho0, s, epsilon, tau, kappa, lambda, z, coeffs)

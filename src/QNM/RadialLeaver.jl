@@ -1,3 +1,6 @@
+# Leaver radial residual at (a, omega): solve the angular problem for A on
+# `sheet_id`, then evaluate the continued fraction with inversion index
+# `inversion_index`. Its zero is a QNM; returns the value, CF error and angular data.
 function leaver_radial_residual(mode::QNMMode, a, omega;
         angular_order::Int=32,
         sheet_id::Symbol=:qnm_straight_from_spherical,

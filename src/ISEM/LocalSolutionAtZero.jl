@@ -11,6 +11,8 @@ export an_zero, bn_zero, an_zero_auto, bn_zero_auto, zero_in_coeffs, zero_out_co
        zero_out_resonant_log_coeffs, evaluate_zero_out_resonant_log, error_zero_out_resonant_log,
        zero_in_resonant_log_coeffs, evaluate_zero_in_resonant_log, error_zero_in_resonant_log
 
+# Horizon series coefficients (a_0 = 1): P_in = sum a_n x^n here, and
+# P_out = (-x)^(s + i(epsilon + tau)) sum b_n x^n in bn_zero.
 function an_zero(s, epsilon, tau, kappa, lambda, N)
     a = zeros(ComplexF64, N + 1)
     a[1] = 1.0 + 0.0im # a_0 = 1
@@ -91,6 +93,9 @@ end
     return (2 * j - 1 + B0) * hj + (-2 * (j - 1) + 1 + B1) * hjm1 + B2 * hjm2
 end
 
+# At the superradiance threshold (tau = -epsilon) the horizon exponents differ by the integer -s
+# (s < 0): returns the regular series h, the coefficients b of the (-x)^s series and the
+# coefficient of its h log(-x) term. zero_in_resonant_log_coeffs is the s > 0 analogue.
 function zero_out_resonant_log_coeffs(s, epsilon, kappa, lambda, N)
     s < 0 || error("zero_out_resonant_log_coeffs requires a negative spin weight. Got s=$s.")
     h = an_zero(s, epsilon, -epsilon, kappa, lambda, N)
@@ -155,34 +160,10 @@ function zero_in_resonant_log_coeffs(s, epsilon, kappa, lambda, N)
     return a, b, log_coefficient
 end
 
-function _zero_best_radius(coeff, n, tol)
-    cn = abs(coeff)
-    return iszero(cn) ? Inf : (tol / cn)^(1 / n)
-end
-
-function _zero_optimal_prefix(coeffs, tol, patience; tail = 4, min_order = 10)
-    Nmax = length(coeffs) - 1
-    Nmax <= 0 && return coeffs, 0, 0.0
-    Npeak = 1
-    peak = abs(coeffs[2])
-    bad = 0
-    for n in 2:Nmax
-        cn = abs(coeffs[n + 1])
-        if cn > peak
-            peak = cn
-            Npeak = n
-            bad = 0
-        else
-            bad += 1
-        end
-        bad >= patience && n > Npeak && break
-    end
-    Nuse = min(Nmax, max(min_order, Npeak + tail))
-    return coeffs[1:Nuse + 1], Nuse, _zero_best_radius(coeffs[Nuse + 1], Nuse, tol)
-end
-
 const _ZERO_AUTO_TARGET_RADIUS = 0.1
 
+# Adaptive order: stop once the convergence radius reaches target_radius, or after `patience` orders
+# without improvement; returns (coefficients, order, radius). bn_zero_auto is the OUT analogue.
 function an_zero_auto(s, epsilon, tau, kappa, lambda, Nmax; tol = 1e-15, patience = 12, min_order = 10, target_radius = _ZERO_AUTO_TARGET_RADIUS)
     coeffs = ComplexF64[1.0 + 0.0im]
     Nopt = min_order
@@ -259,6 +240,7 @@ function bn_zero_auto(s, epsilon, tau, kappa, lambda, Nmax; tol = 1e-15, patienc
     return coeffs[1:Nuse + 1], Nuse, convergence_radius_bn_zero(@view(coeffs[1:Nuse + 1]), tol)
 end
 
+# Radius where the last kept term reaches tol, (tol/|a_N|)^(1/N); the OUT version is capped at 0.6.
 function convergence_radius_an_zero(coeffs, tol = 1e-15)
     N = length(coeffs) - 1
     if N <= 0
@@ -283,6 +265,7 @@ function convergence_radius_bn_zero(coeffs, tol = 1e-15)
     return min((tol / abs(b_N))^(1.0 / N), 0.6)
 end
 
+# Horizon series on the rotated contour x = -rho/z and its convergence radius (capped at 0.6).
 function zero_in_coeffs(s, epsilon, tau, kappa, lambda, z, N::Integer; tol = 1e-15)
     coeffs = Vector{ComplexF64}(undef, N + 1)
     coeffs[1] = 1.0 + 0.0im
@@ -335,6 +318,7 @@ function convergence_radius_zero_out(coeffs, tol = 1e-15)
     return min((tol / abs(last))^(1.0 / N), 0.6)
 end
 
+# Value and first two derivatives of sum coeffs[i] x^(i-1) by Horner's rule.
 function evaluate_series(x, coeffs)
     n = length(coeffs)
     n == 0 && return (0.0 + 0.0im, 0.0 + 0.0im, 0.0 + 0.0im)
@@ -403,6 +387,7 @@ function evaluate_zero_out_rho(rho, s, epsilon, tau, coeffs, z)
     return (pref * y, pref * yp, pref * ypp)
 end
 
+# Relative residual of the P equation x(1-x) P'' + q1 P' + q2 P = 0.
 function error_zero_in(x, s, epsilon, tau, kappa, lambda, coeffs)
     P, P_prime, P_primeprime = evaluate_zero_in(x, coeffs)
     q1, q2 = calculate_q1_q2(x, s, epsilon, kappa, tau, lambda)

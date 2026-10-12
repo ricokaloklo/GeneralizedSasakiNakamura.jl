@@ -65,7 +65,7 @@ sequence = qnm_sequence([0.0, 0.3, 0.68], -2, 2, 2, 0)   # (spins, s, l, m, n)
 Both functions take the same five numbers as [`qnm`](@ref) and the keywords
 `convention` (how `n` is counted, below) and `segment` (which part of a
 sequence that leaves and re-enters the negative imaginary axis, below). The
-older form `qnm_frequency(QNMMode(s, l, m, n), a)` still works.
+form `qnm_frequency(QNMMode(s, l, m, n), a)` is equivalent.
 
 ### Overtone labels: `convention`
 
@@ -161,15 +161,14 @@ the solver scans for roots leaving the axis at spins above the endpoint,
 continues each candidate back down to the axis, and attributes the first event
 whose axis frequency lies between the endpoints of overtones `n` and `n+1`.
 The successful result records `reemergence` (spin and frequency where `n₁`
-leaves the axis), `segment_endpoints`, and `branch_label = :kerr_overtone_n10_1`.
+leaves the axis), `segment_endpoints`, and a `branch_label` such as `:kerr_overtone_n10_1`.
 
 Before declaring a later segment ended on the NIA, continuation attempts a
 restart in the same direction at `Re ω = ±1e-3`, using the last accepted
-imaginary frequency and the existing root and branch checks. Successful
+imaginary frequency and the continuation root and branch checks. Successful
 crossings are counted in `provenance.continuation_axis_touches`;
-`nia_restart_rows` retains restart attempts and the original failures.
-These records survive automatic precision fallback. Segment 0 keeps its
-original continuation path.
+`nia_restart_rows` records each restart attempt and the failure that triggered
+it; both survive the automatic precision fallback. Segment 0 does not restart.
 
 A continuation step is not accepted when the interpolant of `Re ω` or of
 `Re ω²` through the last accepted points vanishes inside the step: the path

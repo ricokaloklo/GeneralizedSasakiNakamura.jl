@@ -40,6 +40,8 @@ const SWSH_LAPACK = LinearAlgebra.LAPACK.liblapack
 
 supported_spin_weight(s::Integer) = s in (-2, -1, 0, 1, 2)
 
+# Mode parameters in units M = 1, with a = sin(nu) and kappa = cos(nu) = sqrt(1 - a^2).
+# omega and lambda are Float64 for real frequencies and ComplexF64 otherwise.
 struct DirectGSNParameters{T<:Number}
     s::Int
     l::Int
@@ -51,6 +53,7 @@ struct DirectGSNParameters{T<:Number}
     kappa::Float64
 end
 
+# Outcome of the small/large-frequency regime selection, with the features it used.
 struct DirectFrequencySelection
     sfe_request::Symbol
     lfe_request::Symbol
@@ -65,6 +68,7 @@ struct DirectFrequencySelection
     mst_triggered::Bool
 end
 
+# Outcome of the regular / near-extremal / exact-extremal spin classification.
 struct DirectSpinSelection
     regime::Symbol
     reason::Symbol
@@ -152,6 +156,8 @@ function _checked_spin(s, l, m)
     return Int(s), Int(l), Int(m)
 end
 
+# Coupling coefficients of the spherical-harmonic expansion of the spin-weighted
+# spheroidal eigenproblem; the matrix below is pentadiagonal in l.
 @inline function _swsh_f(s::Int, l::Int, m::Int)
     (l == -1 && iszero(m) && iszero(s)) && return 0.0
     lp1 = l + 1
@@ -167,6 +173,7 @@ end
 @inline _swsh_h(s::Int, l::Int, m::Int) =
     (iszero(l) || iszero(s)) ? 0.0 : -m * s / (l * (l + 1))
 
+# Second-order small-c expansion of lambda for |c| <= SMALL_C_SWSH_LIMIT.
 @inline function _small_c_swsh_eigenvalue(s::Int, l::Int, m::Int, c::Float64)
     g_lower = _swsh_g(s, l, m)
     g_upper = _swsh_g(s, l + 1, m)
@@ -196,6 +203,7 @@ end
     return 0.0
 end
 
+# Matrix element whose eigenvalue is lambda directly (diagonal shifted by c^2 - 2 m c).
 @inline function _swsh_lambda_matrix_coefficient(
     c::Float64,
     s::Int,
@@ -213,28 +221,8 @@ end
     return muladd(c^2, 1 - b, muladd(2c, s * h - m, spherical))
 end
 
-function _swsh_dense_eigenvalue_at_size(
-    s::Int,
-    l::Int,
-    m::Int,
-    c::Float64,
-    size::Int,
-)
-    lmin = max(abs(m), abs(s))
-    index = l - lmin + 1
-    size >= index || throw(ArgumentError("SWSH matrix does not contain l=$l."))
-    matrix = zeros(Float64, size, size)
-    @inbounds for row_l in lmin:(lmin + size - 1)
-        i = row_l - lmin + 1
-        for col_l in row_l:min(row_l + 2, lmin + size - 1)
-            j = col_l - lmin + 1
-            matrix[i, j] = _swsh_lambda_matrix_coefficient(
-                c, s, m, row_l, col_l)
-        end
-    end
-    return only(eigvals!(Symmetric(matrix, :U), index:index))
-end
-
+# The `index`-th smallest eigenvalue of a symmetric band matrix in LAPACK upper
+# band storage, via dsbevx (eigenvalues only).
 function _selected_banded_eigenvalue!(band::Matrix{Float64}, index::Int)
     n = BlasInt(size(band, 2))
     kd = BlasInt(size(band, 1) - 1)
@@ -273,6 +261,7 @@ function _selected_banded_eigenvalue!(band::Matrix{Float64}, index::Int)
     return eigenvalues[1]
 end
 
+# Eigenvalue for (s, l, m, c) from a spectral matrix truncated to `size` l-modes.
 function _swsh_eigenvalue_at_size(
     s::Int,
     l::Int,
@@ -296,6 +285,9 @@ function _swsh_eigenvalue_at_size(
     return _selected_banded_eigenvalue!(band, index)
 end
 
+# Spin-weighted spheroidal eigenvalue lambda for real c = a omega. Exact at c = 0,
+# series for tiny |c|, otherwise the banded spectral matrix is enlarged until the
+# eigenvalue converges. `diagnostics=true` returns the size and convergence data too.
 function direct_swsh_eigenvalue(
     s::Int,
     l::Int,
@@ -345,6 +337,9 @@ end
 _direct_swsh_eigenvalue(s::Int, l::Int, m::Int, c::Float64) =
     direct_swsh_eigenvalue(s, l, m, c)
 
+# Validate inputs and build DirectGSNParameters. lambda defaults to the
+# spheroidal eigenvalue (real omega) or the SpinWeightedSpheroidalHarmonics value
+# (complex omega); nu, if given, must satisfy sin(nu) = a.
 function direct_gsn_parameters(s::Integer, l::Integer, m::Integer, a, omega; lambda=nothing, nu=nothing)
     ss, ll, mm = _checked_spin(s, l, m)
     a_float = _real_float("a", a)
@@ -392,6 +387,7 @@ function direct_gsn_parameters(s::Integer, l::Integer, m::Integer, a, omega; lam
         ss, ll, mm, a_float, omega_complex, lambda_complex, nu_float, kappa)
 end
 
+# Real-frequency large-phase test used by lfe = :auto.
 function direct_lfe_regime(params::DirectGSNParameters)
     isreal(params.omega) || return false
     horizon_frequency = params.a / (2 * (1 + params.kappa))
@@ -402,6 +398,7 @@ function direct_lfe_regime(params::DirectGSNParameters)
     return phase_scale >= LFE_PHASE_THRESHOLD || near_extreme
 end
 
+# True when the horizon wavenumber omega - m Omega_H is small relative to max(|omega|, 1).
 @inline function direct_horizon_tail(params::DirectGSNParameters)
     horizon_frequency = params.a / (2 * (1 + params.kappa))
     wavenumber = params.omega - params.m * horizon_frequency
@@ -410,6 +407,7 @@ end
         HORIZON_TAIL_DETUNING_LIMIT
 end
 
+# Real-frequency small-frequency test used by sfe = :auto.
 @inline function direct_sfe_regime(params::DirectGSNParameters)
     isreal(params.omega) || return false
     _sfe_zero_lambda_ordinary(params) && return false
@@ -420,6 +418,8 @@ end
         features.horizon_wavenumber_abs >= SFE_HORIZON_WAVENUMBER_MIN
 end
 
+# Small-frequency regular-spin modes whose lambda vanishes to rounding level;
+# these are sent to the ordinary route instead of the small-frequency one.
 @inline function _sfe_zero_lambda_ordinary(params::DirectGSNParameters)
     omega = abs(params.omega)
     SFE_ZERO_LAMBDA_ORDINARY_MIN <= omega <= SFE_FREQUENCY_LIMIT ||
@@ -437,6 +437,7 @@ end
         SFE_ZERO_LAMBDA_ULPS * eps(Float64) * angular_scale
 end
 
+# Normalise an sfe/lfe keyword to :on, :off or :auto.
 @inline function _frequency_request(name::AbstractString, value)
     value === nothing && return :off
     value === true && return :on
@@ -467,6 +468,8 @@ end
     )
 end
 
+# Classify the spin as :exact_extremal (kappa = 0), :near_extremal (small kappa
+# with large angular, phase or horizon-detuning compression), or :regular.
 @inline function direct_spin_regime(params::DirectGSNParameters)
     features = _frequency_features(params)
     angular_scale = params.l + 0.5
@@ -505,6 +508,8 @@ end
     )
 end
 
+# Choose the frequency regime (:sfe, :lfe or :ordinary) from the sfe/lfe requests
+# and the mode parameters, recording the reason.
 @inline function direct_frequency_regime(
     params::DirectGSNParameters;
     sfe=false,
@@ -561,6 +566,8 @@ end
     )
 end
 
+# Copy of `ctrl` switched to the ordinary regime after the small-frequency (MST)
+# route was rejected; mst_triggered is set to true to record that attempt.
 function _ordinary_fallback(ctrl::DirectGSNControls, reason::Symbol)
     selection = ctrl.frequency_selection
     fallback = DirectFrequencySelection(
@@ -592,6 +599,9 @@ function _ordinary_fallback(ctrl::DirectGSNControls, reason::Symbol)
     )
 end
 
+# Solver controls: series orders, matching point xm in (0, 1), tolerance, bases
+# and the selected frequency regime. The ordinary order is raised to
+# DEFAULT_REGULAR_ORDINARY_ORDER in the ordinary regime unless N or ordinary_order is given.
 function direct_gsn_controls(
     params::DirectGSNParameters;
     N=nothing,

@@ -23,7 +23,7 @@ a residual `delta`.  For small frequencies delta = O(epsilon^2) falls below the
 floating-point spacing of `l` (e.g. 2e-22 next to 2.0), and the MST recursion
 coefficients contain factors (n + nu) and (n + nu + 1) that vanish exactly at
 n = -l and n = -l - 1.  Carrying delta separately keeps those factors equal to
-delta instead of rounding them to zero, which is what produced Inf/NaN below
+delta instead of rounding them to zero, which would give Inf/NaN below
 omega ~ 1e-8.  Use `nuplus(nu, c)` for every expression of the form nu + c.
 """
 struct NuSplit
@@ -38,6 +38,7 @@ Base.:-(nu::NuSplit, c::Number) = nuplus(nu, -c)
 Base.Float64(nu::NuSplit) = nu.l + nu.delta
 Base.show(io::IO, nu::NuSplit) = print(io, "NuSplit(", nu.l, " + ", nu.delta, ")")
 
+# Coefficients alpha_n, beta_n, gamma_n of the MST three-term recurrence (Mano, Suzuki & Takasugi).
 function mst_abc(nu, n, s, epsilon, tau, kappa, lambda)
     # nu + n and nu + n + 1 are built with nuplus so that the exact zeros at
     # n = -l and n = -l - 1 become the (tiny, non-zero) residual delta.
@@ -52,6 +53,8 @@ function mst_abc(nu, n, s, epsilon, tau, kappa, lambda)
     return alpha, beta, gamma
 end
 
+# Minimal solutions of the MST recurrence for n > 0 (backward) and n < 0 (forward recursion),
+# with the ratios entering the equation for nu.
 function backward_rec(nu, s, epsilon, tau, kappa, lambda, N = _TruncatioN)
     f = zeros(ComplexF64, N + 1)
     if N == 0 || N == 1
@@ -80,6 +83,8 @@ function forward_rec(nu, s, epsilon, tau, kappa, lambda, N = _TruncatioN)
     return f, f[N] / f[N+1]
 end
 
+# Renormalized angular momentum nu (root of beta_0 + alpha_0 R + gamma_0 L, or its O(epsilon^2) series
+# when |epsilon| < _NU_SERIES_EPS or root finding fails) and the normalized MST coefficients.
 function mst_series(s, epsilon, tau, kappa, lambda, N = _TruncatioN, l = nothing)
     function g_nu(nu)
         f_positive, R = backward_rec(nu, s, epsilon, tau, kappa, lambda, N)
@@ -116,6 +121,8 @@ function mst_series(s, epsilon, tau, kappa, lambda, N = _TruncatioN, l = nothing
     return nu_conv, g_nu(nu_conv)[2]
 end
 
+# Small-frequency (MST) infinity solutions as sums of Tricomi U functions, used for x <= -R with R
+# returned; negative epsilon is handled by complex conjugation.
 function sfe_in(s, epsilon, tau, kappa, lambda, N = _TruncatioN, l = nothing)
     if epsilon < 0.0
         nu, coeffs, P, R = sfe_in(s, -epsilon, -tau, kappa, lambda, N, l)
@@ -143,8 +150,8 @@ function sfe_in(s, epsilon, tau, kappa, lambda, N = _TruncatioN, l = nothing)
             n = i - N
             a = nuplus(nu, n + 1 - s) + 1im * epsilon
             b = ComplexF64(2 * nuplus(nu, n + 1))
-            # d/dz U(a, b, z) = -a U(a + 1, b + 1, z); the former three-term recurrence
-            # divided by (b - 2) = 2 (n + nu), which vanishes at n = -l for integer nu.
+            # d/dz U(a, b, z) = -a U(a + 1, b + 1, z); this avoids a three-term recurrence that
+            # divides by (b - 2) = 2 (n + nu), which vanishes at n = -l for integer nu.
             U[i] = HypergeometricFunctions.U(a, b, z)
             U1[i] = - a * HypergeometricFunctions.U(a + 1, b + 1, z)
             U2[i] = a * (a + 1) * HypergeometricFunctions.U(a + 2, b + 2, z)

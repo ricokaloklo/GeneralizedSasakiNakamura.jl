@@ -2,8 +2,9 @@
     qnm_sequence(spins, s, l, m, n, branch=ordinary; guess=nothing, kwargs...)
     qnm_sequence(mode::QNMMode, spins; guess=nothing, kwargs...)
 
-Solve a labeled QNM along the supplied spin sequence. Each accepted result is
-the explicit seed for the next spin; the sequence stops at the first failure.
+Solve a labeled QNM along the supplied spin sequence and return a vector of
+`LeaverResult`. Each accepted result is the explicit seed for the next spin;
+the sequence stops after the first result whose status is not `:accepted`.
 Keywords are those of [`qnm_frequency`](@ref) (`convention`, `segment`, ...).
 """
 function qnm_sequence(spins, s::Integer, l::Integer, m::Integer, n::Integer,

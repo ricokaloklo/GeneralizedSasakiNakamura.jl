@@ -1,5 +1,4 @@
-# GSN-ISEM direct-route paths and their past failures (backlog items in backlog.md,
-# review sections in review.md and review.md).
+# GSN-ISEM direct-route paths: complex contours, endpoints, reflections, junctions and reported errors.
 
 if !@isdefined(GSN)
     include(joinpath(@__DIR__, "..", "load_package.jl"))
@@ -18,10 +17,9 @@ grid_point(id) = only(g for g in GRID_POINTS if g.id == id)
 @testset "isem_direct" begin
 
 # ---------------------------------------------------------------------------------------------------
-# Item 25 (backlog.md item 25; review "25:owner repair pending"; HANDOVER_20261005.md section (b)):
-# a = 0, omega = eps + 0.3i: the default junction put the infinity ray through the r* image of r = 0 and
-# returned O(1)-wrong amplitudes (B_inc 1.0 / .36 / 9.5e-3 / 9.5e-5 / 1.4e-6 at eps 1e-10..1e-5) while
-# reporting ~1e-12. Repaired values: IN <= 3.02e-11, UP <= 8.65e-15 (VERIFY 01:51). Tolerance 1e-9.
+# Near the positive imaginary axis, a = 0, omega = eps + 0.3i: a junction that puts the infinity ray through
+# the r* image of r = 0 returns O(1)-wrong amplitudes while reporting ~1e-12. Independent 384-bit references
+# (ITEM25_ROWS, ITEM25_AXIS); measured errors IN <= 3.02e-11, UP <= 8.65e-15. Tolerance 1e-9.
 # ---------------------------------------------------------------------------------------------------
 @testset "item 25: near the positive imaginary axis" begin
     for row in ITEM25_ROWS
@@ -35,7 +33,7 @@ grid_point(id) = only(g for g in GRID_POINTS if g.id == id)
             route = D.direct_gsn_radial(-2, 2, 2, row.a, row.omega, Symbol(row.branch))
             errors = D.DirectMatching.direct_amplitude_errors(route)
             dv = teukolsky_ratios(D.direct_teukolsky_radial_function(route))
-            # The repaired estimate is "of the right order" (handover: report 4.3e-11 vs actual 4.07e-11).
+            # The error estimate is of the right order (e.g. reported 4.3e-11 vs actual 4.07e-11).
             @test relerr(dv[1], row.incidence) <= max(2 * errors[1], 1e-13)
             @test relerr(dv[2], row.reflection) <= max(2 * errors[2], 1e-13)
             # At a = 0 the solution does not depend on m, so the exact reflection gives the mirrored point:
@@ -55,7 +53,7 @@ grid_point(id) = only(g for g in GRID_POINTS if g.id == id)
             @test relerr(first(teukolsky_ratios(R)), row.incidence) <= 1e-9
         end
     end
-    # GSN_radial must carry the same repair (it is the same direct route).
+    # GSN_radial uses the same direct route and must agree after amplitude conversion.
     for (a, w) in ((0.0, 1e-10 + 0.3im), (0.0, 1e-8 + 0.3im), (0.7, 1e-10 + 0.3im))
         for bc in (IN, UP)
             X = GSN_radial(-2, 2, 2, a, w, bc)
@@ -71,10 +69,8 @@ grid_point(id) = only(g for g in GRID_POINTS if g.id == id)
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Negative frequencies (review.md "Batch reflection"; backlog items 16-17): exact reflection
-# R_{s,l,m}(omega) = conj R_{s,l,-m}(-conj(omega)). Before the batch: 194 of 510 cell-branches violated it,
-# mirror qnm(.68) centre B_inc 49.7 instead of ~0, R_l3_a0.9_w1 IN 0.98.
-# References: validation rows (real and weakly damped, s = -2) carried to (-m, -conj(omega)).
+# Negative frequencies through the exact reflection R_{s,l,m}(omega) = conj R_{s,l,-m}(-conj(omega)).
+# References: independent validation rows (real and weakly damped, s = -2) carried to (-m, -conj(omega)).
 # ---------------------------------------------------------------------------------------------------
 @testset "negative frequencies through the exact reflection" begin
     rows = [p for p in STRONG_DAMPING_POINTS if startswith(p.id, "R_") || startswith(p.id, "D_")]
@@ -104,17 +100,17 @@ end
         @test R.incidence_amplitude / R.transmission_amplitude ≈ incidence rtol=1e-9
         @test R.reflection_amplitude / R.transmission_amplitude ≈ reflection rtol=1e-9
     end
-    # Mirror qnm(0.68) n0 frequency: B_inc vanishes (proposed/test_mst_reflection.jl).
+    # Mirror qnm(0.68) n0 frequency: B_inc vanishes.
     X = GSN_radial(-2, 2, 2, 0.68, -0.3111628576854571 - 0.0887546633199609im, IN)
     @test abs(X.incidence_amplitude) / max(1, abs(X.reflection_amplitude), abs(X.transmission_amplitude)) < 1e-10
-    # Real omega < 0 with Im = +0.0 and -0.0 give identical values (review.md "Batch reflection").
+    # Real omega < 0 with Im = +0.0 and -0.0 give identical values.
     for bc in (IN, UP)
         A = Teukolsky_radial(-2, 3, 3, 0.9, complex(-1.0, 0.0), bc)
         B = Teukolsky_radial(-2, 3, 3, 0.9, complex(-1.0, -0.0), bc)
         @test A.incidence_amplitude == B.incidence_amplitude
         @test A.reflection_amplitude == B.reflection_amplitude
     end
-    # Pairs straddling Re omega = 0 (+-1e-3, +-1e-6) are exact conjugates (review.md "Batch reflection").
+    # Pairs straddling Re omega = 0 (+-1e-3, +-1e-6) are exact conjugates.
     for (a, im_part) in ((0.7, -2.0), (0.0, -1.0)), re in (1e-3, 1e-6), bc in (IN, UP)
         P = Teukolsky_radial(-2, 2, 2, a, complex(re, im_part), bc)
         N = Teukolsky_radial(-2, 2, -2, a, complex(-re, im_part), bc)
@@ -124,9 +120,9 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Reflected amplitude uncertainty (backlog items 16, 17, 23): the weak-damping p-consensus IN routes
-# (grid 24/34/54/64/84/94/114/124/154/180) reported Inf before round 2; now finite and identical across
-# the reflection (test/runtests.jl "Reflected amplitude uncertainty", extended to all ten cells).
+# Reflected amplitude uncertainty: the weak-damping p-consensus IN routes (grid 24/34/54/64/84/94/114/124/
+# 154/180) report finite errors, identical across the reflection (test/runtests.jl "Reflected amplitude
+# uncertainty", extended to all ten cells).
 # ---------------------------------------------------------------------------------------------------
 @testset "reported errors across the reflection (item 23)" begin
     for id in (24, 34, 54, 64, 84, 94, 114, 124, 154, 180)
@@ -153,10 +149,10 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Explicit junction (review.md "Batch junction gate"; backlog item 20; proposed/test_explicit_junction.jl):
-# at the a = 0.7, l = m = 2, n = 10 root (UP), xm >= 0.5 fell back to the real-axis horizon path and returned
-# C_up off by 13..3e9 in C_ref units while reporting 8e-8..2e-2. Now the direct route raises; the public
-# auto method rethrows instead of silently using the legacy solver (main-module `xm === nothing || rethrow()`).
+# Explicit junction at the a = 0.7, l = m = 2, n = 10 root (UP): xm >= 0.5 cannot be certified (a real-axis
+# horizon path gives C_up off by 13..3e9 in C_ref units while reporting 8e-8..2e-2). The direct route raises;
+# the public auto method rethrows instead of silently using the legacy solver (main-module
+# `xm === nothing || rethrow()`).
 # ---------------------------------------------------------------------------------------------------
 @testset "explicit junction" begin
     q = point("Q_a07_m2_n10_at_f64")
@@ -167,7 +163,7 @@ end
         @test_throws ErrorException radial(-2, 2, 2, 0.7, 0.4198385710926635 - 2.09355961067422im, UP; xm=0.6)
         @test_throws ErrorException radial(-2, 2, 2, q.a, q.omega, UP; xm=0.6, method="GSN-ISEM")
     end
-    # Junctions that certify still give the reference C_ref; C_up stays within backlog item 1's class.
+    # Junctions that certify still give the reference C_ref; C_up stays within the buried-C_up tolerance class.
     scale = dominant(q.cup, q.cref)
     for xm in (0.3, 0.4)
         R = Teukolsky_radial(-2, 2, 2, q.a, q.omega, UP; xm=xm)
@@ -177,7 +173,7 @@ end
         err_cup = scaled_err(cup, q.cup, scale)
         if xm == 0.4
             @test err_cup <= 1.816e-5
-            @test_broken err_cup <= 1e-5   # backlog explicit-junction C_up limit
+            @test_broken err_cup <= 1e-5   # explicit-junction C_up limit
         else
             @test err_cup <= 1e-5
         end
@@ -196,8 +192,8 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Item 22 (known regression, backlog item 22): pinned UP C_up at the Q_a09_m2_n5 root with N = 96,
-# tol = 1e-14: error 4.85e-8 in C_ref units, reported 8.81e-9 (x5.5 short).
+# Known limitation: pinned UP C_up at the Q_a09_m2_n5 root with N = 96, tol = 1e-14: error 4.85e-8 in
+# C_ref units, reported 8.81e-9 (x5.5 short).
 # ---------------------------------------------------------------------------------------------------
 @testset "item 22: pinned UP at the a=0.9 n5 root" begin
     q = point("Q_a09_m2_n5_at_f64")
@@ -207,16 +203,15 @@ end
     scale = dominant(q.cup, q.cref)
     @test scaled_err(cref, q.cref, scale) <= 1e-9
     @test scaled_err(cup, q.cup, scale) <= 1e-6                 # regression bound (4.85e-8 measured)
-    @test_broken scaled_err(cup, q.cup, scale) <= 2 * errors[1] * abs(cup) / scale   # honest report (item 22)
+    @test_broken scaled_err(cup, q.cup, scale) <= 2 * errors[1] * abs(cup) / scale   # honest error report
     # The public default is better through the MST overlay (8.65e-12 measured).
     R = Teukolsky_radial(-2, 2, 2, q.a, q.omega, UP)
     @test scaled_err(first(teukolsky_ratios(R)), q.cup, scale) <= 1e-9
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Real-frequency MST branch (item 18, review.md "Round 2"): nu is complex outside |cos 2 pi nu| <= 1
-# (monodromy trichotomy). Before the fix 19 of 27 real points threw and 8 were wrong by up to 4e4.
-# Reference: validation rows (cloud, 27 real points). Worst after the fix 2.8e-10 relative.
+# Real-frequency MST branch: nu is complex outside |cos 2 pi nu| <= 1 (monodromy trichotomy).
+# Reference: independent validation rows (27 real points); worst measured error 2.8e-10 relative.
 # ---------------------------------------------------------------------------------------------------
 @testset "item 18: real-frequency MST principal amplitudes" begin
     rows = [p for p in STRONG_DAMPING_POINTS if startswith(p.id, "R_")]
@@ -238,7 +233,7 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Item 24: lambda input error. The SWSH eigenvalue carries a few ulp (8e-16 absolute at a = 0.7, l = 2,
+# Angular eigenvalue input error. The SWSH eigenvalue carries a few ulp (8e-16 absolute at a = 0.7, l = 2,
 # omega = 1); the tests fix that floor so that a regression in the angular input is visible.
 # ---------------------------------------------------------------------------------------------------
 @testset "item 24: angular eigenvalue input" begin
@@ -255,8 +250,8 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Default tolerance of Teukolsky_radial (review.md "Public Teukolsky_radial builds GSN-ISEM routes with the
-# ODE tolerance"; proposed/test_tolerance_passthrough.jl): the default call must use GSN-ISEM's tolerance.
+# Default tolerance of Teukolsky_radial: the default call must use the GSN-ISEM tolerance, not the ODE
+# tolerance.
 # ---------------------------------------------------------------------------------------------------
 @testset "default Teukolsky tolerance" begin
     for c in ((w=0.3 - 3.0im, cref=0.000034049211003554543018 - 0.000017510919791042320907im,
@@ -299,13 +294,13 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# Item 14 (full-state MST backend on the qnm(.68) stencil): rejected, i.e. it fails closed.
-# Item 26 (direct_complex_nia_jump): not verified (backlog "not this round").
+# The full-state MST backend on the qnm(.68) stencil is rejected, i.e. it fails closed.
+# direct_complex_nia_jump is not verified (no independent reference).
 # ---------------------------------------------------------------------------------------------------
 @testset "fail-closed and unverified paths" begin
     w = 0.5239751042900836 - 0.08151262363120163im
     @test_throws Exception D.direct_gsn_radial(-2, 2, 2, 0.68, w, :IN; backend=:mst)
-    @test_skip false   # TODO item 26: needs the cloud a = 0 and a = 0.7 references at -0.3i for the NIA jump
+    @test_skip false   # needs independent a = 0 and a = 0.7 references at -0.3i for the NIA jump
     for w in (1e-6, 1e-5), bc in (IN, UP)
         P = Teukolsky_radial(-2, 2, 2, 0.7, w, bc)
         N = Teukolsky_radial(-2, 2, -2, 0.7, -w, bc)

@@ -1,6 +1,6 @@
 # Teukolsky_pointparticle_flux totals.
 #
-# Tolerances (README.md, section "flux"): at tol = 1e-8 (full) infinity totals within 2e-8 relative; at
+# Tolerances: at tol = 1e-8 (full) infinity totals within 2e-8 relative; at
 # tol = 1e-6 (quick) within 2e-6. Horizon totals are judged in units of the matching infinity total
 # (|dEhor| <= rel |Einf|, likewise Lz, Q): the summation's stop rule is relative to the total flux, so a
 # small horizon flux is not resolved to rel of itself.
@@ -38,7 +38,7 @@ end
 
 find_orbit(table, a, p, e, x) = only(r for r in table if r.a == a && r.p == p && r.e == e && r.x == x)
 
-"a = 0 rotation identities (flux_compare/check_a0.py): E = E_eq, Lz = x Lz_eq, Q = 2 L (1-x^2) Lz_eq."
+"a = 0 rotation identities: E = E_eq, Lz = x Lz_eq, Q = 2 L (1-x^2) Lz_eq, with L = p / sqrt(p - 3 - e^2)."
 function rotated_equatorial(p, e, x)
     eq = find_orbit(EQUATORIAL_TOL10, 0.0, p, e, 1.0)
     L = p / sqrt(p - 3 - e^2)
@@ -49,8 +49,8 @@ end
 @testset "flux (tol = $FLUX_TOL)" begin
 
 # ---------------------------------------------------------------------------------------------------
-# Circular equatorial, prograde and retrograde (x = -1); references: tol = 1e-10 runs (frozen self-values,
-# existing circular path; flux_compare/modes_circ_*_tol1e-10.tsv). a = 0: x = -1 mirrors x = +1.
+# Circular equatorial, prograde and retrograde (x = -1); references: tol = 1e-10 runs of the circular path
+# (frozen self-values, EQUATORIAL_TOL10). a = 0: x = -1 mirrors x = +1.
 # ---------------------------------------------------------------------------------------------------
 @testset "circular equatorial" begin
     for (a, x) in ((0.9, 1.0), (0.9, -1.0), (0.0, 1.0), (0.0, -1.0))
@@ -70,7 +70,7 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # Eccentric equatorial: (0.9, 12, 0.5, +-1), (0, 10, 0.2, +-1) and the lower-sideband regression
-# (0.9, 10, 0.5, 1): omega = 0 side of the n-shells (fluxP rule (3); shared root 3.7e-7 low).
+# (0.9, 10, 0.5, 1): the n-shell stop must also cover the omega = 0 side (lower sideband).
 # ---------------------------------------------------------------------------------------------------
 @testset "eccentric equatorial" begin
     orbits = ((0.9, 12.0, 0.5, 1.0), (0.9, 12.0, 0.5, -1.0), (0.0, 10.0, 0.2, 1.0), (0.0, 10.0, 0.2, -1.0),
@@ -95,7 +95,7 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # a = 0 rotation identities: spherical x in (+-0.5, +-0.1) and generic (0, 10, 0.2, +-0.5) against the
-# equatorial references (check_a0.py). Shared root before the stop-rule fix: 1.2-1.9% off.
+# equatorial references.
 # ---------------------------------------------------------------------------------------------------
 @testset "Schwarzschild rotation identities" begin
     spherical = GSN_TEST_LEVEL === :quick ? (-0.5,) : (0.5, -0.5, 0.1, -0.1)
@@ -126,7 +126,7 @@ end
 # ---------------------------------------------------------------------------------------------------
 # Kerr spherical orbits. Reference: independent full-grid sum (SPHERICAL_FULLGRID) when present, otherwise the
 # tol = 1e-10 candidate run (CANDIDATE_TOL10, frozen self-reference; agrees with the full grid to <= 3e-11 at
-# the orbits where both exist). Backlog 29 tracks missing independent full-grid rows.
+# the orbits where both exist). Rows without an independent full-grid reference are marked as skipped.
 # ---------------------------------------------------------------------------------------------------
 SPHERICAL_ORBITS = [(r.a, r.p, r.x) for r in CANDIDATE_TOL10 if r.e == 0]
 @testset "Kerr spherical" begin
@@ -165,7 +165,7 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # Unbound / unstable orbits return nothing with a warning (src/GeneralizedSasakiNakamura.jl
-# _teukolsky_flux_bound_orbit). (0.9, 10, 0.5, -1) is not bound (shared_run_log.md 2026-10-05 01:50).
+# _teukolsky_flux_bound_orbit). (0.9, 10, 0.5, -1) is not bound.
 # ---------------------------------------------------------------------------------------------------
 @testset "unbound orbits" begin
     result = @test_logs (:warn, r"bound orbit") match_mode=:any Teukolsky_pointparticle_flux(0.9, 10.0, 0.5, -1.0)
@@ -192,8 +192,8 @@ end
     @test total.total_modes > 0
 end
 
-# Fixed l=2:7, n=-30:30 sums, independently refined at relative mode tolerance1e-11.
-# The outer l/n layers contribute less than7e-14; no summation stopping rule is used.
+# Fixed l=2:7, n=-30:30 sums, independently refined at relative mode tolerance 1e-11.
+# The outer l/n layers contribute less than 7e-14; no summation stopping rule is used.
 @testset "large-p eccentric full-box totals (item13)" begin
     for (p, infinity, horizon) in (
         (1e3, 7.069635134875905e-15, -6.639717219612091e-23),

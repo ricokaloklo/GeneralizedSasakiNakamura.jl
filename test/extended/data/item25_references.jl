@@ -1,7 +1,7 @@
 # Reference data and conventions are documented in ../README.md.
-# ITEM25_ROWS: independent 384-bit Teukolsky references for backlog item 25 (backlog25_reference_b384.tsv;
-# review.md section '25:owner repair pending'). incidence/reflection are B/B_trans
-# (IN) or C_up/C_trans, C_ref/C_trans (UP). meas_*: error of the shared root BEFORE the item-25 repair.
+# ITEM25_ROWS: independent 384-bit Teukolsky integration references near the positive imaginary axis
+# (omega = eps + 0.3i). incidence/reflection are B/B_trans (IN) or C_up/C_trans, C_ref/C_trans (UP).
+# meas_*: historical package errors at these points, not used as tolerances.
 const ITEM25_ROWS = [
     (id = "lower_e10", a = 0.0, omega = complex(1e-10, -0.3), branch = "IN", lambda = complex(4.0, 0.0), incidence = complex(1417.323255170568, -1289.2811272176389), reflection = complex(3.5608563375801725, -7.333711560290893e-10), meas_before = (4.53766334162653e-15, 3.3574624556156806e-15)),
     (id = "lower_e10", a = 0.0, omega = complex(1e-10, -0.3), branch = "UP", lambda = complex(4.0, 0.0), incidence = complex(-531.4962210918634, 483.48042226370103), reflection = complex(2752.606451659051, -2503.6783074265736), meas_before = (3.027564813197553e-14, 4.7123218772514426e-14)),
@@ -15,7 +15,7 @@ const ITEM25_ROWS = [
     (id = "upper_spin07", a = 0.7, omega = complex(1e-10, 0.3), branch = "UP", lambda = complex(3.988339448934813, -1.3994548196352707), incidence = complex(328.9620775709849, -61.79072442323365), reflection = complex(-11.298135410551616, -9.171010618653563), meas_before = (7.39810097524337e-12, 2.4679341769033163e-12)),
 ]
 # ITEM25_AXIS: incidence-type amplitude (B_inc/B_trans for IN, C_up/C_trans for UP) on and near the
-# positive imaginary axis from backlog25_wronskian_axis384.tsv (384-bit Teukolsky integration, Wronskian-based).
+# positive imaginary axis (independent 384-bit Teukolsky integration, Wronskian-based).
 const ITEM25_AXIS = [
     (a = 0.0, omega = complex(0.0, 0.3), branch = "IN", incidence = complex(3846.3869020421307, -0.0), meas_before = 4.074087471532795e-11),
     (a = 0.0, omega = complex(0.0, 0.3), branch = "UP", incidence = complex(360.5987720664498, -0.0), meas_before = 4.5121916049362776e-15),

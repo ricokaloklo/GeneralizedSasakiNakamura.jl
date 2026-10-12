@@ -55,10 +55,9 @@ The `GSN-ISEM` path constructs the GSN function $X$ directly and
 derives the Teukolsky function $R$ and source-adapted function $Y$ from the same
 matched solution. `method = "auto"` tries this route first and falls back to
 the legacy automatic radial solver only after an explicit construction failure;
-`method = "GSN-ISEM"` selects it strictly with no fallback. The former spelling
-`method = "direct_ISEM"` is retained only as a
-compatibility alias; `method = "ISEM"` selects the previous implementation,
-while `linear` and `Riccati` select the legacy ODE solvers.
+`method = "GSN-ISEM"` selects it strictly with no fallback, and
+`method = "direct_ISEM"` is a strict alias of it; `method = "ISEM"` selects the
+original Teukolsky-based ISEM, while `linear` and `Riccati` select the legacy ODE solvers.
 
 ```@raw html
 <p align="center">

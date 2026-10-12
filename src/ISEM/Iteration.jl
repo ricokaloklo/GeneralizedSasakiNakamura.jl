@@ -62,6 +62,10 @@ end
     return N === nothing ? _AUTO_STEP_SAFETY * Δx : Δx
 end
 
+# Infinity IN solution of the P equation: start from the asymptotic series (or the small-frequency
+# MST expansion when sfe = 1) and step towards the horizon with ordinary-point Taylor patches until
+# x >= xm. Returns the patch start points, the patch coefficients and x -> (P, dP/dx, d2P/dx2,
+# residual). iterate_inf_out is the OUT analogue.
 function iterate_inf_in(xm, s, epsilon, tau, kappa, lambda, N = _TruncatioN, l = nothing, tol = _TOLERANCE, sfe = 0)
     use_sfe = sfe == 1
     if use_sfe
@@ -170,6 +174,9 @@ function iterate_inf_out(xm, s, epsilon, tau, kappa, lambda, N = _TruncatioN, l 
     return x_list, coeffs_list, evaluate_P
 end
 
+# Horizon IN solution: start from the series at x = 0 (or the large-frequency expansion when lfe = 1)
+# and step away from the horizon with ordinary-point patches until x <= xm. iterate_zero_out is the
+# OUT analogue.
 function iterate_zero_in(xm, s, epsilon, tau, kappa, lambda, N = _TruncatioN, tol = _TOLERANCE, lfe = 0)
     if lfe == 1
         Nlfe = min(_fixed_or_auto_N(N), _LFE_INTERNAL_NMAX)
@@ -358,6 +365,8 @@ function iterate_zero_out(xm, s, epsilon, tau, kappa, lambda, N = _TruncatioN, t
     end
 end
 
+# Rotated-contour versions (x = -rho/z): step from the infinity series inward to rho_m, or from the
+# horizon series outward; the seed series is stored as the first patch.
 function iterate_inf_in_rho(rho_m, s, epsilon, tau, kappa, lambda, z, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0)
     coeffs_inf, Nopt, R0 = inf_in_coeffs(s, epsilon, tau, kappa, lambda, z, N; tol = tol)
     rho = R0
@@ -525,6 +534,8 @@ function iterate_zero_in_rho(rho_m, s, epsilon, tau, kappa, lambda, z, N = _Trun
     return rho_list, coeffs_list, evaluate_P
 end
 
+# Horizon solutions at the superradiance threshold (tau = -epsilon), where the exponents differ by an
+# integer and one solution carries a log term; seeded at x = -1/4.
 function iterate_zero_out_resonant_log(xm, s, epsilon, kappa, lambda, N = _TruncatioN, tol = _TOLERANCE)
     Nuse = N === nothing ? _AUTO_NMAX : N
     h, b, log_coefficient = zero_out_resonant_log_coeffs(s, epsilon, kappa, lambda, Nuse)

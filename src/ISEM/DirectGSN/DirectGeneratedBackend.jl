@@ -10,6 +10,8 @@ using ..DirectCoefficientTables:
 export direct_generated_coefficients, generated_backend_loaded
 export preload_direct_gsn_coefficient_tables!
 
+# Lengths of the A numerator, A denominator, B numerator and B denominator
+# blocks in a packed generated coefficient vector.
 struct _PQLayout
     ap_len::Int
     aq_len::Int
@@ -40,6 +42,8 @@ const _ALL_GENERATED_TABLES = (
     ("basis_ys_splus2", "regime_basis_full_matrix/direct_gsn_basis_ys_splus2.jl", 2),
 )
 
+# Spin weights whose generated tables are included at load time, read from
+# DIRECT_GSN_GENERATED_SPINS (comma-separated; default all of -2:2).
 function _requested_generated_spins()
     raw = strip(get(ENV, "DIRECT_GSN_GENERATED_SPINS", ""))
     isempty(raw) && return (-2, -1, 0, 1, 2)
@@ -49,6 +53,8 @@ function _requested_generated_spins()
     return Tuple(spins)
 end
 
+# Ordinary-point bases included at load time, read from DIRECT_GSN_GENERATED_BASES
+# (comma-separated yc/ys; default both).
 function _requested_generated_bases()
     raw = strip(get(ENV, "DIRECT_GSN_GENERATED_BASES", ""))
     isempty(raw) && return (:yc, :ys)
@@ -131,6 +137,8 @@ function _split_endpoint(values::Vector{ComplexF64}, s::Integer, group::Symbol, 
     return DirectEndpointCoefficientSet(A, B, basis)
 end
 
+# Return false if the horizon, infinity and ordinary tables for (s, basis) were
+# included at load time; otherwise throw, since they cannot be added later.
 function _ensure_generated_loaded!(s::Integer, basis::Symbol)
     tag = _spin_tag(s)
     required = ("h_hc_$tag", "i_ic_$tag", "basis_$(basis)_$tag")
@@ -140,6 +148,8 @@ function _ensure_generated_loaded!(s::Integer, basis::Symbol)
         "Julia process with DIRECT_GSN_GENERATED_SPINS including $s."))
 end
 
+# Resolve the ordinary-point basis: :auto uses :ys for |a| = |sin(nu)| <= 1e-3
+# and :yc otherwise.
 function _ordinary_basis(nu::Float64, requested::Symbol)
     requested in (:auto, :stable_default) && return abs(sin(nu)) <= 1e-3 ? :ys : :yc
     requested in (:yc, :ys) && return requested
@@ -210,6 +220,9 @@ function _construct_coefficients(params, s::Integer, lambda, m, nu, omega; contr
     return _construct_coefficients_loaded(params, s, lambda, m, nu, omega, controls, ordinary_basis, false)
 end
 
+# Build the DirectCoefficientSet from the generated endpoint (:hc, :ic) and
+# ordinary tables. For LFE runs `horizon_shift` is set, so ordinary-point A and B
+# are taken from a Taylor shift of the horizon rational coefficients when accurate.
 function _construct_coefficients_loaded(params, s::Integer, lambda, m, nu, omega, controls, ordinary_basis::Symbol, requires_latest_world::Bool)
     endpoint_basis = _control_endpoint_basis(controls)
     endpoint_basis.horizon == :hc ||

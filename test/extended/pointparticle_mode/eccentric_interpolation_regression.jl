@@ -1,8 +1,8 @@
 @testset "eccentric checked radial interpolation" begin
     ci = GSN.ConvolutionIntegrals
     gs = GSN.GridSampling
-    # The last three cases pin the three non-default branches of the table build (found by scanning the
-    # V3 high-n grid): deferred (no refinement large enough to pay for the table), fallback (no 512-point
+    # The last three cases pin the three non-default branches of the table build (found by scanning a
+    # high-n eccentric grid): deferred (no refinement large enough to pay for the table), fallback (no 512-point
     # table passes the self-check; exact samples are used), and a table accepted after one doubling.
     cases = (
         ((0.9, 6.0, 0.7), (-2, 2, 2, 10), :any),

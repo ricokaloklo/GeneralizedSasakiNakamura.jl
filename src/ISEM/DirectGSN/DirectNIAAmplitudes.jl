@@ -43,6 +43,8 @@ const _FAST_ANCHOR_RATIO_HIGH = 5.0
 const _FAST_ANCHOR_ORDER = 40
 const _FAST_ANCHOR_TOLERANCE = 1.0e-14
 
+# State evaluator that multiplies X and dX/dr* of another evaluator by a
+# constant complex scale.
 struct ScaledEvaluator{E}
     evaluator::E
     scale::ComplexF64
@@ -104,6 +106,8 @@ end
     ) / scale
 end
 
+# Least-squares complex scale c minimizing |target - c * candidate| over the
+# (value, derivative) pair; nothing if either pair is zero or not finite.
 function _fit_pair_scale(target, candidate)
     target_scale = max(abs(target[1]), abs(target[2]))
     candidate_scale = max(abs(candidate[1]), abs(candidate[2]))
@@ -124,6 +128,10 @@ function _fit_pair_scale(target, candidate)
     return _finite(scale) ? ComplexF64(scale) : nothing
 end
 
+# For an IN route with a rational evaluator and omega in the near-real sector,
+# compare the state at the match point with a real-axis propagation from the
+# horizon and rescale the evaluator when they differ by a pure scale.
+# Returns (evaluator, metadata).
 function _in_real_axis_anchor(route, evaluator)
     rejected(status; projective_error=Inf, scale=ComplexF64(NaN, NaN),
             departure=Inf, steps=-1) = (
@@ -229,6 +237,9 @@ function _in_real_axis_anchor(route, evaluator)
     )
 end
 
+# Whether `build` overlays analytic MST amplitudes: default controls, |s| = 2,
+# a != 0, and omega within _REAL_RATIO_MAX of the negative imaginary axis with
+# _MIN_ABS_IMAG_OMEGA <= |Im(omega)| <= _MAX_ABS_IMAG_OMEGA.
 @inline function _pretrigger(
     s,
     a,
@@ -277,6 +288,10 @@ end
         _MAX_ABS_IMAG_OMEGA
 end
 
+# Replace the route's incidence and reflection amplitudes (GSN and Teukolsky)
+# by transmission times the analytic ratios in `result`, and record the
+# analytic certificate in the metadata. Returns the route unchanged if any
+# value is not finite.
 function _overlay(
     route::DirectComplexRoute,
     result;
@@ -478,6 +493,9 @@ end
         max(abs(imag(value)), 1.0)
 end
 
+# Outgoing MST state at x = _STATE_ANCHOR_X. Uses the monodromy state at the
+# complex nu when nu is away from an integer and the sum converges, else the
+# principal-branch anchor; `certified` and `source` record which was used.
 function _mst_out_anchor(
     source;
     nu=nothing,
@@ -783,6 +801,9 @@ function _sfe_state_anchor(
     )
 end
 
+# Check the route state against an independent reference and rescale or
+# replace its evaluator when they disagree: the real-axis propagation for IN,
+# the MST outgoing anchor for UP. Returns (evaluator, metadata).
 function _state_anchor(
     route;
     nu=nothing,
@@ -935,6 +956,9 @@ function _state_anchor(
     )
 end
 
+# Analytic MST amplitudes for the route: principal amplitudes for a rational
+# evaluator, else refined amplitudes at the complex nu when certified. Returns
+# (result, nu, kind) or nothing.
 function _analytic_result(route)
     p = route.params
     evaluator = route.state_evaluator
@@ -975,6 +999,9 @@ function _analytic_result(route)
     return nothing
 end
 
+# Preconditions of `_fast_route`: default controls, IN or UP, kappa above the
+# P-consensus limit, Im(omega) < 0 with Re(omega) != 0, |omega| in
+# (_FAST_ANCHOR_MIN_OMEGA, max_omega], and omega close to either axis.
 @inline function _fast_anchor_pretrigger(
     a,
     omega,
@@ -1039,6 +1066,9 @@ end
         ratio >= _FAST_ANCHOR_RATIO_HIGH
 end
 
+# Route built directly from certified principal (or refined) MST amplitudes and
+# an MST state anchor at x = _STATE_ANCHOR_X, without a two-ray propagation.
+# Returns nothing whenever a precondition, certificate or tolerance fails.
 function _fast_route(
     s,
     l,
@@ -1371,6 +1401,8 @@ function _fast_route(
     )
 end
 
+# Whether an IN route from the P-route fallback or consensus backend, with
+# _FAST_ANCHOR_MAX_OMEGA < |omega| <= max_omega, is retried with `_fast_route`.
 @inline function _fast_p_pretrigger(
     route::DirectComplexRoute;
     max_omega::Float64=_MAX_ABS_IMAG_OMEGA,
@@ -1441,6 +1473,10 @@ function _fast_p_rescue(
     return candidate === nothing ? route : candidate
 end
 
+# Whether the analytic-amplitude comparison runs after a route was built:
+# default controls, Im(omega) < 0, and either omega near the negative imaginary
+# axis or a route whose amplitudes came from the complex-rational or
+# log-scaled MST backends.
 @inline function _offaxis_pretrigger(
     route::DirectComplexRoute,
     ;
@@ -1540,6 +1576,10 @@ end
     return route_backend == :direct_gsn_p_build_fallback
 end
 
+# Post-route hook registered with DirectComplexFrequency: tries the fast
+# MST-anchor rescue, then (when triggered) compares the route amplitudes with
+# the analytic MST ones and re-anchors the UP/IN state. Returns the route
+# unchanged when nothing applies.
 @noinline function _post_overlay(
     route::DirectComplexRoute,
     s,
@@ -1768,8 +1808,8 @@ function _post_overlay_triggered(route, amplitude_trigger, state_trigger)
 end
 
 # The analytic value of one coefficient with the two-ray value of the other
-# (each kept with its own error), applied as an overlay so that the UP state
-# is rebuilt from the pair.
+# (each kept with its own error), applied as an overlay; the state keeps the
+# anchored evaluator and is not rebuilt from the pair.
 function _overlay_part(anchored_route, route, result, decision, anchor)
     two_ray = (route.incidence, route.reflection) ./ route.transmission
     two_ray_teukolsky = (route.teukolsky_incidence,
@@ -1790,6 +1830,10 @@ function _overlay_part(anchored_route, route, result, decision, anchor)
     return _with_amplitude_errors(overlaid, errors)
 end
 
+# Special route builder registered with DirectComplexFrequency: returns a route
+# from the fast MST-anchor path, or for default controls with omega near the
+# negative imaginary axis the two-ray route with the analytic MST amplitudes
+# overlaid; nothing lets the caller build its usual route.
 @noinline function build(
     s,
     l,

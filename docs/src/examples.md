@@ -90,8 +90,19 @@ detailed.Y(r)
 detailed.R(r)
 ```
 
-See [Quasinormal modes](@ref) for the excitation-factor convention and the
-root-only interface.
+When only the frequency is needed, `qnm_frequency` and `qnm_sequence` take the
+same numbers:
+
+```julia
+root = qnm_frequency(0.68, -2, 2, 2, 0)
+roots = qnm_sequence([0.0, 0.3, 0.68], -2, 2, 2, 0)
+
+qnm_frequency(0.68, -2, 2, 2, 9; convention=:complete_spectrum)   # Cook's 8₁
+qnm_frequency(0.5, -2, 2, 0, 10; segment=1)                       # Cook's 10₁
+```
+
+See [Quasinormal modes](@ref) for the excitation-factor convention, the overtone
+label conventions and the segments.
 
 ## Example 2: Plotting reflectivity of black holes (in GSN formalism)
 ```julia

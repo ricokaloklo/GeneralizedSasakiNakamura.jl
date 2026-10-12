@@ -101,7 +101,7 @@ Keyword summary:
 
 | keyword | default | meaning |
 | :--- | :--- | :--- |
-| `method` | `"auto"` | `"auto"` tries GSN-ISEM first and falls back to the legacy automatic route only on direct failure with no explicit `xm`; `"GSN-ISEM"` is strict; `"ISEM"` selects the previous implementation; `"linear"` and `"Riccati"` select the legacy GSN ODE solvers |
+| `method` | `"auto"` | `"auto"` tries GSN-ISEM first and falls back to the legacy automatic route only on direct failure with no explicit `xm`; `"GSN-ISEM"` is strict; `"ISEM"` selects the original Teukolsky-based ISEM; `"linear"` and `"Riccati"` select the legacy GSN ODE solvers |
 | `tol` | internal default | ISEM matching tolerance or alias for the ODE tolerance in high-level calls |
 | `tolerance` | internal default | legacy ODE tolerance; `tol` takes precedence when both are supplied |
 | `xm` | `nothing` | matching point: `0 < xm < 1` for GSN-ISEM; a negative matching coordinate for the original ISEM |
@@ -148,7 +148,7 @@ X = GSN_radial(s, l, m, a, omega, IN; method = "auto")
 X = GSN_radial(s, l, m, a, omega, UP; method = "auto")
 ```
 
-`method = "auto"` tries the direct GSN-ISEM route first and falls back to the legacy automatic radial route only after a direct-construction failure with no explicit `xm`. `method = "GSN-ISEM"` is strict and does not fall back. The former `"direct_ISEM"` spelling remains a strict compatibility alias. The previous implementation remains available as `"ISEM"`, and `"linear"` and `"Riccati"` select the legacy GSN ODE evolution. Matching controls, the static branch, and the superradiance-threshold branch follow the same rules as `Teukolsky_radial`.
+`method = "auto"` tries the direct GSN-ISEM route first and falls back to the legacy automatic radial route only after a direct-construction failure with no explicit `xm`. `method = "GSN-ISEM"` is strict and does not fall back; `"direct_ISEM"` is a strict alias of it. The original Teukolsky-based ISEM is available as `"ISEM"`, and `"linear"` and `"Riccati"` select the legacy GSN ODE evolution. Matching controls, the static branch, and the superradiance-threshold branch follow the same rules as `Teukolsky_radial`.
 
 Returned objects are `GSNRadialFunction`. They are callable:
 

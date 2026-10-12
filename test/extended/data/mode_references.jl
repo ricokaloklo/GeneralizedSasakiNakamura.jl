@@ -1,7 +1,6 @@
 # Reference data and conventions are documented in ../README.md.
-# MODES_56: spherical-orbit single modes (n = 0) at 7 orbits x 8 modes. pub_*: published GSN 0.9.0
-# (flux_compare/modes_published.tsv); dev_*: shared dev root 2026-10-04 (flux_compare/modes_dev.tsv).
-# Cloud mpmath comparison (HANDOVER_20261005.md, 'Per-mode infinity accuracy data'): infinity dev <= 1.4e-10,
+# MODES_56: spherical-orbit single modes (n = 0) at 7 orbits x 8 modes. pub_*: published GSN 0.9.0;
+# dev_*: frozen self-values of this package. Against independent mpmath values: infinity dev <= 1.4e-10,
 # published <= 4e-13; horizon dev <= 8e-11, published <= 6e-8. *_ppmode = Teukolsky_pointparticle_mode(-+2, ...),
 # *_modeflux = ModeSummation.inclined_mode_flux defaults.
 const MODES_56 = [
@@ -174,9 +173,9 @@ const MODES_56 = [
         pub_Einf = 4.775186019182179e-08, pub_Ehor = 1.1210370456038392e-14, pub_Lzinf = 1.5100464071608177e-06, pub_Qinf = 5.707438945020155e-06, pub_Einf_pp = 4.775186019182186e-08, pub_Ehor_pp = 1.1210370456038386e-14,
         dev_Einf = 4.775186018969015e-08, dev_Ehor = 1.1210370456038659e-14, dev_Lzinf = 1.5100464070934094e-06, dev_Qinf = 5.707438944765375e-06, dev_Einf_pp = 4.775186018969018e-08, dev_Ehor_pp = 1.1210370456038675e-14),
 ]
-# TABLE_MODES: rows of the tol=1e-10 summation tables (frozen self-values, rule-C/fluxCg tree; each row is a
-# single (l,m,k,n) mode from the summation's own convolution path at its sampling). Used as a cross-path
-# consistency check of Teukolsky_pointparticle_mode with a loose tolerance (see pointparticle_mode/README).
+# TABLE_MODES: rows of the tol=1e-10 summation tables (frozen self-values; each row is a single (l,m,k,n)
+# mode from the summation's own convolution path at its sampling). Used as a cross-path consistency check
+# of Teukolsky_pointparticle_mode with a loose tolerance.
 const TABLE_MODES = [
     (src = "flux_compare/modes_ecc_a0.9_p10_e0.5_x1_tol1e-10.tsv", a = 0.9, p = 10.0, e = 0.5, x = 1.0, l = 2, m = 2, k = 0, n = 3, omega = 0.09269119652224657, Einf = 5.862528577268641e-06, Ehor = -2.3730887672228617e-08),
     (src = "flux_compare/modes_ecc_a0.9_p10_e0.5_x1_tol1e-10.tsv", a = 0.9, p = 10.0, e = 0.5, x = 1.0, l = 2, m = 2, k = 0, n = 2, omega = 0.07608693549769101, Einf = 5.594096195255835e-06, Ehor = -1.7392031255071556e-08),

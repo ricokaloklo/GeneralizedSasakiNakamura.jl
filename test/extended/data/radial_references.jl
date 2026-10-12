@@ -1,11 +1,11 @@
 # Reference data and conventions are documented in ../README.md.
 # Package-independent Teukolsky amplitude references (mpmath MST + direct complex-path integration,
-# 90-160 digits, only agreeing digits kept): strong_damping_reference/README.md.
+# 90-160 digits, only agreeing digits kept).
 # Ratios are B/B_trans and C/C_trans (Teukolsky, unit transmission). E is the spheroidal eigenvalue
 # (E -> l(l+1)); lam is lambda = E - 2amw + a^2w^2 - s(s+1) where the source gives it directly.
-# meas_dom / meas_rel: public-route errors measured on the shared root by out/reference73_rd2base.tsv
-#   (dominant units / relative); rep_direct / act_direct: direct-route reported and actual relative errors.
-# tol: dominant-unit tolerance per amplitude (IN inc, IN ref, UP inc, UP ref); note: backlog citation.
+# meas_dom / meas_rel: measured public-route errors (dominant units / relative); rep_direct / act_direct:
+#   direct-route reported and actual relative errors.
+# tol: dominant-unit tolerance per amplitude (IN inc, IN ref, UP inc, UP ref); notes: reason for a wider tol.
 const STRONG_DAMPING_POINTS = [
     (id = "G1", s = -2, l = 2, m = 2, a = 0.7, omega = complex(0.5, -0.1),
         E = complex(4.978000991860607, 0.22415166724239105), lam = nothing,
@@ -594,7 +594,7 @@ const STRONG_DAMPING_POINTS = [
 ]
 
 # Reference data and conventions are documented in ../README.md.
-# GRID_POINTS: the 180-point (s,l,m,a,omega) review grid of the validation sweep (parameters copied from out/grid_root.tsv).
+# GRID_POINTS: the 180-point (s,l,m,a,omega) grid of the validation sweep.
 const GRID_POINTS = [
     (id = 1, s = -2, l = 2, m = -2, a = 0.0, omega = complex(1.0, 0.0)),
     (id = 2, s = -2, l = 2, m = -2, a = 0.0, omega = complex(-0.5, -2.0)),
@@ -779,11 +779,11 @@ const GRID_POINTS = [
 ]
 
 # GRID_REFERENCES: Independent direct Teukolsky Taylor references (no GSN tables; endpoint series derived
-# independently; review.md 'Independent broad-grid reference'). Primary: 896-bit run
-# (teuk896 + rest1 + rest2 + jq12s1teuk896 + ycteuk896), fallback 640-bit; ref_spread = relative 640-vs-896 difference of (inc, ref, R5, R10).
+# independently). Primary: 896-bit runs, fallback 640-bit; ref_spread = relative 640-vs-896 difference of
+# (inc, ref, R5, R10).
 # Values are B/B_trans or C/C_trans and R(r)/trans at r = 5, 10, unit Teukolsky transmission.
-# meas_amp: dominant-unit amplitude errors of the shared root on out/grid_root.tsv (2026-10-04 03:49);
-# meas_R5/meas_R10: R(r) relative errors of the shared root on out/rerr_base.tsv (2026-10-04 20:39).
+# meas_amp: measured dominant-unit amplitude errors of the package; meas_R5/meas_R10: measured R(r) relative
+# errors of the package (NaN: not measured). They select tolerance classes only.
 const GRID_REFERENCES = [
     (id = 7, branch = "IN", incidence = complex(26.41588191080164, 19.025095423352525), reflection = complex(-2.17882186151678e-13, 1.2016770383041471e-13), R5 = complex(-0.8569261062587626, 2.2040246110723705), R10 = complex(2.0862236795197115, -0.04044629007619238), bits = 896, ref_spread = (0.0, 0.0, 0.0, 0.0),
         meas_amp = (5.2113249505981765e-12, 2.8640562410359593e-11), meas_R5 = 4.958e-08, meas_R10 = 4.524e-07),
@@ -992,10 +992,10 @@ const GRID_REFERENCES = [
 ]
 
 # Reference data and conventions are documented in ../README.md.
-# CLOUD_CELLS: package-independent real-axis R(r) references at strong damping (cloud_refs/realaxis_R_reference/cells_reference.tsv;
-# README there: horizon Frobenius + exact Taylor steps along real r at dps 100/140, lambda by Leaver CF +
-# spectral check at dps 160). R values are R(r)/B_trans (unit Teukolsky transmission).
-# meas: shared-root relative error of R(r) from out/rerr_base.tsv (NaN: not measured).
+# CLOUD_CELLS: package-independent real-axis R(r) references at strong damping (horizon Frobenius + exact
+# Taylor steps along real r at dps 100/140, lambda by Leaver CF + spectral check at dps 160).
+# R values are R(r)/B_trans (unit Teukolsky transmission).
+# meas: measured relative error of R(r) of the package (NaN: not measured).
 const CLOUD_CELLS = [
     (id = 12, branch = "IN", s = -2, l = 4, m = -4, a = 0.0001, omega = complex(2.0, -5.0), lambda = complex(18.001919865289686, -0.00480012828868567), binc = complex(11.765834887534423, 4.594654034144743), bref = complex(2.0082026550056727e-06, -2.4030306179626327e-06),
         R = [(r = 2.5, R = complex(1.2301433944102966, 0.9471683098168916), meas = 2.651e-09), (r = 3.0, R = complex(-0.13202846516104344, 0.08556176289728248), meas = 0.0001006), (r = 4.0, R = complex(35233.265517967586, 54826.301655505355), meas = 0.0001007), (r = 5.0, R = complex(-145302707.51264825, -1173991960.851457), meas = 0.0001007), (r = 10.0, R = complex(1.3405237696678917e+25, -5.668404662687476e+24), meas = 0.0001007), (r = 20.0, R = complex(-1.479635718074418e+51, -1.5901682325471762e+51), meas = 0.0001007)]),

@@ -1,6 +1,6 @@
-# Verbatim copy of the registered suite test/runtests.jl (snapshot 2026-10-05), adapted only by
-# (1) dropping its two using-lines and (2) writing GSN. for GeneralizedSasakiNakamura. so it runs on any
-# loaded checkout. Guarantees that the extended suite is a superset of the registered one.
+# Copy of an earlier snapshot of the registered suite test/runtests.jl, adapted only by (1) dropping its
+# two using-lines and (2) writing GSN. for GeneralizedSasakiNakamura. so it runs on any loaded checkout.
+# The current test/runtests.jl has further testsets that are not copied here.
 
 
 @testset "registered suite (test/runtests.jl)" begin
@@ -145,7 +145,7 @@
         @test overtone7.status == overtone10.status == :accepted
         @test abs(overtone10.omega - overtone7.omega) > 0.1
 
-        # This root was n=30 before overtone relabeling (Python qnm / Cook labels).
+        # Overtone label in the Python qnm / Cook convention.
         overtone29 = qnm_frequency(QNMMode(-2, 2, 2, 29), 0.5)
         @test overtone29.status == :accepted
         @test overtone29.omega ≈ 0.2725174928809329 - 6.734330683370764im atol=1e-10 rtol=0

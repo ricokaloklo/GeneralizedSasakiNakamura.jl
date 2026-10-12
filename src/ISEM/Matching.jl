@@ -28,6 +28,7 @@ function _warn_matching_mismatch(context, mismatch, split, N, requested_tol)
     return nothing
 end
 
+# N values tried by _adaptive_N_solution: N0, N0 +- 1, 2, 3, 5, 8, 10, 15, then a few small N.
 function _matching_N_candidates(N; max_attempts = _MAX_N_MATCHING_ATTEMPTS)
     N0 = max(Int(N), _MIN_MATCHING_N)
     raw_candidates = (
@@ -101,6 +102,7 @@ function _normalize_solution(eval_P, x, norm)
     return (P / norm, dP / norm, d2P / norm, error)
 end
 
+# P(x) from lower_eval for x < split and from upper_eval for split <= x < 0, divided by `norm`.
 function _make_piecewise_solution(split, lower_eval, upper_eval, norm)
     function _P(x)
         x_selector = real(x)
@@ -115,6 +117,8 @@ end
 
 _is_horizon_superradiance_threshold(s, epsilon, tau) = abs(epsilon + tau) < 1e-12
 
+# Moves the junction within [split_min, split_max] by interval halving to reduce the relative
+# mismatch |P_lower - P_upper|/min(|P_lower|, |P_upper|); returns the solution, junction and mismatch.
 function _adaptive_piecewise_solution(split, lower_eval, upper_eval, norm, split_min, split_max; mismatch_tol = 1e-12, maxiter = 16, tol = _TOLERANCE)
     lo = min(split_min, split_max)
     hi = max(split_min, split_max)
@@ -161,6 +165,8 @@ function _adaptive_piecewise_solution(split, lower_eval, upper_eval, norm, split
     return _make_piecewise_solution(best_x, lower_eval, upper_eval, norm), best_x, best_m
 end
 
+# Refits the connection coefficients at the current junction and re-optimizes the junction, up to
+# `maxiter` times (IN here, UP in _iterative_adaptive_refit_pup).
 function _iterative_adaptive_refit_pin(xm_match, xm_min, xm_max, P_inf_in, P_inf_out, P_zero_in, (Btrans, s, epsilon, tau, kappa); mismatch_tol = 1e-12, maxiter = 5, N = nothing)
     CInfIn = 0im
     CInfOut = 0im
@@ -227,79 +233,6 @@ function _iterative_adaptive_refit_pup(xm_match, xm_min, xm_max, P_inf_out, P_ze
     return _P, (CZeroIn, CZeroOut), xsplit, split_mismatch
 end
 
-function _Pin_real(s, l, m, a, omega, xm = _xm, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0, TSinInf = 0, TSoutInf = 0, TSinHor = 0; components = false)
-    params = isem_parameters(TeukolskyParameters(s, l, m, a, omega))
-    kappa = params.kappa
-    epsilon = params.epsilon
-    tau = params.tau
-    lambda = params.lambda
-    Btrans = B_trans(s, epsilon, tau, kappa)
-
-    if TSinHor == 1
-        if s == -2
-            x_list_zero_in, coe_list_zero_in, P_zero_in_plus = iterate_zero_in(xm, -s, epsilon, tau, kappa, lambda - 4, N, tol, lfe)
-            Rplus, P_zero_in = PlusTwo_to_MinusTwo_Hor(P_zero_in_plus, m, a, omega, lambda - 4)
-        else
-            x_list_zero_in, coe_list_zero_in, P_zero_in = iterate_zero_in(xm, s, epsilon, tau, kappa, lambda, N, tol, lfe)
-        end
-    else
-        x_list_zero_in, coe_list_zero_in, P_zero_in = iterate_zero_in(xm, s, epsilon, tau, kappa, lambda, N, tol, lfe)
-    end
-
-    if TSinInf == 1
-        if s == 2
-            x_list_inf_in, coe_list_inf_in, P_inf_in_minus = iterate_inf_in(xm, -s, epsilon, tau, kappa, lambda + 4, N, l, tol, sfe)
-            Rminus, P_inf_in = MinusTwo_to_PlusTwo_Inf(P_inf_in_minus, m, a, omega, lambda + 4)
-        else
-            x_list_inf_in, coe_list_inf_in, P_inf_in = iterate_inf_in(xm, s, epsilon, tau, kappa, lambda, N, l, tol, sfe)
-        end
-    else
-        x_list_inf_in, coe_list_inf_in, P_inf_in = iterate_inf_in(xm, s, epsilon, tau, kappa, lambda, N, l, tol, sfe)
-    end
-
-    if TSoutInf == 1
-        if s == -2
-            x_list_inf_out, coe_list_inf_out, P_inf_out_plus = iterate_inf_out(xm, -s, epsilon, tau, kappa, lambda - 4, N, l, tol, sfe)
-            Rplus, P_inf_out = PlusTwo_to_MinusTwo_Inf(P_inf_out_plus, m, a, omega, lambda - 4)
-        else
-            x_list_inf_out, coe_list_inf_out, P_inf_out = iterate_inf_out(xm, s, epsilon, tau, kappa, lambda, N, l, tol, sfe)
-        end
-    else
-        x_list_inf_out, coe_list_inf_out, P_inf_out = iterate_inf_out(xm, s, epsilon, tau, kappa, lambda, N, l, tol, sfe)
-    end
-
-    CInfIn = - C_inf(xm, P_zero_in, P_inf_out, s, epsilon, tau, kappa)
-    CInfOut = C_inf(xm, P_zero_in, P_inf_in, s, epsilon, tau, kappa)
-    Binc = B_inc(CInfIn, epsilon, tau, kappa)
-    Bref = B_ref(CInfOut, s, epsilon, tau, kappa)
-
-    lower_eval(x) = begin
-        Pin, dPin, d2Pin, error_in = P_inf_in(x)
-        Pout, dPout, d2Pout, error_out = P_inf_out(x)
-        P = Pin * CInfIn + Pout * CInfOut
-        dP = dPin * CInfIn + dPout * CInfOut
-        d2P = d2Pin * CInfIn + d2Pout * CInfOut
-        return (P, dP, d2P, max(error_in, error_out))
-    end
-    upper_eval(x) = P_zero_in(x)
-    _P = _make_piecewise_solution(xm, lower_eval, upper_eval, Btrans)
-
-    if components
-        return _P, (Binc / Btrans, Bref / Btrans), (
-            P_zero_in = P_zero_in,
-            P_inf_in = P_inf_in,
-            P_inf_out = P_inf_out,
-            CInfIn = CInfIn,
-            CInfOut = CInfOut,
-            Btrans = Btrans,
-            xm = xm,
-            xsplit = xm,
-        )
-    end
-
-    return _P, (Binc / Btrans, Bref / Btrans)
-end
-
 # Junction in [xm_min, xm_max] for the UP and complex-frequency matches: `nothing`
 # takes _xm when it lies in the range and the midpoint otherwise; a requested xm
 # outside the range is rejected.
@@ -310,6 +243,8 @@ function _junction(xm, xm_min, xm_max)
     return xm
 end
 
+# Real-frequency IN solution: the horizon IN series is matched to the infinity IN/OUT basis, which is
+# iterated from infinity up to the junction; returns P and (B_inc/B_trans, B_ref/B_trans).
 function _Pin_real_adaptive(s, l, m, a, omega, xm = nothing, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0, TSinInf = 0, TSoutInf = 0, TSinHor = 0; components = false)
     params = isem_parameters(TeukolskyParameters(s, l, m, a, omega))
     kappa = params.kappa
@@ -391,79 +326,8 @@ function _Pin_real_adaptive(s, l, m, a, omega, xm = nothing, N = _TruncatioN, to
     return _P, (Binc / Btrans, Bref / Btrans)
 end
 
-function _Pup_real(s, l, m, a, omega, xm = _xm, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0, TSoutInf = 0, TSinHor = 0, TSoutHor = 0; components = false)
-    params = isem_parameters(TeukolskyParameters(s, l, m, a, omega))
-    kappa = params.kappa
-    epsilon = params.epsilon
-    tau = params.tau
-    lambda = params.lambda
-    Ctrans = C_trans(s, epsilon, kappa)
-
-    if TSinHor == 1
-        if s == -2
-            x_list_zero_in, coe_list_zero_in, P_zero_in_plus = iterate_zero_in(xm, -s, epsilon, tau, kappa, lambda - 4, N, tol, lfe)
-            Rplus, P_zero_in = PlusTwo_to_MinusTwo_Hor(P_zero_in_plus, m, a, omega, lambda - 4)
-        else
-            x_list_zero_in, coe_list_zero_in, P_zero_in = iterate_zero_in(xm, s, epsilon, tau, kappa, lambda, N, tol, lfe)
-        end
-    else
-        x_list_zero_in, coe_list_zero_in, P_zero_in = iterate_zero_in(xm, s, epsilon, tau, kappa, lambda, N, tol, lfe)
-    end
-
-    if TSoutHor == 1
-        if s == 2
-            x_list_zero_out, coe_list_zero_out, P_zero_out_minus = iterate_zero_out(xm, -s, epsilon, tau, kappa, lambda + 4, N, tol, lfe)
-            Rminus, P_zero_out = MinusTwo_to_PlusTwo_Hor(P_zero_out_minus, m, a, omega, lambda + 4)
-        else
-            x_list_zero_out, coe_list_zero_out, P_zero_out = iterate_zero_out(xm, s, epsilon, tau, kappa, lambda, N, tol, lfe)
-        end
-    else
-        x_list_zero_out, coe_list_zero_out, P_zero_out = iterate_zero_out(xm, s, epsilon, tau, kappa, lambda, N, tol, lfe)
-    end
-
-    if TSoutInf == 1
-        if s == -2
-            x_list_inf_out, coe_list_inf_out, P_inf_out_plus = iterate_inf_out(xm, -s, epsilon, tau, kappa, lambda - 4, N, l, tol, sfe)
-            Rplus, P_inf_out = PlusTwo_to_MinusTwo_Inf(P_inf_out_plus, m, a, omega, lambda - 4)
-        else
-            x_list_inf_out, coe_list_inf_out, P_inf_out = iterate_inf_out(xm, s, epsilon, tau, kappa, lambda, N, l, tol, sfe)
-        end
-    else
-        x_list_inf_out, coe_list_inf_out, P_inf_out = iterate_inf_out(xm, s, epsilon, tau, kappa, lambda, N, l, tol, sfe)
-    end
-
-    CZeroIn = - C_zero(xm, P_inf_out, P_zero_out, s, epsilon, tau, kappa)
-    CZeroOut = C_zero(xm, P_inf_out, P_zero_in, s, epsilon, tau, kappa)
-    Cinc = C_inc(CZeroOut, epsilon, tau, kappa)
-    Cref = C_ref(CZeroIn, s, epsilon, tau, kappa)
-
-    lower_eval(x) = P_inf_out(x)
-    upper_eval(x) = begin
-        Pin, dPin, d2Pin, error_in = P_zero_in(x)
-        Pout, dPout, d2Pout, error_out = P_zero_out(x)
-        P = Pin * CZeroIn + Pout * CZeroOut
-        dP = dPin * CZeroIn + dPout * CZeroOut
-        d2P = d2Pin * CZeroIn + d2Pout * CZeroOut
-        return (P, dP, d2P, max(error_in, error_out))
-    end
-    _P = _make_piecewise_solution(xm, lower_eval, upper_eval, Ctrans)
-
-    if components
-        return _P, (Cinc / Ctrans, Cref / Ctrans), (
-            P_zero_in = P_zero_in,
-            P_zero_out = P_zero_out,
-            P_inf_out = P_inf_out,
-            CZeroIn = CZeroIn,
-            CZeroOut = CZeroOut,
-            Ctrans = Ctrans,
-            xm = xm,
-            xsplit = xm,
-        )
-    end
-
-    return _P, (Cinc / Ctrans, Cref / Ctrans)
-end
-
+# Real-frequency UP solution: the infinity OUT solution is matched to the horizon IN/OUT basis; at the
+# superradiance threshold (epsilon + tau = 0) the affected horizon solution uses a logarithmic series.
 function _Pup_real_adaptive(s, l, m, a, omega, xm = nothing, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0, TSoutInf = 0, TSinHor = 0, TSoutHor = 0; components = false)
     params = isem_parameters(TeukolskyParameters(s, l, m, a, omega))
     kappa = params.kappa
@@ -556,6 +420,8 @@ function _Pup_real_adaptive(s, l, m, a, omega, xm = nothing, N = _TruncatioN, to
     return _P, (Cinc / Ctrans, Cref / Ctrans)
 end
 
+# Complex-frequency IN solution: the amplitudes come from matching on the rotated contour
+# x = -rho/z (z = omega/|omega|) at rhom; the returned P on the real x axis is matched separately.
 function _Pin_contour(s, l, m, a, omega, rhom = _rhom, xm = nothing, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0, TSinInf = 0, TSoutInf = 0, TSinHor = 0; components = false)
     params = rho_parameters(TeukolskyParameters(s, l, m, a, omega))
     z = params.z
@@ -684,6 +550,7 @@ function _Pin_contour(s, l, m, a, omega, rhom = _rhom, xm = nothing, N = _Trunca
     return _P, (Binc / Btrans, Bref / Btrans)
 end
 
+# Complex-frequency UP solution, structured as _Pin_contour.
 function _Pup_contour(s, l, m, a, omega, rhom = _rhom, xm = nothing, N = _TruncatioN, tol = _TOLERANCE, sfe = 0, lfe = 0, TSoutInf = 0, TSinHor = 0, TSoutHor = 0; components = false)
     params = rho_parameters(TeukolskyParameters(s, l, m, a, omega))
     z = params.z
@@ -818,6 +685,8 @@ function _Pup_contour(s, l, m, a, omega, rhom = _rhom, xm = nothing, N = _Trunca
     return _P, (Cinc / Ctrans, Cref / Ctrans)
 end
 
+# IN solution P and (B_inc/B_trans, B_ref/B_trans) for real or complex omega; `components = true` also
+# returns the matching metadata, and then a fixed N warns if the matching mismatch is above tolerance.
 function _Pin(s, l, m, a, omega; xm = nothing, rhom = _rhom, N = nothing, tol = _TOLERANCE, sfe = 0, lfe = 0, TSinInf = 0, TSoutInf = 0, TSinHor = 0, components = false)
     solve_at_N = if _is_omega_complex(omega)
         Ncand -> _Pin_contour(s, l, m, a, omega, rhom, xm, Ncand === nothing ? _TruncatioN : Ncand, tol, sfe, lfe, TSinInf, TSoutInf, TSinHor; components = true)
@@ -841,6 +710,7 @@ function _Pin(s, l, m, a, omega; xm = nothing, rhom = _rhom, N = nothing, tol = 
     return result[1], result[2]
 end
 
+# UP analogue of _Pin, returning (C_inc/C_trans, C_ref/C_trans).
 function _Pup(s, l, m, a, omega; xm = nothing, rhom = _rhom, N = nothing, tol = _TOLERANCE, sfe = 0, lfe = 0, TSoutInf = 0, TSinHor = 0, TSoutHor = 0, components = false)
     solve_at_N = if _is_omega_complex(omega)
         Ncand -> _Pup_contour(s, l, m, a, omega, rhom, xm, Ncand === nothing ? _TruncatioN : Ncand, tol, sfe, lfe, TSoutInf, TSinHor, TSoutHor; components = true)

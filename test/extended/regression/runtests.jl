@@ -1,6 +1,5 @@
-# One testset per historical bug / backlog item, each citing its source. Items whose main test lives in
-# another group are listed in README.md ("historical items") and only re-pinned here when a short, direct
-# reproducer exists.
+# One testset per previously observed failure or known limitation. Cases whose main test lives in another
+# group are only re-pinned here when a short, direct reproducer exists.
 
 if !@isdefined(GSN)
     include(joinpath(@__DIR__, "..", "load_package.jl"))
@@ -18,7 +17,7 @@ grid_point(id) = only(g for g in GRID_POINTS if g.id == id)
 # Snapshot of earlier registered tests; current Pkg.test remains separate.
 include(joinpath(@__DIR__, "registered_suite.jl"))
 
-# backlog.md item 1: a = 0.7, l = m = 2, n = 10 root, UP C_up buried at the junction (1.78e-6 in C_ref units).
+# a = 0.7, l = m = 2, n = 10 root, UP C_up buried at the junction (1.78e-6 in C_ref units).
 @testset "backlog 1: buried C_up at the a=0.7 n10 root" begin
     q = point("Q_a07_m2_n10_at_f64")
     R = Teukolsky_radial(-2, 2, 2, q.a, q.omega, UP)
@@ -26,10 +25,10 @@ include(joinpath(@__DIR__, "registered_suite.jl"))
     scale = dominant(q.cup, q.cref)
     @test scaled_err(cref, q.cref, scale) <= 1e-9
     @test scaled_err(cup, q.cup, scale) <= 1e-5
-    @test_broken scaled_err(cup, q.cup, scale) <= 1e-10   # backlog 1: buried horizon coefficient
+    @test_broken scaled_err(cup, q.cup, scale) <= 1e-10   # buried horizon coefficient
 end
 
-# backlog.md items 2 and 3: a = 0 n12 / n20 roots, UP C_up (1.0e-7 / 1.2e-7 in C_ref units).
+# a = 0 n12 / n20 roots, UP C_up (1.0e-7 / 1.2e-7 in C_ref units).
 @testset "backlog 2-3: a=0 high-overtone UP C_up" begin
     for (id, floor) in (("Q_a0_n12_at_f64", 1e-6), ("Q_a0_n20_at_f64", 1e-6), ("Q_a0_n12_off_f64", 5e-9))
         q = point(id)
@@ -61,11 +60,11 @@ end
     state = R.Teukolsky_solution(6.0)
     @test length(state) == 4
     @test all(isfinite, state[1:3])
-    # Passes on the 2026-10-05 shared root (after the item-25 merge): the slot now carries a positive estimate.
+    # The error slot carries a positive estimate.
     @test state[4] > 0
 end
 
-# backlog.md item 6: R(r) floor at real / weak damping (grid id45 UP 5.5e-8, id70 IN 4.2e-8, id111 UP 3.6e-8 at r = 10).
+# R(10) at real frequency (grid id45 UP, id70 IN, id111 UP): normalization floor.
 @testset "backlog 6: R(r) floor at real frequency" begin
     refs = Dict((r.id, r.branch) => r for r in GRID_REFERENCES)
     for (id, branch) in ((45, "UP"), (70, "IN"), (111, "UP"))
@@ -74,11 +73,11 @@ end
         R = Teukolsky_radial(g.s, g.l, g.m, g.a, g.omega, branch == "IN" ? IN : UP)
         err = relerr(R(10.0) / R.transmission_amplitude, ref.R10)
         @test err <= 1e-6
-        @test err <= 1e-12   # backlog 6 (grid70 normalization floor) now passes; same threshold
+        @test err <= 1e-12
     end
 end
 
-# backlog.md items 7-9: estimates short by x1.12-x1.32 (two-ray step budget, ys tables, MST eps floor).
+# Error estimates short by x1.12-x1.32 (two-ray step budget, ys tables, MST eps floor).
 @testset "backlog 7-9: under-reports stay within x2" begin
     for (id, branch, j) in (("D_l2_a0.9_w2.0-0.1i", :UP, 1), ("Q_a07_m2_n10_at_f64", :UP, 2),
                             ("Q_a0_n9_off_f64", :UP, 1), ("Q_a0_n20_off_f64", :UP, 1), ("Q_a09_m2_n0_off_f64", :IN, 1))
@@ -89,11 +88,11 @@ end
         reported = D.DirectMatching.direct_amplitude_errors(route)[j]
         actual = relerr(values[j], refs[j])
         @test actual <= 2 * reported
-        @test_broken actual <= reported   # backlog 7-9: amplitude error estimate
+        @test_broken actual <= reported   # amplitude error estimate
     end
 end
 
-# backlog.md item 10: real-frequency suppressed amplitudes; dominant units on group R (configuration F).
+# Real-frequency suppressed amplitudes, in dominant units on the real-frequency (R_) validation points.
 @testset "backlog 10: suppressed real-frequency amplitudes" begin
     for id in ("R_l3_a0.7_w3.0", "R_l2_a0.9_w2.0", "R_l2_a0.9_w3.0", "R_l4_a0.9_w3.0")
         q = point(id)
@@ -104,15 +103,14 @@ end
     end
 end
 
-# backlog.md item 12 (open): mst_nu_complex rejects nu at id32/id62 by Float64 evaluation noise. Not observable
-# through public values (MST condition 1e10-1e11 there). TODO: internal reproducer with the BigFloat nu reference
-# (backlog_nu_reference_reference.tsv) once the gate is redesigned.
+# Open: mst_nu_complex rejects nu at grid id32/id62 by Float64 evaluation noise. Not observable through public
+# values (MST condition 1e10-1e11 there); needs an internal reproducer with a BigFloat nu reference.
 @testset "backlog 12: nu gate (open)" begin
     @test_skip false
 end
 
-# backlog.md item 16 / review.md "Batch reflection": B_inc at grid 24/34/54/64 IN (omega = -0.1-0.05i, m flipped)
-# was 2.9-3.0 relative wrong; now the exact conjugate of the Re omega > 0 partner.
+# B_inc at grid 24/34/54/64 IN (omega = -0.1-0.05i, m flipped) is the exact conjugate of the Re omega > 0
+# partner.
 @testset "backlog 16: Re omega < 0 two-ray cells" begin
     for id in (24, 34, 54, 64)
         g = grid_point(id)
@@ -125,7 +123,7 @@ end
     end
 end
 
-# backlog.md item 17 (open): explicit-control calls at Re omega < 0 are not reflected at the route level, so
+# Open: explicit-control calls at Re omega < 0 are not reflected at the route level, so
 # the two signs are separate two-ray computations. Their disagreement must stay within the two reports.
 @testset "backlog 17: explicit controls at Re omega < 0" begin
     g = grid_point(24)
@@ -138,11 +136,11 @@ end
     for j in 1:2
         @test abs(rn[j] - conj(rp[j])) <= en[j] * abs(rn[j]) + ep[j] * abs(rp[j]) + 1e-14 * dominant(rp...)
     end
-    @test_broken rn[1] == conj(rp[1])   # backlog 17: explicit-control reflection
+    @test_broken rn[1] == conj(rp[1])   # explicit-control reflection
 end
 
-# backlog.md item 20 / review.md "Batch junction gate": explicit xm with method = "auto" rethrows instead of
-# silently using the legacy ODE solver (which returned C_up 4.52e4 off in C_ref units at every xm >= 0.5).
+# Explicit xm with method = "auto" rethrows instead of silently using the legacy ODE solver (which returns
+# C_up 4.52e4 off in C_ref units at every xm >= 0.5).
 @testset "backlog 20: no silent legacy fallback with explicit xm" begin
     q = point("Q_a07_m2_n10_at_f64")
     @test_throws ErrorException GSN_radial(-2, 2, 2, q.a, q.omega, UP; xm=0.7)
@@ -151,7 +149,7 @@ end
     @test X.method == "GSN-ISEM"
 end
 
-# backlog.md item 23: Inf reported errors from the p-consensus route; now |p - two-ray| + E(two-ray).
+# The p-consensus route reports |p - two-ray| + E(two-ray), which must be finite.
 @testset "backlog 23: finite reports on p-consensus routes" begin
     for id in (24, 34, 54, 64, 84, 94, 114, 124, 154, 180)
         g = grid_point(id)
@@ -160,10 +158,8 @@ end
     end
 end
 
-# backlog.md item 25 is pinned in isem_direct; the registered-suite copy above repeats the e10 references.
-
-# review.md "Public Teukolsky_radial builds GSN-ISEM routes with the ODE tolerance" (C_ref/C_up off 2.0e-9 at a = 0,
-# w = 0.3-3i): default Teukolsky_radial and GSN_radial use the same route and agree to rounding.
+# Default Teukolsky_radial and GSN_radial use the same GSN-ISEM route and tolerance and agree to rounding
+# (an ODE tolerance on this route gives C_ref/C_up off by 2.0e-9 at a = 0, w = 0.3-3i).
 @testset "default tolerance passthrough" begin
     for (s, l, m, a, w) in ((-2, 2, 2, 0.0, 0.3 - 3.0im), (-2, 2, 2, 0.7, 0.5 - 0.1im), (2, 3, 1, 0.9, 1.0 - 0.5im))
         for bc in (IN, UP)
@@ -182,8 +178,7 @@ end
     end
 end
 
-# Detailed QNM normalization regression: the detailed normalization bridge failed
-# (residual 1.63e-10 > 1e-10). The shared root had 4.15e-13.
+# Detailed QNM normalization bridge: residual and Richardson drifts within their gates.
 @testset "detailed QNM normalization bridge" begin
     detailed = qnm(0.68, -2, 2, 2, 0; detailed=true)
     @test detailed.status == :accepted
@@ -192,8 +187,8 @@ end
     @test detailed.excitation.step_drift <= 1e-7
 end
 
-# Weak-damping UP state regression: R(10) at grid 64/134/38/164/8 UP (omega = 0.1-0.05i)
-# rose to 4.6e-7..8e-10; references from jq12_grid_reference_jq12s1teuk{640,896}.tsv.
+# Weak-damping UP state: R(5), R(10) at grid 64/134/38/164/8 UP (omega = 0.1-0.05i) against the independent
+# 896-bit grid references (GRID_REFERENCES).
 @testset "weak-damping UP state (jq12s1)" begin
     refs = Dict((r.id, r.branch) => r for r in GRID_REFERENCES)
     for id in (64, 134, 38, 164, 8)
@@ -205,8 +200,7 @@ end
     end
 end
 
-# HANDOVER_20261005.md "Per-mode infinity accuracy data": published KerrGeodesics 0.3 gave Q = -10.714 at
-# (a, p, e, x) = (0, 10, 0, 0.5); the correct value is +75/7.
+# KerrGeodesics 0.3 gave Q = -10.714 at (a, p, e, x) = (0, 10, 0, 0.5); the correct value is +75/7.
 @testset "KerrGeodesics Carter-constant sign" begin
     for x in (0.5, -0.5, 0.2)
         Q = GSN.KerrGeodesics.kerr_geo_orbit(0.0, 10.0, 0.0, x)["CarterConstant"]
@@ -214,11 +208,11 @@ end
     end
 end
 
-# HANDOVER (c): the l-streak flux patches were VOID because they were wrong for retrograde orbits; any stop rule
-# must keep a retrograde spherical orbit consistent with its a = 0 rotation identity.
+# Any stop rule must keep a retrograde spherical orbit consistent with its a = 0 rotation identity
+# (an l-streak stop rule fails this check).
 @testset "retrograde spherical stop rule (a = 0)" begin
     F = Teukolsky_pointparticle_flux(0.0, 10.0, 0.0, -0.5; tol=1e-6)
-    E_eq = 6.150372548996145e-5          # modes_circ_a0_p10_x1_tol1e-10.tsv header
+    E_eq = 6.150372548996145e-5          # a = 0, p = 10 circular prograde total (EQUATORIAL_TOL10)
     Lz_eq = 0.001944918571340336
     @test relerr(F.infinity_energy_flux, E_eq) <= 2e-6
     @test relerr(F.infinity_angular_momentum_flux, -0.5 * Lz_eq) <= 2e-6
@@ -226,9 +220,8 @@ end
 
 end # regression
 
-# backlog.md item 30 (2026-10-05): GSN_pointparticle_mode forwarded Nmax = 2^12, Kmax = 2^9 instead of the adaptive
-# defaults of Teukolsky_pointparticle_mode, so the two public routes disagreed (Carter flux 1.2e-2 for this generic
-# mode, 3e-8 for spherical k = 1). Fix: patches/gsn_mode_defaults.patch. Broken until merged; then unexpected pass.
+# GSN_pointparticle_mode and Teukolsky_pointparticle_mode must use the same grid defaults; otherwise the two
+# public routes disagree (Carter flux 1.2e-2 for this generic mode, 3e-8 for spherical k = 1).
 @testset "backlog 30: GSN vs Teukolsky point-particle mode defaults" begin
     for c in ((-2, 2, 2, 1, 1, 0.9, 10.0, 0.2, 0.3), (2, 2, 1, 0, 1, 0.9, 10.0, 0.0, 0.5))
         T = Teukolsky_pointparticle_mode(c...)

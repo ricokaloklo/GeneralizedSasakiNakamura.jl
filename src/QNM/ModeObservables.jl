@@ -98,6 +98,9 @@ function _estimated_decimal_digits(relative_drift)
     return max(zero(T), -log10(relative_drift))
 end
 
+# Turn one `LeaverResult` into the public result: validate it with GSN-ISEM,
+# compute the excitation factor, and wrap it as QNMResult, QNMEstimate,
+# QNMEndpointResult or QNMFailure (with radial solutions when `detailed`).
 function _qnm_branch_observables(root, excitation_options;
         input_a=root.a, detailed::Bool=false)
     if !(root.status in (:accepted, :estimated))
@@ -419,17 +422,24 @@ re-polished on the negative-real branch. Amplitudes and frequency derivatives
 are evaluated at that branch; the radial solver may use exact conjugation
 symmetry rather than solve the reflected equation again.
 
-`segment` selects the segment of a sequence that ends on the negative
-imaginary axis (see [`qnm_frequency`](@ref)); the mirror of segment `k` is
-seeded from the ordinary segment `k`.
+`convention` (`:overtone`, `:complete_spectrum` or `:leaver`), `inversion_index`
+and `segment` (`0`, `1` or `:auto`) have the meaning described in
+[`qnm_frequency`](@ref); `segment` selects the segment of a sequence that ends
+on the negative imaginary axis, and the mirror of segment `k` is seeded from
+the ordinary segment `k`. `primary_guess` and `mirror_guess` are optional
+explicit frequency guesses for the `ordinary` and `mirror` roots
+(`convention=:leaver` requires one).
 
 Use [`qnm_pair`](@ref) only when both branches are required in one result.
 `root_options` and `excitation_options` are optional NamedTuples forwarded to
 `qnm_frequency` and `qnm_excitation_factor`. The no-keyword call uses package
-defaults. If the frequency, incidence-zero, normalization, and finiteness
-checks pass but only the Richardson step-drift target is missed, the call
+defaults. The result is a `QNMResult` when every gate passes. If the
+observables are finite but one production gate is missed (usually the
+Richardson step-drift target; the gate is named in `limiting_gate`), the call
 returns `QNMEstimate` with the finite observables and measured convergence
-indicator. It does not relax the production acceptance threshold.
+indicator. It does not relax the production
+acceptance threshold. A failed gate returns `QNMFailure`, and an exact-extremal
+zero-damping endpoint returns `QNMEndpointResult`.
 """
 function qnm(a, s::Integer, l::Integer, m::Integer, n::Integer,
         branch::QNMBranch=ordinary;
@@ -462,7 +472,10 @@ end
 """
     qnm_pair(a, s, l, m, n; kwargs...)
 
-Compute and return both complete QNM branches. Prefer [`qnm`](@ref) when only
+Compute and return both complete QNM branches as a `QNMPairResult` with fields
+`ordinary` and `mirror`. Keywords are those of [`qnm`](@ref). Without
+`mirror_guess`, the mirror root is seeded from `-conj` of the ordinary
+`(a, -m)` root and re-polished directly. Prefer [`qnm`](@ref) when only
 one branch is needed so the other branch is not evaluated.
 """
 function qnm_pair(a, s::Integer, l::Integer, m::Integer, n::Integer;

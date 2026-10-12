@@ -31,8 +31,8 @@ kerr_delta(a, r) = r^2 - 2r + a^2
 horizon_k(a, m, omega) = omega - m * a / (2 * kerr_rplus(a))
 
 """
-Wronskian identity between the IN and UP Teukolsky amplitudes (unit transmissions), derived in
-strong_damping_reference/README.md (section Points) from the package's asymptotic forms:
+Wronskian identity between the IN and UP Teukolsky amplitudes (unit transmissions), derived from the
+package's asymptotic forms:
     C_up (4 i k r_+ + 2 s kappa) = 2 i omega B_inc .
 Returns (lhs, rhs).
 """

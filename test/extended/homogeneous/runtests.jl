@@ -1,10 +1,10 @@
 # Homogeneous radial solutions: GSN_radial / Teukolsky_radial against package-independent references,
-# plus invariants on parameter grids. Reference provenance: README.md, section "homogeneous".
+# plus invariants on parameter grids. Reference provenance: ../README.md, "Radial amplitudes".
 #
 # Conventions used below (package source, verified against the references in this file):
 # * Teukolsky_radial(..., IN/UP) is normalized to unit Teukolsky transmission (UNIT_TEUKOLSKY_TRANS);
-#   incidence/reflection are B_inc, B_ref (IN) and C_up, C_ref (UP) in the forms of
-#   strong_damping_reference/README.md.
+#   incidence/reflection are B_inc, B_ref (IN) and C_up, C_ref (UP), as ratios to the transmission
+#   amplitude.
 # * Exact conjugation symmetry of the Teukolsky equation on real r (src/ISEM/ISEM.jl
 #   _conjugate_teukolsky_radial_function; DirectComplexFrequency.direct_gsn_radial comment):
 #       R_{s,l,m}(omega; r) = conj R_{s,l,-m}(-conj(omega); r),  lambda -> conj(lambda),
@@ -44,7 +44,7 @@ is_threshold(a, m, omega) = isreal(omega) && abs(omega - m * a / (2 * kerr_rplus
 # ---------------------------------------------------------------------------------------------------
 # 1. Independent references: G1-G10 (strong damping), 24 QNM-root/off-root Float64 points, 39 real and
 #    weakly damped validation points (s = -2). 4 amplitudes, lambda and the amplitude Wronskian per point.
-#    Tolerances: dominant units, 1e-9 unless the row cites a backlog item (data/radial_references.jl).
+#    Tolerances: dominant units, 1e-9 unless the row records a wider class (data/radial_references.jl).
 # ---------------------------------------------------------------------------------------------------
 @testset "independent references: public Teukolsky_radial" begin
     for p in level_subset(STRONG_DAMPING_POINTS, 6)
@@ -66,7 +66,7 @@ is_threshold(a, m, omega) = isreal(omega) && abs(omega - m * a / (2 * kerr_rplus
             @test Rin.normalization_convention == UNIT_TEUKOLSKY_TRANS
             @test Rup.normalization_convention == UNIT_TEUKOLSKY_TRANS
             @test Rin.boundary_condition == IN && Rup.boundary_condition == UP
-            # Angular eigenvalue: independent Leaver/spectral value (item 24: input lambda error is a few ulp).
+            # Angular eigenvalue: independent Leaver/spectral value (input lambda error is a few ulp).
             lam_ref = p.lam !== nothing ? p.lam :
                 p.E - 2 * p.a * p.m * p.omega + p.a^2 * p.omega^2 - p.s * (p.s + 1)
             @test abs(Rin.mode.lambda - lam_ref) <= 1e-12 * max(1, abs(lam_ref))
@@ -85,11 +85,10 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # 2. The same points through the direct route, with its own error report (direct_amplitude_errors).
-#    Coverage rule (checked against out/reference73_rd2base.tsv before writing):
+#    Coverage rule (from measured errors at these points):
 #    * complex omega, non-suppressed amplitude: actual relative error <= 2 x reported
-#      (known under-reports x1.12-1.32: backlog items 7, 8, 9);
-#    * real omega: <= 100 x reported (measured under-reports up to x51 at omega = 1, rd2base;
-#      not a backlog item yet -- see README "findings");
+#      (known under-reports x1.12-1.32);
+#    * real omega: <= 100 x reported (measured under-reports up to x51 at omega = 1);
 #    * incidence at a QNM root (`_at` points, value ~0): reported >= 0.5, i.e. "no digits" is reported.
 # ---------------------------------------------------------------------------------------------------
 @testset "independent references: direct route and reported errors" begin
@@ -101,7 +100,7 @@ end
             errors = D.DirectMatching.direct_amplitude_errors(route)
             refs = branch == :IN ? (p.binc, p.bref) : (p.cup, p.cref)
             scale = dominant(refs...)
-            @test all(isfinite, errors)   # item 23: no Inf reports
+            @test all(isfinite, errors)   # no Inf reports
             for j in 1:2
                 jj = 2 * (bi - 1) + j
                 @test scaled_err(values[j], refs[j], scale) <= p.tol[jj]
@@ -119,13 +118,13 @@ end
 end
 
 # ---------------------------------------------------------------------------------------------------
-# 3. Independent 90 independent (id, branch) Teukolsky references on the s = -2..2 grid: amplitudes in dominant
-#    units and R(5), R(10) relative. R tolerance class from the measured shared-root error (rerr_base):
-#    <= 1e-8 -> 1e-6;  <= 1e-5 -> 1e-4 (backlog item 6: R(r) floor at real/weak damping);
-#    larger -> @test_broken (backlog item 5: R(r) past the dominant/subdominant crossover at strong damping).
+# 3. Independent (id, branch) Teukolsky references on the s = -2..2 grid: amplitudes in dominant units and
+#    R(5), R(10) relative. R tolerance class from the measured package error (meas_R5, meas_R10):
+#    <= 1e-8 -> 1e-6;  <= 1e-5 -> 1e-4 (R(r) floor at real/weak damping);
+#    larger -> @test_broken (R(r) past the dominant/subdominant crossover at strong damping).
 # ---------------------------------------------------------------------------------------------------
 GRID_BY_ID = Dict(g.id => g for g in GRID_POINTS)
-# Amplitude cells above 2e-10 on the 2026-10-04 root, not covered by a backlog item (strong damping, a >= 0.9).
+# Amplitude cells with measured errors above 2e-10 (strong damping, a >= 0.9): wider tolerances.
 GRID_AMPLITUDE_EXCEPTIONS = Dict((142, "IN") => 2e-8, (178, "UP") => 2e-8, (159, "UP") => 2e-8,
     (72, "IN") => 5e-9, (72, "UP") => 5e-9, (157, "UP") => 5e-9)
 
@@ -138,22 +137,20 @@ GRID_AMPLITUDE_EXCEPTIONS = Dict((142, "IN") => 2e-8, (178, "UP") => 2e-8, (159,
             inc, refl = teukolsky_ratios(R)
             scale = dominant(ref.incidence, ref.reflection)
             tol = get(GRID_AMPLITUDE_EXCEPTIONS, (ref.id, ref.branch), 1e-9)
-            # Re omega < 0 cells (28, 144, ...) were O(1) wrong before the reflection batch
-            # (review.md "Batch reflection"): meas_amp records the old error.
             @test scaled_err(inc, ref.incidence, scale) <= tol
             @test scaled_err(refl, ref.reflection, scale) <= tol
             for (rr, refR, meas) in ((5.0, ref.R5, ref.meas_R5), (10.0, ref.R10, ref.meas_R10))
                 value = R(rr) / R.transmission_amplitude
                 err = relerr(value, refR)
                 if isnan(meas) && abs(imag(g.omega)) >= 1
-                    # Not measured on the shared root and in the backlog item 5 regime: no class to assert.
+                    # Not measured, and in the strong-damping crossover regime: no class to assert.
                     @test_skip err <= 1e-6
                 elseif isnan(meas) || meas <= 1e-8
                     @test err <= 1e-6
                 elseif meas <= 1e-5
                     @test err <= 1e-4
                 else
-                    @test_broken err <= 1e-6   # backlog 5: strong-damping radial crossover
+                    @test_broken err <= 1e-6   # strong-damping radial crossover
                 end
             end
         end
@@ -161,7 +158,7 @@ GRID_AMPLITUDE_EXCEPTIONS = Dict((142, "IN") => 2e-8, (178, "UP") => 2e-8, (159,
 end
 
 # ---------------------------------------------------------------------------------------------------
-# 4. Cloud real-axis cells at strong damping: independent lambda (Leaver CF + spectral, dps 160),
+# 4. Real-axis cells at strong damping: independent lambda (Leaver CF + spectral, dps 160),
 #    B_inc / B_ref, and R(r)/B_trans on r in {1.5..20}. R classes as in 3.
 # ---------------------------------------------------------------------------------------------------
 @testset "independent real-axis cells (cloud)" begin
@@ -179,13 +176,13 @@ end
                 point.r > r_plus || continue
                 err = relerr(R(point.r) / R.transmission_amplitude, point.R)
                 if isnan(point.meas)
-                    @test_skip err <= 1e-6   # not measured on the shared root (item 5 regime)
+                    @test_skip err <= 1e-6   # not measured (strong-damping crossover regime)
                 elseif point.meas <= 1e-8
                     @test err <= 1e-6
                 elseif point.meas <= 1e-5
                     @test err <= 1e-4
                 else
-                    @test_broken err <= 1e-6   # backlog item 5
+                    @test_broken err <= 1e-6   # strong-damping radial crossover
                 end
             end
         end
@@ -230,8 +227,8 @@ function check_radial_invariants(s, l, m, a, omega; wronskian_radii=(4.0, 6.0, 1
         @test abs(lhs - rhs) <= 1e-8 * max(abs(lhs), abs(rhs))
     end
     # Radial Wronskian Delta^(s+1)(Rin Rup' - Rup Rin') = 2 i omega B_inc (unit transmissions), constant in r.
-    # Only real or weakly damped omega: R(r) at strong damping is backlog item 5. Tolerance 1e-5: R(r) floor
-    # up to 4.5e-7 at real omega (backlog item 6, grid id7 in rerr_base).
+    # Only real or weakly damped omega: R(r) at strong damping is not certified. Tolerance 1e-5: R(r) floor
+    # up to 4.5e-7 at real omega (grid id7).
     if !threshold && abs(imag(omega)) <= 0.1
         expected = 2im * omega * binc
         for r in wronskian_radii

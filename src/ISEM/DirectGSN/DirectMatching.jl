@@ -81,6 +81,14 @@ struct DirectScaledBasis{B}
     scale::ComplexF64
 end
 
+"""
+    DirectRoute
+
+Matched direct GSN solution for one branch (`:IN` or `:UP`): the horizon and
+infinity bases, the incidence and reflection coefficients at `match_x`, a common
+`solution_scale`, and optional bridges, endpoint plan and MST evaluation plan.
+Evaluate with `direct_evaluate`, `direct_state`, or by calling the route on `x`.
+"""
 struct DirectRoute{P,C,HI,HO,IO,II,B,EB,EP,M}
     branch::Symbol
     params::P
@@ -103,6 +111,12 @@ struct DirectRoute{P,C,HI,HO,IO,II,B,EB,EP,M}
     mst_plan::M
 end
 
+"""
+    DirectConjugatedRoute
+
+Route for a real negative frequency: wraps the route at (-m, -omega) and returns
+complex-conjugated values; `params` holds the requested parameters.
+"""
 struct DirectConjugatedRoute{R,P}
     route::R
     params::P
@@ -189,6 +203,11 @@ DirectRoute(
     nothing,
 )
 
+"""
+    DirectRoutePlan
+
+Diagnostic summary of a route returned by `direct_route_plan`.
+"""
 struct DirectRoutePlan
     frequency::Symbol
     frequency_reason::Symbol
@@ -234,6 +253,10 @@ function _required_basis(basis, name)
     return basis
 end
 
+# Controls for sfe routes: in the transition band only the default IN match
+# point moves; below SFE_FREQUENCY_LIMIT the default match point moves out, the
+# orders are raised to at least LOW_FREQUENCY_MIN_ORDER, and the scaled-y
+# infinity basis is selected.
 function _with_low_frequency_defaults(ctrl::DirectGSNControls, params, route_branch::Symbol)
     ctrl.sfe || return ctrl
     omega = abs(getproperty(params, :omega))
@@ -282,6 +305,8 @@ function _with_low_frequency_defaults(ctrl::DirectGSNControls, params, route_bra
     )
 end
 
+# Default controls at an ordinary real frequency: match at ORDINARY_IN_MATCH_X
+# for IN and ORDINARY_UP_MATCH_X for UP.
 function _with_ordinary_defaults(
     ctrl::DirectGSNControls,
     params,
@@ -308,6 +333,8 @@ function _with_ordinary_defaults(
     )
 end
 
+# Coefficients (c1, c2) with c1 basis1 + c2 basis2 = target in value and
+# derivative (Cramer's rule with the numerical Wronskian).
 function _connection_coefficients(target, basis1, basis2)
     det = basis1.X * basis2.dXdx - basis2.X * basis1.dXdx
     iszero(det) && error("singular direct GSN matching system")
@@ -335,6 +362,7 @@ function _logadd(a, b)
     return top + log(exp(a - top) + exp(b - top))
 end
 
+# Log of the cancellation in c1 b1 + c2 b2 = target, for value and derivative.
 function _eval_condition(target, coefficient1, basis1, coefficient2, basis2)
     value_terms = _logadd(
         _logabs(coefficient1) + _logabs(basis1.X),
@@ -359,6 +387,9 @@ function _needs_bridge(target, coefficient1, basis1, coefficient2, basis2)
     return condition > log(BRIDGE_CONDITION_LIMIT)
 end
 
+# When the matched combination loses more than BRIDGE_CONDITION_LIMIT to
+# cancellation, propagate the matched state itself from match_x to target_x
+# and use it there instead of the combination; nothing otherwise.
 function _build_bridge(
     coefficients,
     ctrl,
@@ -396,6 +427,8 @@ function _build_bridge(
     end
 end
 
+# Normalized infinity endpoint series of one branch at x, or at the endpoint
+# coordinate computed from `radius` when given.
 function _endpoint_branch_state(coefficients, selection, branch, x; radius=nothing)
     kind = branch == :in ? :infinity_in : :infinity_out
     coeffs = branch == :in ? selection.in_coeffs : selection.out_coeffs
@@ -440,6 +473,8 @@ function _physical_endpoint_state(
     )
 end
 
+# Least-squares complex scale c minimizing |reference - c * candidate| over
+# (X, dXdx); nothing if either state is zero or not finite.
 function _fit_state_scale(reference, candidate)
     reference_scale = max(abs(reference.X), abs(reference.dXdx))
     candidate_scale = max(abs(candidate.X), abs(candidate.dXdx))
@@ -475,6 +510,9 @@ function _sfe_endpoint_selection(coefficients, ctrl, match_x)
     end
 end
 
+# Small-frequency bridge: propagate the matched state outward in scaled y and
+# stop once it agrees, up to a fitted scale, with the infinity endpoint series.
+# Returns (bridge or nothing, endpoint plan or nothing).
 function _build_sfe_endpoint_bridge(
     coefficients,
     ctrl,
@@ -538,6 +576,9 @@ function _build_sfe_endpoint_bridge(
     return bridge, plan[]
 end
 
+# Small-frequency UP: try an inward infinity basis (step budget
+# SFE_UP_TRIAL_STEPS) aligned to the matched state at match_x. Returns
+# (scaled basis or nothing, endpoint plan or nothing).
 function _sfe_up_basis(coefficients, ctrl, scratch, match_x, target)
     omega = abs(getproperty(coefficients.params, :omega))
     omega > 0 || return nothing, nothing
@@ -578,6 +619,8 @@ function _sfe_up_basis(coefficients, ctrl, scratch, match_x, target)
     return DirectScaledBasis(basis, scale), plan
 end
 
+# (a b - c d) / det, recomputed from scaled factors when the direct product
+# overflows; errors if the result is outside the Float64 range.
 function _scaled_det_ratio(a, b, c, d, det)
     direct = (a * b - c * d) / det
     _finite_complex(direct) && return direct
@@ -631,6 +674,9 @@ function _scaled_polar_value(log_magnitude, phase, log_scale)
     return ComplexF64(value)
 end
 
+# Cramer solution with a given denominator `det`. If a coefficient would come
+# near the Float64 range, both are scaled down by a common factor, returned as
+# the third value (solution_scale) and applied to the target state.
 function _connection_coefficients(target, basis1, basis2, det)
     (!isfinite(real(det)) || !isfinite(imag(det)) || iszero(det)) &&
         error("singular direct GSN Abel matching denominator")
@@ -721,6 +767,9 @@ end
         err isa MSTCertificateError
 end
 
+# Wronskian of the two bases at match_x: the Abel denominator, or for the
+# horizon pair the numerical `fallback` when it is well scaled and more
+# accurate than the quadrature, or when the Abel evaluation fails.
 function _match_denominator(
     coefficients,
     endpoint::Symbol,
@@ -744,6 +793,8 @@ function _match_denominator(
     return denom.denominator
 end
 
+# Relative difference between the numerical Wronskian of the two infinity seeds
+# and the closed-form Abel denominator at the seed point (Inf if unavailable).
 function _infinity_abel_certificate(
     coefficients,
     endpoint_y,
@@ -861,6 +912,9 @@ function _physical_handoff_state(
     error("direct GSN log-scaled route lacks a physical MST handoff state")
 end
 
+# MST evaluation plan for a log-scaled route: fix the MST pin (IN) or outgoing
+# (UP) normalization against the physical state at a handoff point and check
+# the agreement to SFE_ENDPOINT_HANDOFF_TOLERANCE.
 function _logscaled_mst_eval_plan(
     coefficients,
     route_branch,
@@ -955,6 +1009,13 @@ function _public_exterior_covered(bridge, endpoint_plan)
         _endpoint_plan_covers(endpoint_plan, PUBLIC_EVALUATION_ENDPOINT_X)
 end
 
+"""
+    direct_match(coefficients, branch; controls=nothing)
+
+Build the horizon and infinity bases for `branch` (`:IN` or `:UP`), match them
+at `controls.match_x` with the Abel (Wronskian) denominator, and return the
+`DirectRoute` with its incidence and reflection coefficients.
+"""
 function direct_match(
     coefficients::DirectCoefficientSet,
     branch;
@@ -1322,6 +1383,14 @@ function _direct_match_body(
     )
 end
 
+"""
+    direct_gsn_radial(s, l, m, a, omega, branch=:IN; lambda=nothing, nu=nothing, controls=nothing, kwargs...)
+    direct_gsn_radial(params::DirectGSNParameters, branch=:IN; controls=nothing, coefficients=nothing, kwargs...)
+
+Build the direct GSN route for the `:IN` or `:UP` solution. Extra keywords are
+passed to `direct_gsn_controls` when `controls` is not given. A real negative
+frequency is solved at (-m, -omega) and returned as a `DirectConjugatedRoute`.
+"""
 function direct_gsn_radial(
     s::Integer,
     l::Integer,
@@ -1479,6 +1548,8 @@ function _mst_combined_in_state(route::DirectRoute, x; radius=nothing)
     return (X=value, dXdx=derivative)
 end
 
+# Whether a point of a route with an MST plan is evaluated from the MST
+# representation instead of the propagated bases, bridges or endpoint plan.
 function _mst_evaluation_region(route::DirectRoute, x)
     route.mst_plan === nothing && return false
     if route.branch == :UP
@@ -1507,6 +1578,12 @@ function _mst_evaluation_region(route::DirectRoute, x)
         !(route.endpoint_plan !== nothing && _endpoint_plan_covers(route.endpoint_plan, x))
 end
 
+"""
+    direct_evaluate(route, x)
+
+Value of the route solution at the compactified coordinate `x`, taken from the
+basis, bridge, endpoint plan or MST evaluation that covers `x`.
+"""
 function direct_evaluate(route::DirectRoute, x)
     x = Float64(x)
     if route.branch == :IN
@@ -1558,6 +1635,13 @@ end
 direct_evaluate(route::DirectConjugatedRoute, x) =
     conj(direct_evaluate(route.route, x))
 
+"""
+    direct_state(route, x; radius=nothing)
+
+Value and x-derivative `(X, dXdx)` of the route solution at the compactified
+coordinate `x`. Near infinity, `radius` (if given) is used to form the
+endpoint coordinate directly, avoiding cancellation in 1 - x.
+"""
 function direct_state(route::DirectRoute, x; radius=nothing)
     x = Float64(x)
     if route.branch == :IN
@@ -1643,6 +1727,11 @@ end
 (route::DirectRoute)(x) = direct_evaluate(route, x)
 (route::DirectConjugatedRoute)(x) = direct_evaluate(route, x)
 
+"""
+    direct_route_patch_count(route)
+
+Total number of propagation patches in all bases of a route.
+"""
 function direct_route_patch_count(route::DirectRoute)
     count = 0
     for basis in (route.horizon_in, route.horizon_out, route.infinity_out,
@@ -1686,6 +1775,12 @@ function _patch_counts(route::DirectRoute)
     return ordinary, eikonal, endpoint, horizon, infinity
 end
 
+"""
+    direct_route_plan(route)
+
+Summary (`DirectRoutePlan`) of how a route was built: frequency and spin
+regimes, endpoint and propagation methods, orders, and patch counts by kind.
+"""
 function direct_route_plan(route::DirectRoute)
     controls = route.controls
     frequency = controls.frequency_selection
@@ -1768,6 +1863,11 @@ end
 direct_amplitude_errors(route::DirectConjugatedRoute) =
     direct_amplitude_errors(route.route)
 
+"""
+    direct_route_truncations(route)
+
+All series truncations (`DirectTruncation`) recorded by the bases of a route.
+"""
 function direct_route_truncations(route::DirectRoute)
     records = DirectTruncation[]
     for basis in (route.horizon_in, route.horizon_out, route.infinity_out,

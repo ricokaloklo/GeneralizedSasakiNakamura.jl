@@ -57,6 +57,8 @@ _public_family(e, x) = (x == 1 || x == -1) ? (e == 0 ? :circular : :eccentric) :
 _public_context() = (precision_bits = precision(BigFloat), rounding_mode = rounding(BigFloat),
     kg_module = KerrGeodesics, kg_version = Base.pkgversion(KerrGeodesics), kg_path = pathof(KerrGeodesics))
 
+# New submission for one orbit (a, p, e, x) and sampling-grid caps Nmax, Kmax. Orbit, dense sample and
+# geometry owner are built lazily on first use.
 function create_public_submission(a, p, e, x; Nmax::Int = 2^14, Kmax::Int = 2^12,
         stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing)
     Nmax > 0 && Kmax > 0 || throw(ArgumentError("Submission grid caps must be positive"))
@@ -73,6 +75,8 @@ function _public_check_context(scope::PublicSubmission)
     return nothing
 end
 
+# Return (scope, owned): a new submission (owned = true) when `submission` is nothing, otherwise the given
+# one after checking that it belongs to the same orbit and grid caps (owned = false).
 function ensure_public_submission(submission, a, p, e, x; Nmax::Int = submission === nothing ? 2^14 : submission.Nmax, Kmax::Int = submission === nothing ? 2^12 : submission.Kmax,
         stop_requested = nothing, lifecycle_observer = nothing, geometry_observer = nothing)
     submission === nothing && return (create_public_submission(a, p, e, x;
@@ -124,7 +128,8 @@ function _public_observe(scope, event::Symbol, owner = nothing)
 end
 
 function _public_geometry_observer(scope::PublicSubmission)
-    # Preserve the geometry owner's original construction-time observer contract.
+    # The geometry owner fixes its observer at construction; wrap it so its callbacks are
+    # tracked in observer_depth like lifecycle callbacks.
     observer = lock(scope.lock) do
         scope.geometry_observer
     end
@@ -140,6 +145,7 @@ function _public_check_observer_reentry(scope::PublicSubmission, action::String)
     return nothing
 end
 
+# Close admission and mark the submission cancelled; later mode admissions throw PublicSubmissionCancelled.
 function request_submission_cancel!(scope::PublicSubmission; reason = "cooperative cancellation")
     changed = lock(scope.lock) do
         was_open = !scope.admission_closed
@@ -167,6 +173,7 @@ function _public_check_stop(scope)
     return nothing
 end
 
+# Lazily built KerrGeodesics orbit shared by all modes of the submission.
 function submission_orbit!(scope::PublicSubmission)
     return lock(scope.lock) do
         _public_check_context(scope)
@@ -191,6 +198,7 @@ function _public_build_master(scope::PublicSubmission, family::Symbol)
         family === :inclined ? GridSampling.kerr_geo_inclined_sample_dense(KG, x, scope.Kmax) : KG
 end
 
+# Lazily built dense sample (master grid) of the orbit for `family`; non-default families are kept separately.
 function submission_master!(scope::PublicSubmission; family::Symbol = scope.family)
     _public_check_family(family)
     return lock(scope.lock) do
@@ -215,6 +223,7 @@ function _public_build_geometry(scope::PublicSubmission, family::Symbol)
         ConvolutionIntegrals.InclinedGeometryOwner(master; observer)
 end
 
+# Lazily built geometry owner for `family` (nothing for circular orbits), shared read-only by the mode caches.
 function submission_geometry!(scope::PublicSubmission; family::Symbol = scope.family)
     _public_check_family(family)
     return lock(scope.lock) do
@@ -248,6 +257,7 @@ function _public_clear_cache!(scope, cache; family::Symbol = scope.family)
     return nothing
 end
 
+# Run f() as one admitted operation of the submission; resources it registered are closed on exit.
 function with_submission_operation(f, scope::PublicSubmission)
     _public_check_stop(scope)
     task = current_task()
@@ -286,6 +296,7 @@ function with_submission_operation(f, scope::PublicSubmission)
     end
 end
 
+# Admit one mode, run f(cache) with a task-private mode cache, then clear that cache. Returns f's result.
 function with_submission_mode(f, scope::PublicSubmission; mode = nothing, family::Symbol = scope.family, share_geometry::Bool = true)
     _public_check_family(family)
     _public_check_stop(scope)
@@ -362,6 +373,7 @@ Base.@noinline function _public_task_worker(payload::Base.RefValue{Any})
     end
 end
 
+# Spawn f() as a task registered with the submission; release joins it before clearing caches.
 function spawn_submission_task!(f, scope::PublicSubmission)
     lock(scope.lock) do
         _public_check_observer_reentry(scope, "spawn")
@@ -446,6 +458,8 @@ function _public_wait_operations!(scope, errors)
     return nothing
 end
 
+# Close admission, join registered tasks, wait for active operations, then release geometry owners and
+# resources. Idempotent; errors collected on the way are rethrown together as a CompositeException.
 function release_public_submission!(scope::PublicSubmission)
     tasks = lock(scope.lock) do
         _public_check_observer_reentry(scope, "release")
@@ -559,6 +573,7 @@ function release_public_submission!(scope::PublicSubmission)
     return nothing
 end
 
+# Create a submission, call f(scope) and release the submission on exit.
 function with_public_submission(f, a, p, e, x; kwargs...)
     scope = create_public_submission(a, p, e, x; kwargs...)
     return _with_public_scope(scope, true) do
@@ -584,6 +599,7 @@ function _with_public_scope(f, scope, owned::Bool)
     end
 end
 
+# Counters and flags describing the submission state (for diagnostics and tests).
 function submission_snapshot(scope::PublicSubmission)
     return lock(scope.lock) do
         (family = string(scope.family), admission_closed = scope.admission_closed,

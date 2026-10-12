@@ -1,6 +1,6 @@
 # Single point-particle modes: Teukolsky_pointparticle_mode / GSN_pointparticle_mode.
 # References: data/mode_references.jl and the 40-digit circular references copied below (provenance in
-# README.md, section "pointparticle_mode").
+# ../README.md, section "Point-particle modes").
 
 if !@isdefined(GSN)
     include(joinpath(@__DIR__, "..", "load_package.jl"))
@@ -19,10 +19,9 @@ mode_hor(l, m, n, k, a, p, e, x; kw...) = Teukolsky_pointparticle_mode(2, l, m, 
 
 # ---------------------------------------------------------------------------------------------------
 # Schwarzschild circular orbit, (l, m) = (2, +-2): package-independent references from three methods
-# (Zerilli-Moncrief, MST, direct Teukolsky integration; 40-50 agreeing digits),
-# flux_reference/README.md and direct/log_r{1000,10000}_d50.txt.
-# p = 10 measured -4.3e-12 (auto); p = 1000 and 10000 probe the near-static regime (omega = 6.3e-5 and
-# 6.3e-7; backlog item 19 has no other reference) and use looser tolerances.
+# (Zerilli-Moncrief, MST, direct Teukolsky integration; 40-50 agreeing digits) at p = 10; direct Teukolsky
+# integration only (50 digits) at p = 1000 and 10000. p = 10 measured -4.3e-12 (auto); p = 1000 and 10000
+# probe the near-static regime (omega = 6.3e-5 and 6.3e-7) and use looser tolerances.
 # ---------------------------------------------------------------------------------------------------
 CIRCULAR_A0 = (
     (p=10.0, Einf=2.684397739551056800957597197786816721611e-5, Ehor=5.654138734536942973248997741647276606086e-9,
@@ -51,7 +50,7 @@ CIRCULAR_A0 = (
             end
         end
     end
-    # All convolution methods agree at p = 10 (README: auto -4.3e-12, legacy trapezoidal +2.8e-11).
+    # All convolution methods agree at p = 10 (measured: auto -4.3e-12, legacy trapezoidal +2.8e-11).
     for method in ("isem_trapezoidal", "isem_levin", "trapezoidal", "levin")
         mode = quietly(() -> mode_inf(2, 2, 0, 0, 0.0, 10.0, 0.0, 1.0; method=method))
         @test mode.method.method == method
@@ -60,10 +59,10 @@ CIRCULAR_A0 = (
 end
 
 # ---------------------------------------------------------------------------------------------------
-# 56 spherical-orbit modes (7 orbits x 8 modes, n = 0). Infinity: vs published GSN 0.9.0 (<= 4e-13 from the
-# cloud mpmath values) with rtol 3e-10 (dev differs by up to 1.37e-10). Horizon: vs the frozen dev values
-# (rtol 1e-9) and published (rtol 1e-7; published horizon <= 6e-8 off). The a = 0 (2,2,k=1) mode vanishes by
-# rotation symmetry (both versions return ~1e-34 noise): tested as zero.
+# 56 spherical-orbit modes (7 orbits x 8 modes, n = 0). Infinity: vs published GSN 0.9.0 (<= 4e-13 from
+# independent mpmath values) with rtol 3e-10 (frozen self-values differ by up to 1.37e-10). Horizon: vs the
+# frozen self-values (rtol 1e-9) and published (rtol 1e-7; published horizon <= 6e-8 off). The a = 0
+# (2,2,k=1) mode vanishes by rotation symmetry (both return ~1e-34 noise): tested as zero.
 # ---------------------------------------------------------------------------------------------------
 @testset "56 spherical modes" begin
     rows = level_subset(MODES_56, 7)
@@ -225,8 +224,8 @@ end
 
 # ---------------------------------------------------------------------------------------------------
 # Orbit constants through the KerrGeodesics adapter. Schwarzschild closed forms (e = 0):
-# E = (p-2)/sqrt(p(p-3)), L = p/sqrt(p-3), Lz = x L, Q = L^2 (1-x^2) >= 0 (published KerrGeodesics 0.3 returned
-# Q = -10.714 at (0, 10, 0, 0.5); HANDOVER_20261005.md "Per-mode infinity accuracy data"), Mino frequencies
+# E = (p-2)/sqrt(p(p-3)), L = p/sqrt(p-3), Lz = x L, Q = L^2 (1-x^2) >= 0 (KerrGeodesics 0.3 returned
+# Q = -10.714 at (0, 10, 0, 0.5)), Mino frequencies
 # Y_theta = L, |Y_phi| = L with sign(x), Y_r = sqrt(p(p-6)/(p-3)), Y_theta/Y_t = p^(-3/2).
 # ---------------------------------------------------------------------------------------------------
 @testset "Schwarzschild orbit constants" begin
@@ -247,7 +246,7 @@ end
     @test KG.kerr_geo_orbit(0.0, 10.0, 0.0, 0.5)["CarterConstant"] ≈ 75 / 7 rtol=1e-14
 end
 
-# Frozen KerrGeodesics 0.4 values used by the 56-mode table (flux_compare/orbits_dev.txt).
+# Frozen KerrGeodesics 0.4 values for the orbits of the 56-mode table.
 ORBITS_DEV = (
     (a=0.9, p=10.0, x=0.8, E=0.952833026330822, L=2.8059200349681057, Q=4.455526873681355),
     (a=0.9, p=10.0, x=0.3, E=0.9546077474302431, L=1.0959001169531528, Q=12.208813278044707),

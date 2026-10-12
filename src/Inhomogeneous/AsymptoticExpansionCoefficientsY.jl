@@ -36,8 +36,8 @@ function a_minus_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DE
     return aminus_inf
 end
 
-# All infinity coefficients a_{+/-}(0..order) from one solve-owned coefficient sequence (the recurrence is run once,
-# instead of once per order through a_plus_inf / a_minus_inf).
+# All infinity coefficients a_{+/-}(0..order) from one coefficient sequence, so the recurrence of Eq.(F12)
+# of RL2024 is run once for all orders; same relation to C_{+/-} as in a_plus_inf / a_minus_inf.
 function _a_inf_values(coefficient, s::Int, m::Int, a, omega, lambda, order::Int, data_type)
     C = coefficient_values(coefficient, s, m, a, omega, lambda, order)
     return data_type[data_type(C[ord + 1] / omega^ord) for ord in 0:order]

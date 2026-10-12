@@ -49,6 +49,7 @@ Inverse of `angular_A_to_lambda`: `A = lambda - c^2 + 2 m c`.
 @inline lambda_to_angular_A(lambda, c, m::Int) =
     lambda - c^2 + 2m * c
 
+# Float64 angular eigenpair at c, continued on `sheet_id` by SpinWeightedSpheroidalHarmonics.
 function _angular_branch_float64(mode::QNMMode, c;
         truncation_order::Int=32, sheet_id::Symbol=:qnm_straight_from_spherical)
     pair = SpinWeightedSpheroidalHarmonics.continue_angular_mode(
@@ -75,6 +76,8 @@ function _angular_branch_float64(mode::QNMMode, c;
     )
 end
 
+# BigFloat angular eigenpair: Newton refinement of the Float64 eigenpair on the
+# BigFloat spectral matrix.
 function _angular_branch_bigfloat(mode::QNMMode, c::Complex{BigFloat};
         truncation_order::Int=32, sheet_id::Symbol=:qnm_straight_from_spherical,
         maximum_iterations::Int=24)
@@ -134,6 +137,8 @@ function _angular_branch_bigfloat(mode::QNMMode, c::Complex{BigFloat};
     )
 end
 
+# Angular separation constant, eigenvalue and coefficients at c = a*omega on
+# `sheet_id`, in the working precision of the inputs.
 function angular_branch(mode::QNMMode, a, omega;
         truncation_order::Int=32, sheet_id::Symbol=:qnm_straight_from_spherical)
     _require_qnm_angular_backend()

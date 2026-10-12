@@ -11,6 +11,10 @@ using ..DirectOrdinaryPointExpansion:
 export HorizonLFEPatch
 export lfeh_single, lfeh_pair, lfeh_value, lfeh_state
 
+# Horizon patches for the large-frequency route: the horizon Frobenius series is
+# used directly from the seed point out to the largest x below the matching point
+# where it passes the tail, ODE-residual and nested-order checks.
+
 const LFEH_MIN_ORDER = 24
 const LFEH_MAX_ORDER = 96
 const LFEH_ORDER_STEP = 8
@@ -41,6 +45,7 @@ function _error(left, right)
         abs(left.dXdx - right.dXdx)) / scale
 end
 
+# Size of the last `width` series terms relative to the series value.
 function _tail(solution, x, order; width=4)
     value = 0.0
     @inbounds for degree in max(0, order - width + 1):order
@@ -51,6 +56,7 @@ function _tail(solution, x, order; width=4)
     return value / max(abs(series), eps(Float64))
 end
 
+# Relative residual of X'' + A X' + B X = 0 at one point.
 function _residual(candidate, A, B)
     second = candidate.d2Xdx2
     first = A * candidate.dXdx
@@ -64,6 +70,8 @@ function _ab_value(coefficients, x)
     return avec[1], bvec[1]
 end
 
+# Lowest order (from LFEH_MIN_ORDER in steps of LFEH_ORDER_STEP) at which the
+# series passes all three checks at x, or `nothing`.
 function _candidate(solution, x, A, B)
     highest = solution.effective_order - mod(
         solution.effective_order - LFEH_MIN_ORDER, LFEH_ORDER_STEP)
@@ -82,6 +90,8 @@ function _candidate(solution, x, A, B)
     return nothing
 end
 
+# Step the target down from match_x by LFEH_SAFETY until the series is accepted,
+# then accept a patch only if it also passes one further safety step inward.
 function _single(coefficients, solution, seed_x, scale, match_x)
     target = Float64(match_x)
     while target > seed_x * (1 + 100eps(Float64))
@@ -116,6 +126,7 @@ function lfeh_single(coefficients::DirectCoefficientSet, branch,
         coefficients, solution, Float64(seed_x), scale, match_x)
 end
 
+# Two-branch version of lfeh_single; both branches must pass at the same end point.
 function lfeh_pair(coefficients::DirectCoefficientSet,
         branch1, scale1, branch2, scale2, seed_x, match_x)
     solution1 = direct_zero_local_solution(

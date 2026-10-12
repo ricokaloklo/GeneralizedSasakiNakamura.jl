@@ -165,7 +165,7 @@ using Test
         @test overtone7.status == overtone10.status == :accepted
         @test abs(overtone10.omega - overtone7.omega) > 0.1
 
-        # Labels follow Python qnm / Cook: this root was n = 30 before the 0.10.0 relabeling.
+        # Overtone label in the Python qnm / Cook convention.
         overtone29 = qnm_frequency(QNMMode(-2, 2, 2, 29), 0.5)
         @test overtone29.status == :accepted
         @test overtone29.omega ≈ 0.2725174928809329 - 6.734330683370764im atol=1e-10 rtol=0

@@ -19,6 +19,8 @@ export direct_horizon_series_value, direct_horizon_series_pair, direct_horizon_s
 _param_a(params) = hasproperty(params, :a) ? getproperty(params, :a) : sin(getproperty(params, :nu))
 _param_kappa(params) = hasproperty(params, :kappa) ? getproperty(params, :kappa) : cos(getproperty(params, :nu))
 
+# Horizon exponent scale (2 r_+ omega - a m) / (2 kappa); the local solutions
+# behave as x^(-i nu_h) (in) and x^(+i nu_h) (out) at x = 0.
 function direct_horizon_frequency(params)
     a = _param_a(params)
     kappa = _param_kappa(params)
@@ -33,6 +35,9 @@ function direct_horizon_exponent(params, branch::Symbol)
     throw(ArgumentError("horizon branch must be :in or :out."))
 end
 
+# Frobenius recurrence at x = 0 for X'' + A X' + B X = 0 with A ~ x^-1, B ~ x^-2
+# and exponent mu. With `guarded`, stops at the first ill-conditioned denominator
+# or suspicious coefficient and returns (effective order, reason).
 function _horizon_coefficients!(
     coeffs::Vector{ComplexF64},
     a_power,
@@ -100,6 +105,7 @@ function direct_horizon_coefficients(
     return direct_horizon_coefficients(a_power, b_power, mu, order)
 end
 
+# Guarded horizon Frobenius series for the :in or :out branch, with metadata.
 function direct_zero_local_solution(
     coefficients::DirectCoefficientSet,
     branch::Symbol,
@@ -155,6 +161,8 @@ function _horizon_log_forcing(coeffs, a_power, mu, n::Int)
     return ComplexF64(forcing)
 end
 
+# At the threshold frequency (nu_h = 0) the two horizon exponents coincide; this
+# returns the logarithmic companion X = log(x) X_in + x^mu sum c_n x^n.
 function direct_zero_log_solution(
     coefficients::DirectCoefficientSet,
     branch::Symbol,
@@ -213,6 +221,8 @@ direct_zero_in_coeffs(coefficients::DirectCoefficientSet, order::Integer) =
 direct_zero_out_coeffs(coefficients::DirectCoefficientSet, order::Integer) =
     direct_zero_local_solution(coefficients, :out, order).coefficients
 
+# x^mu times the power series, with first and second x-derivatives in the
+# _pair and _triple versions.
 function direct_horizon_series_value(coeffs, mu, x)
     return x^mu * direct_poly_value(coeffs, x)
 end

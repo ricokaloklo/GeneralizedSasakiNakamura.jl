@@ -10,6 +10,7 @@
 @inline _precision_bits(::Type{Float64}) = 53
 @inline _precision_bits(::Type{BigFloat}) = precision(BigFloat)
 
+# Horizon and infinity exponents of Leaver's series for nonextremal Kerr (M = 1).
 function leaver_characteristic_exponents(omega, a, s::Int, m::Int)
     T = promote_type(typeof(real(omega)), typeof(real(a)))
     one_T = one(T)
@@ -27,6 +28,7 @@ function leaver_characteristic_exponents(omega, a, s::Int, m::Int)
         sigma_plus=sigma_plus, sigma_minus=sigma_minus)
 end
 
+# The five D coefficients of Leaver's three-term radial recurrence (qnm/radial.py).
 function leaver_D_coefficients(omega, a, s::Int, m::Int, angular_A)
     exponents = leaver_characteristic_exponents(omega, a, s, m)
     T = promote_type(typeof(real(omega)), typeof(real(a)),
@@ -52,6 +54,7 @@ function leaver_D_coefficients(omega, a, s::Int, m::Int, angular_A)
     )
 end
 
+# Recurrence coefficients alpha_n, beta_n, gamma_n built from D.
 @inline function leaver_recurrence_coefficients(n::Integer, D)
     nT = n * one(real(D[1]))
     alpha_n = nT^2 + (D[1] + 1) * nT + D[1]
@@ -60,6 +63,8 @@ end
     return (alpha=alpha_n, beta=beta_n, gamma=gamma_n)
 end
 
+# Continued fraction with inversion index `n_inv`, truncated at `depth` and
+# closed by the ratio `tail`.
 function leaver_cf_truncated(omega, a, s::Int, m::Int, angular_A,
         n_inv::Int; depth::Int=300, tail=one(omega))
     depth > n_inv || throw(ArgumentError("depth must exceed n_inv."))
@@ -84,6 +89,8 @@ function leaver_cf_truncated(omega, a, s::Int, m::Int, angular_A,
     return pivot.beta - pivot.gamma * lower - pivot.alpha * upper
 end
 
+# Coefficients of the large-n expansion of the continued-fraction tail in
+# powers of 1/sqrt(n+1), used to close the truncated fraction.
 function _leaver_tail_coefficients(D, order::Int=12)
     C = typeof(D[1])
     T = typeof(real(D[1]))
@@ -120,6 +127,8 @@ function _leaver_tail_coefficients(D, order::Int=12)
     return coefficients[1:(order + 1)]
 end
 
+# Truncated fraction with the asymptotic tail; the depth is doubled until two
+# successive relative changes are below `tolerance`.
 function _leaver_cf_asymptotic(omega, a, s, m, angular_A, n_inv;
         tolerance, minimum_iterations, maximum_iterations)
     T = typeof(real(omega))
@@ -149,6 +158,9 @@ function _leaver_cf_asymptotic(omega, a, s, m, angular_A, n_inv;
         converged=false, D=D)
 end
 
+# Leaver continued fraction with inversion index `n_inv`; its zero in omega is a
+# QNM. Uses the asymptotic tail for omega != 0 (`algorithm=:auto`) and the
+# modified Lentz method otherwise. Returns (value, error, iterations, converged, D).
 function leaver_cf_inversion(omega, a, s::Int, m::Int, angular_A,
         n_inv::Int; tolerance=nothing, minimum_iterations::Int=300,
         maximum_iterations::Int=4000, require_convergence::Bool=true,

@@ -16,6 +16,10 @@
 #     -i N/4 are spaced by 1/4, so the window covers one spacing on each side;
 #   - candidate cap Re(omega) <= 1/4: a re-emerged root is born on the axis,
 #     so at the first spin rung after the birth it is still close to it.
+#
+# Two further constants: Newton starts beside each pole at distances
+# rho_edge / 8^k, k = 0..3 (a root born from a pole stays very close to it),
+# and the tangent restart starts 1e-3 off the axis.
 
 const _NIA_EDGE_STEP_FACTOR = 8
 const _NIA_SEARCH_HALF_WINDOW = 1 // 4
@@ -127,7 +131,7 @@ end
 
 # A later segment can touch the NIA without ending. Before returning an
 # endpoint failure, restart on the physical side at Re(omega)=+/-1e-3 and
-# continue in the original direction. Segment 0 keeps its original path.
+# continue in the same direction. Segment 0 is never restarted.
 function _continue_with_nia_restarts!(state, mode::QNMMode, target::T;
         sequence_segment::Int=0, selected_coordinate::Symbol,
         initial_step::T, minimum_step::T, maximum_step::T,
@@ -140,11 +144,9 @@ function _continue_with_nia_restarts!(state, mode::QNMMode, target::T;
             outcome.polished, outcome.failed_spin, state.accepted_spins,
             state.accepted_roots, state.accepted_angular_A,
             state.rejected_continuation_rows; sequence_segment)
-        # The continuation already established an interpolated axis crossing.
-        # At higher precision its accepted root and final predictor can both
-        # remain farther from the axis than the derivative-step heuristic.
-        # Preserve that explicit crossing evidence when dispatching a later
-        # segment's guarded restart; no root-acceptance condition changes.
+        # A step rejected as crossing the axis also starts the restart: the
+        # last root and predictor can stay farther from the axis than the
+        # derivative-step test while the interpolant already crosses it.
         (outcome.reason == :nia_crossing_step ||
             classified.reason == :negative_imaginary_axis_endpoint) || break
         direction = sign(target - state.accepted_coordinates[end])
@@ -163,10 +165,8 @@ function _continue_with_nia_restarts!(state, mode::QNMMode, target::T;
             # a tiny-step polynomial across the touch can jump to another root.
             seed = complex(T(_branch_sign(mode)) * T(1.0e-3),
                 imag(state.accepted_roots[end]))
-            # The off-axis Newton seed is an artificial displacement, not
-            # a prediction of this branch. Compare the polished root with
-            # the last accepted physical root; reducing the spin step still
-            # enforces the unchanged continuation guard across the touch.
+            # The off-axis seed is not a prediction of the branch; the branch
+            # guard compares the polished root with the last accepted root.
             predictor = state.accepted_roots[end]
             polished = _polish_frequency_root(mode, spin, seed;
                 polish_options...)

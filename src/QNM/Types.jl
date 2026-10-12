@@ -1,9 +1,12 @@
 """
     QNMMode(s, l, m, n, branch=:positive_real)
 
-Label one directly solved QNM branch. `branch=:negative_real` requires an
-explicit directly sourced frequency guess; the solver never fills it by
-conjugation.
+Label one directly solved QNM branch, accepted by [`qnm_frequency`](@ref) and
+[`qnm_sequence`](@ref) as an alternative to the plain `(s, l, m, n, branch)`
+arguments. In this form `branch=:negative_real` requires an explicit `guess`;
+the plain-argument form with `mirror` seeds it from `-conj` of the ordinary
+`(a, -m)` root. The negative-real root is always re-polished directly, never
+filled by conjugation.
 """
 struct QNMMode
     s::Int
@@ -59,10 +62,11 @@ end
 """
     QNMEstimate
 
-Finite QNM observables that miss one explicitly reported production gate. This
-includes a Richardson derivative that has not reached its convergence target,
-or a high-damping complex-frequency route whose raw GSN incidence does not
-close at an independently identified Leaver root. The result preserves the
+Finite QNM observables that miss one explicitly reported production gate,
+named in `limiting_gate`. This includes a Richardson derivative that has not
+reached its convergence target, a conditioned near-extremal root or incidence
+check, or a high-damping complex-frequency route whose raw GSN incidence does
+not close at an independently identified Leaver root. The result preserves the
 computed amplitudes and convergence indicators; it is not an accepted
 production result or a rigorous error bound.
 """
@@ -184,7 +188,7 @@ end
 
 _qnm_summary_number(value::Real) = @sprintf("%.17g", value)
 
-# Segment 0 keeps the historical display; later segments are named inline.
+# Segment 0 adds nothing to the display; later segments are named inline.
 function _qnm_segment_suffix(result)
     segment = :segment in propertynames(result) ? result.segment : 0
     return segment == 0 ? "" : string(", segment = ", segment)
@@ -278,6 +282,8 @@ end
     LeaverResult
 
 Leaver continued-fraction root for one QNM: frequency, angular separation constant and eigenvalue, residuals and status.
+`status` is `:accepted`, `:estimated` or `:failed`, with the reason in `stop_reason`; `overtone_index` is `missing`
+for `convention=:leaver`, and `provenance` records the seed, continuation path and gate values.
 """
 struct LeaverResult{T,C,A,M,P}
     mode::QNMMode
@@ -339,6 +345,8 @@ struct ExcitationFactorResult{O,A,AT,R,RT,B,BT,T,M}
     metadata::M
 end
 
+# Thrown by `leaver_cf_inversion` when the continued fraction does not converge
+# within `maximum_iterations` and convergence is required.
 struct LentzConvergenceError <: Exception
     error_estimate
     iterations::Int

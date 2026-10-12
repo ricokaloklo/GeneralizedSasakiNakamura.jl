@@ -41,6 +41,12 @@ export nia_strength_fast
 export MSTParams, MSTSeriesData, CFResult
 export MSTCertificateError
 
+"""
+    MSTCertificateError(kind, message)
+
+Raised when an MST quantity fails its accuracy certificate (series budget, residual,
+truncation or conditioning check). `kind` names the failed stage.
+"""
 struct MSTCertificateError <: Exception
     kind::Symbol
     message::String
@@ -109,6 +115,8 @@ function _conversion_module()
     return getfield(root, :ConversionFactors)
 end
 
+# Closure r -> matrix converting the GSN function (X, dX/dr*) to the Teukolsky
+# radial function.
 function _teukolsky_from_gsn_matrix(params)
     solutions = getfield(_root_module(), :Solutions)
     matrix_function = getfield(solutions, :Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix)
@@ -122,6 +130,7 @@ function _teukolsky_from_gsn_matrix(params)
     )
 end
 
+# r and dx/dr* for the compact coordinate x of the direct GSN solver.
 function _direct_x_to_r(params, x)
     rp = 1.0 + params.kappa
     rm = 1.0 - params.kappa
@@ -134,6 +143,8 @@ function _direct_dx_drstar(params, x)
         (kappa + (x - 1.0)^2 + 2 * kappa^2 * x - kappa * x^2)
 end
 
+# Factors f3 (in) and f4 (out) between the raw MST series and the unit-normalized
+# solutions, used by _raw_unit_logfactor.
 function _legacy_factors(params)
     epsilon = 2.0 * params.omega
     kappa = params.kappa
@@ -144,6 +155,8 @@ function _legacy_factors(params)
     return ComplexF64(f3), ComplexF64(f4)
 end
 
+# Scale from the physical-in MST normalization to the GSN one: GSN transmission
+# amplitude Btrans over the transmission amplitude p_trans of P.
 function _pin_unit_scale(params)
     epsilon = 2 * params.omega
     tau = (epsilon - params.m * params.a) / params.kappa
@@ -168,6 +181,14 @@ function _pin_unit_scale(params)
     return scale
 end
 
+"""
+    direct_mst_infinity_basis(coefficients, branch, match_x; controls, scratch=nothing, plan=nothing)
+
+Direct GSN infinity solution of `branch` (`:in` or `:out`) at `match_x`: the MST series is
+evaluated at the plan's seed point (a new `direct_mst_plan` when `plan` is `nothing`) and
+the state is integrated to `match_x` with `direct_iterate_from_state`, or in the scaled
+y variable when `controls.basis == :low_frequency_scaled_y`.
+"""
 function direct_mst_infinity_basis(
     coefficients::DirectCoefficientSet,
     branch::Symbol,
@@ -211,6 +232,12 @@ function direct_mst_infinity_basis(
     )
 end
 
+"""
+    direct_mst_infinity_pair(coefficients, branch1, branch2, match_x; controls, scratch=nothing, plan=nothing)
+
+Two infinity solutions as in `direct_mst_infinity_basis`, sharing one MST plan and
+seed point.
+"""
 function direct_mst_infinity_pair(
     coefficients::DirectCoefficientSet,
     branch1::Symbol,
@@ -276,6 +303,13 @@ function direct_mst_infinity_pair(
     )
 end
 
+"""
+    MSTParams(s, l, m, a, omega, lambda, nu[, nu_offset])
+
+Parameters of an MST series for |a| < 1: the mode, `epsilon = 2 omega`,
+`kappa = sqrt(1 - a^2)`, `tau = (epsilon - m a) / kappa`, `nu` and `nu_offset = nu - l`
+(kept separately so that its digits survive when nu is close to l).
+"""
 struct MSTParams
     s::Int
     l::Int
@@ -329,6 +363,14 @@ end
 @inline _twice_nu_factor(p::MSTParams, n::Integer, shift::Integer=0) =
     ComplexF64(2 * (p.l + n) + shift) + 2 * p.nu_offset
 
+"""
+    alpha_mst(n, p), beta_mst(n, p), gamma_mst(n, p)
+
+Coefficients of the MST three-term recurrence
+alpha_n a_(n+1) + beta_n a_n + gamma_n a_(n-1) = 0
+(Sasaki & Tagoshi, Living Rev. Relativ. 6, 6 (2003)).
+`beta_mst` switches to double-double when its terms cancel.
+"""
 function alpha_mst(n::Integer, p::MSTParams)
     eps = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
@@ -342,6 +384,11 @@ function alpha_mst(n::Integer, p::MSTParams)
         (npnu1 * _twice_nu_factor(p, n, 3))
 end
 
+"""
+    beta_mst(n, p)
+
+Middle coefficient of the MST recurrence; see `alpha_mst`.
+"""
 function beta_mst(n::Integer, p::MSTParams)
     s = ComplexF64(p.s)
     eps = ComplexF64(p.epsilon)
@@ -355,14 +402,19 @@ function beta_mst(n::Integer, p::MSTParams)
     value = angular + eps2 + linear + correction
     scale = abs(p.lambda) + abs(s*(s+1)) + abs(product) +
         abs(eps2) + abs(linear) + abs(correction)
-    # Both the angular terms and the frequency terms can cancel. Preserve
-    # their low words using the existing double-double recurrence algebra.
+    # Both the angular terms and the frequency terms can cancel; under severe
+    # cancellation beta_n is recomputed in double-double (_dd_beta).
     if Base.eps(Float64)*scale > MST_COEFF_ERROR_MAX*abs(value)
         return dc_value(_dd_beta(Int(n), p, DDComplex(p.nu_offset)))
     end
     return value
 end
 
+"""
+    gamma_mst(n, p)
+
+Lower coefficient of the MST recurrence; see `alpha_mst`.
+"""
 function gamma_mst(n::Integer, p::MSTParams)
     eps = ComplexF64(p.epsilon)
     kappa = ComplexF64(p.kappa)
@@ -376,6 +428,12 @@ function gamma_mst(n::Integer, p::MSTParams)
         (npnu * _twice_nu_factor(p, n, -1))
 end
 
+"""
+    CFResult
+
+Continued-fraction result: `value`, last relative change `relerr`, `iterations` and
+`converged`.
+"""
 struct CFResult
     value::ComplexF64
     relerr::Float64
@@ -385,6 +443,8 @@ end
 
 _cf_safe(v::ComplexF64) = iszero(v) ? ComplexF64(CF_SMALL) : v
 
+# Modified Lentz evaluation of a_0 / (b_0 + a_1 / (b_1 + ...)) for coefficient functions of
+# j = 0, 1, ...; a zero denominator is replaced by CF_SMALL. Returns a CFResult.
 function lentz_cf(a_coeff, b_coeff; tol::Float64=eps(Float64), maxiter::Int=CF_MAX)
     c_prev = ComplexF64(CF_SMALL)
     d_prev = ComplexF64(0)
@@ -422,6 +482,11 @@ function lentz_cf(a_coeff, b_coeff; tol::Float64=eps(Float64), maxiter::Int=CF_M
     return CFResult(value_prev, relerr, maxiter, false)
 end
 
+"""
+    rn_cf(n, p)
+
+Continued fraction for the MST coefficient ratio R_n = a_n / a_(n-1), as a `CFResult`.
+"""
 function rn_cf(n::Integer, p::MSTParams)
     numerator = -alpha_mst(n - 1, p) * gamma_mst(n, p)
     normalize = !iszero(numerator) &&
@@ -434,6 +499,7 @@ function rn_cf(n::Integer, p::MSTParams)
     return CFResult(value, cf.relerr, cf.iterations, cf.converged)
 end
 
+# L_n = a_n / a_(n+1) from the continued fraction alone.
 function _ln_cf_unpaired(n::Integer, p::MSTParams)
     numerator = -alpha_mst(n, p) * gamma_mst(n + 1, p)
     # Keep a small, nonzero leading numerator outside Lentz's zero guard.
@@ -447,6 +513,13 @@ function _ln_cf_unpaired(n::Integer, p::MSTParams)
     return CFResult(value, cf.relerr, cf.iterations, cf.converged)
 end
 
+"""
+    ln_cf(n, p)
+
+Continued fraction for the MST coefficient ratio L_n = a_n / a_(n+1), as a `CFResult`.
+For -l <= n < 0 the rows at nu + n = 0 and -1 are eliminated together when their
+cancellation would otherwise lose accuracy.
+"""
 function ln_cf(n::Integer, p::MSTParams)
     if -p.l <= n < 0
         # Eliminate the adjacent nu+n=0,-1 rows together. Their 1/(nu-l)^2
@@ -494,6 +567,12 @@ function ln_cf(n::Integer, p::MSTParams)
     return _ln_cf_unpaired(n,p)
 end
 
+"""
+    MSTSeriesData(params)
+
+Lazily filled MST series coefficients: `log a_n` with a_0 = 1, the relative error of each
+ratio, its convergence flag and the accumulated coefficient errors, guarded by a lock.
+"""
 mutable struct MSTSeriesData
     params::MSTParams
     log_coeffs::Dict{Int,ComplexF64}
@@ -516,6 +595,9 @@ MSTSeriesData(params::MSTParams) =
 const MST_COEFF_CONDITION_MAX = 4.0
 const MST_COEFF_ERROR_MAX = 2.5e-14
 
+# Next ratio a_key / a_(key-1) (_next_rn) or a_key / a_(key+1) (_next_ln) from the
+# recurrence and the two previous coefficients, with its error; `valid` is false when the
+# step is ill conditioned and the continued fraction is used instead.
 function _next_rn(data::MSTSeriesData, key::Int)
     n = key - 1
     previous = exp(data.log_coeffs[n] - data.log_coeffs[n - 1])
@@ -554,6 +636,8 @@ function _next_ln(data::MSTSeriesData, key::Int)
     return ratio, Float64(error + eps(Float64)), valid
 end
 
+# log a_n, filled on demand outward from n = 0 by recurrence when well conditioned,
+# otherwise by continued fraction.
 function log_series_coefficient!(data::MSTSeriesData, n::Integer)
     return lock(data.coefficient_lock) do
         _log_series_coefficient!(data, Int(n))
@@ -604,6 +688,7 @@ function _log_series_coefficient!(data::MSTSeriesData, key::Int)
     end
 end
 
+# MST coordinates x = (r_+ - r) / (r_+ - r_-) and z = epsilon kappa (1 - x).
 mst_x(p::MSTParams, r::Number) =
     (1.0 + p.kappa - r) / (2.0 * p.kappa)
 mst_z(p::MSTParams, r::Number) = p.epsilon * p.kappa * (1.0 - mst_x(p, r))
@@ -648,6 +733,7 @@ function log_pochhammer(a, n::Integer)
     return -total
 end
 
+# Tolerances and limits of the confluent hypergeometric U(a, b, z) evaluators.
 struct HyperUBackend
     reltol::Float64
     series_max::Int
@@ -701,6 +787,7 @@ function _hrelerr(term, total)
     return abs(term) / max(abs(total), floatmin(Float64))
 end
 
+# Truncated Taylor series ("jets") in delta, stored as SVector coefficients.
 const U_JET_DEGREE = 6
 const U_JET_SIZE = U_JET_DEGREE + 1
 const UJet = SVector{U_JET_SIZE,ComplexF64}
@@ -794,6 +881,8 @@ end
     return value
 end
 
+# Jet of 1/Gamma(z0 + slope delta); the argument is shifted to Re >= 2 before loggamma
+# and polygamma are used.
 _rgamma_jet(z0, slope) = _rgamma_jet(z0, slope, Val(U_JET_SIZE))
 
 function _rgamma_jet(z0, slope, size::Val{N}) where {N}
@@ -813,6 +902,8 @@ function _rgamma_jet(z0, slope, size::Val{N}) where {N}
     return result
 end
 
+# Jets of 1/Gamma(beta0 + k + slope delta) for k = 0..max(0, 1 - beta0); cached below for
+# |beta0| <= 256 and slope +-1.
 function _gamma_prefix(beta0::Int, beta_slope, size::Val{N}) where {N}
     k0 = max(0, 1 - beta0)
     prefix = Vector{SVector{N,ComplexF64}}(undef, k0 + 1)
@@ -853,6 +944,9 @@ function _cached_prefix(beta0::Int, beta_slope, size::Val{N}) where {N}
     return _gamma_prefix(beta0, beta_slope, size)
 end
 
+# Jet in delta of the regularized Kummer series M(a, b, z) / Gamma(b) with
+# a = alpha0 + alpha_slope delta and b = beta0 + beta_slope delta (compensated summation),
+# with its error estimate and condition. _mreg_triplet adds the first two z-derivatives.
 function _mreg_jet(alpha0, alpha_slope, beta0::Int, beta_slope, z, backend::HyperUBackend)
     k0 = max(0, 1 - beta0)
     k0 + 4 < backend.series_max ||
@@ -997,6 +1091,7 @@ function _mreg_triplet(alpha0, alpha_slope, beta0::Int, beta_slope, z,
         status=status, condition=condition)
 end
 
+# pi delta / sin(pi delta), using its series for small delta; _pi_delta_jet gives the jet.
 @inline function _pi_delta_ratio(delta)
     dc = ComplexF64(delta)
     if abs(dc) <= 1.0e-3
@@ -1006,6 +1101,7 @@ end
     return pi * dc / sin(pi * dc)
 end
 
+# Divides a jet by delta, dropping its constant term.
 @inline function _jet_drop_constant(a::SVector{N,ComplexF64}) where {N}
     out = MVector{N,ComplexF64}(undef)
     @inbounds for n in 1:(N - 1)
@@ -1026,6 +1122,7 @@ end
     return SVector{N,ComplexF64}(out)
 end
 
+# Condition number of the divided difference (component_a - component_b) / delta.
 @inline function _divided_condition(
         component_a::SVector{N,ComplexF64},
         component_b::SVector{N,ComplexF64},
@@ -1041,6 +1138,10 @@ end
     return weighted / max(abs(value), floatmin(Float64))
 end
 
+# U(a, b, z) and its first two z-derivatives for b = integer_b + delta near an integer
+# and a = a0 + delta/2, from the delta-jets of the two regularized M terms of the
+# connection formula, whose difference vanishes at delta = 0. Returns nothing when
+# delta or z is out of range or a jet fails.
 function _near_integer_triplet(a0, integer_b::Int, delta, z,
         backend::HyperUBackend)
     size = abs(ComplexF64(delta)) <= U_SMALL_DELTA ?
@@ -1168,6 +1269,7 @@ function _near_integer_triplet(a0, integer_b::Int, delta, z,
     )
 end
 
+# log U(a, b, z) by the same near-integer jet construction (value only).
 function _near_integer_u(a0, integer_b::Int, delta, z, backend::HyperUBackend)
     dc = ComplexF64(delta)
     zc = ComplexF64(z)
@@ -1337,6 +1439,7 @@ function _onef1(a, b, z, backend::HyperUBackend)
     return direct
 end
 
+# 1F1(a; b; z) Taylor series, after Kummer's transformation when Re z < 0 or |b - a| < |a|.
 function _onef1_taylor(a_temp, b_temp, z_temp, backend::HyperUBackend)
     a = ComplexF64(a_temp)
     b = ComplexF64(b_temp)
@@ -1388,6 +1491,7 @@ end
 
 _gamma_ratio(a, b) = exp(loggamma(ComplexF64(a)) - loggamma(ComplexF64(b)))
 
+# log U(a, b, z) from its connection formula in two 1F1 functions.
 function _u_connection(a, b, z, backend::HyperUBackend)
     m1 = _onef1_for_u(a, b, z, backend)
     m2 = _onef1_for_u(a - b + 1, 2 - b, z, backend)
@@ -1424,6 +1528,7 @@ function _u_direct(a, b, z)
     end
 end
 
+# log U near a = b = 1, where U(1, 1, z) = exp(z) E1(z).
 function _u_one_one_limit(a, b, z, backend::HyperUBackend)
     ac = ComplexF64(a)
     bc = ComplexF64(b)
@@ -1447,6 +1552,7 @@ function _u_one_one_limit(a, b, z, backend::HyperUBackend)
     end
 end
 
+# log U(a, n + 1, z) for a nonpositive integer a, where U is a polynomial in z.
 function _u_polynomial_a(a, n::Int, z, exact_b::Bool)
     m = _near_nonpositive_integer(a)
     m === nothing && return nothing
@@ -1464,6 +1570,7 @@ function _u_polynomial_a(a, n::Int, z, exact_b::Bool)
     return HyperEval(log(value), :log_u_integer_b_polynomial, eps(Float64), m + 1, status, "")
 end
 
+# log U(a, n + 1, z) for integer n >= 0 from the logarithmic formula DLMF 13.2.9.
 function _u_positive_integer_b(a, n::Int, z, backend::HyperUBackend, exact_b::Bool)
     n < 0 && return _hfail(:log_u_integer_b_limit, "positive-integer-b route requires n >= 0")
     ac = ComplexF64(a)
@@ -1529,6 +1636,8 @@ function _u_positive_integer_b(a, n::Int, z, backend::HyperUBackend, exact_b::Bo
     end
 end
 
+# log U for b within integer_b_tol of an integer; b <= 0 goes through
+# U(a, b, z) = z^(1 - b) U(a - b + 1, 2 - b, z).
 function _u_integer_b(a, b, z, backend::HyperUBackend)
     bc = ComplexF64(b)
     snapped_b = _integer_snap(bc, backend.integer_b_tol)
@@ -1547,6 +1656,7 @@ function _u_integer_b(a, b, z, backend::HyperUBackend)
         shifted.estimated_relerr, shifted.iterations, shifted.status, shifted.message)
 end
 
+# Large-|z| asymptotic series of U, stopped at its smallest term if it does not converge.
 function _u_asymptotic(a, b, z, backend::HyperUBackend)
     term = ComplexF64(1)
     total = ComplexF64(1)
@@ -1577,6 +1687,8 @@ function _u_asymptotic(a, b, z, backend::HyperUBackend)
         backend.asymptotic_max, :WARN_MAXITER, "asymptotic maxiter")
 end
 
+# Ordering of U candidates: usable status, integer-b routes at small |z|, estimated
+# error, status, and a penalty for an unconverged asymptotic series at |z| < 10.
 function _u_rank(candidate::HyperEval, z, backend::HyperUBackend)
     usable_rank = _usable(candidate.status) ? 0 : 1
     integer_priority =
@@ -1610,6 +1722,8 @@ function _better_u(best, candidate::HyperEval, z, backend::HyperUBackend)
     return _u_rank(candidate, z, backend) < _u_rank(best, z, backend) ? candidate : best
 end
 
+# log U(a, b, z) by the best usable route: special cases, integer-b formulas, the
+# U(1, 1, z) limit, the asymptotic series, the connection formula, then the library.
 function _eval_log_u(backend::HyperUBackend, a, b, z; integer_route::Bool=true)
     ac = ComplexF64(a)
     bc = ComplexF64(b)
@@ -1636,6 +1750,9 @@ function _eval_log_u(backend::HyperUBackend, a, b, z; integer_route::Bool=true)
     return _hfail(:log_u_no_route, conn.message)
 end
 
+# log U at a = a0 + delta/2, b = integer_b + delta: the near-integer jet when it succeeds,
+# otherwise the more accurate of it and the general evaluator. _mst_log_du gives
+# log dU/dz = log(-a U(a + 1, b + 1, z)).
 function _mst_log_u(a0, integer_b::Int, delta, z)
     near = _near_integer_u(a0, integer_b, delta, z, HYPER_U)
     near.status == :OK && return near
@@ -1671,6 +1788,8 @@ function _mst_log_du(a0, integer_b::Int, delta, z)
     return _hfail(:log_du_no_route, shifted.message)
 end
 
+# A U-function state (value, first and second z-derivatives) normalized to unit size,
+# with its log scale.
 struct MSTHState
     value::ComplexF64
     deriv::ComplexF64
@@ -1678,6 +1797,9 @@ struct MSTHState
     log_scale::Float64
 end
 
+# The U-function states h_n, |n| <= MST_N_MAX, of one infinity series at a fixed argument,
+# filled lazily by three-term recurrence with direct evaluation as anchor and fallback,
+# plus the status of the Miller and negative-n constructions.
 mutable struct MSTUSequence
     a0::ComplexF64
     integer_b::Int
@@ -1725,6 +1847,8 @@ function _normalize_h(value, deriv, second, log_scale)
     )
 end
 
+# h_n = c^n U(a0 + n, integer_b + 2n + delta, c) and its c-derivatives from the
+# near-integer jet; returns (state, jet result) or nothing.
 function _near_h(sequence::MSTUSequence, n::Integer)
     a0 = sequence.a0 + n
     integer_b = sequence.integer_b + 2n
@@ -1752,6 +1876,7 @@ function _near_h(sequence::MSTUSequence, n::Integer)
     return state, triplet
 end
 
+# h_n from log U and log dU of the general evaluator, with its error estimate.
 function _legacy_h_eval(sequence::MSTUSequence, n::Integer)
     a0 = sequence.a0 + n
     integer_b = sequence.integer_b + 2n
@@ -1788,8 +1913,8 @@ function _legacy_h_eval(sequence::MSTUSequence, n::Integer)
     return state, Float64(error)
 end
 
-_legacy_h(sequence::MSTUSequence, n::Integer) = first(_legacy_h_eval(sequence, n))
-
+# Direct h_n: the near-integer jet when it is accurate, else whichever of it and the
+# general evaluator has the smaller error.
 function _direct_h_eval(sequence::MSTUSequence, n::Integer)
     near = _near_h(sequence, n)
     if near !== nothing
@@ -1804,8 +1929,6 @@ function _direct_h_eval(sequence::MSTUSequence, n::Integer)
     end
     return _legacy_h_eval(sequence, n)
 end
-
-_direct_h(sequence::MSTUSequence, n::Integer) = first(_direct_h_eval(sequence, n))
 
 function MSTUSequence(a0, integer_b::Int, delta, argument)
     a0c = ComplexF64(a0)
@@ -1847,6 +1970,7 @@ end
 @inline _h_norm(state::MSTHState) =
     max(abs(state.value), abs(state.deriv), abs(state.second))
 
+# Coefficients of the three-term recurrence of h_n and the c-derivatives of the middle one.
 @inline function _h_coeffs(sequence::MSTUSequence, n::Int)
     a0 = sequence.a0
     integer_b = sequence.integer_b
@@ -1866,6 +1990,7 @@ end
     return A, B, Bprime, Bsecond, D
 end
 
+# One backward step of the h_n recurrence with its condition number.
 function _miller_step(sequence::MSTUSequence, n::Int, hn::MSTHState, hn1::MSTHState)
     A, B, Bprime, Bsecond, D = _h_coeffs(sequence, n)
     abs_A = abs(A)
@@ -1944,6 +2069,8 @@ function _h_adjust(state::MSTHState, phase, log_adjust, ell, q)
     )
 end
 
+# Miller's backward recurrence from `cutoff`, normalized to the direct h_0 and checked
+# against the direct h_1; returns (states, conditions, error) or nothing.
 function _miller_trial(sequence::MSTUSequence, cutoff::Int, requested_n::Int)
     cutoff > requested_n || error("Miller cutoff must exceed requested index")
     trial = Vector{MSTHState}(undef, cutoff + 2)
@@ -1997,6 +2124,8 @@ function _miller_trial(sequence::MSTUSequence, cutoff::Int, requested_n::Int)
     return normalized, conditions, error
 end
 
+# Fills h_2..h_requested_n by Miller's algorithm, raising the cutoff until the h_1 check
+# meets MST_MILLER_TOL.
 function _miller_positive!(sequence::MSTUSequence, requested_n::Int)
     sequence.miller_status == :ACCEPTED &&
         sequence.miller_nmax >= requested_n && return sequence
@@ -2042,6 +2171,8 @@ function _miller_positive!(sequence::MSTUSequence, requested_n::Int)
     return sequence
 end
 
+# h_n from h_(n-1) and h_(n-2); when unstable, Miller's algorithm (n > 1) or direct
+# evaluation. Returns (state, condition, error).
 function _forward_h(sequence::MSTUSequence, n::Int)
     previous2 = _h_state(sequence, n - 2)
     previous1 = _h_state(sequence, n - 1)
@@ -2133,6 +2264,7 @@ function _forward_h(sequence::MSTUSequence, n::Int)
     return state, condition, error
 end
 
+# h_n from h_(n+1) and h_(n+2); when unstable, direct evaluation.
 function _backward_h(sequence::MSTUSequence, n::Int)
     next1 = _h_state(sequence, n + 1)
     next2 = _h_state(sequence, n + 2)
@@ -2228,6 +2360,8 @@ end
 @inline _reanchor_tol(n::Int) =
     n < 0 ? MST_NEGATIVE_REANCHOR_TOL : MST_STATE_REANCHOR_TOL
 
+# Error of a direct re-anchor: at least the direct error, and at least the smaller of the
+# recurrence error and twice the recurrence-direct discrepancy.
 function _reanchor_error(state::MSTHState, recurrence_error, direct::MSTHState,
         direct_error)
     discrepancy = _h_error(state, direct)
@@ -2248,8 +2382,9 @@ function _clear_negative!(sequence::MSTUSequence)
     return sequence
 end
 
-# Reject unstable negative-n segments without constructing an exception;
-# the existing backward recurrence then supplies those values.
+# Builds the negative-n segment once. An unstable segment is rejected
+# (false or a caught exception) and cleared; _backward_h then supplies
+# those values.
 function _negative_segment!(sequence::MSTUSequence)
     sequence.negative_status == :UNTRIED || return sequence
     sequence.negative_status = :RUNNING
@@ -2266,6 +2401,8 @@ function _negative_segment!(sequence::MSTUSequence)
     return sequence
 end
 
+# h_n for MST_NEGATIVE_SEGMENT_LO <= n <= -1 by forward recurrence from two direct
+# anchors; accepted when it agrees with the direct h_(-1).
 function _build_negative_segment!(sequence::MSTUSequence)
     for n in MST_NEGATIVE_SEGMENT_LO:(MST_NEGATIVE_SEGMENT_LO + 1)
         index = _seq_index(n)
@@ -2303,6 +2440,7 @@ function _build_negative_segment!(sequence::MSTUSequence)
     return true
 end
 
+# h_n on demand, cached in the sequence.
 function _h_state(sequence::MSTUSequence, n::Integer)
     -MST_N_MAX <= n <= MST_N_MAX || error("MST U sequence index outside supported range")
     index = _seq_index(n)
@@ -2319,6 +2457,7 @@ function _h_state(sequence::MSTUSequence, n::Integer)
     return state
 end
 
+# U-function sequences of the infinity-out and infinity-in series at MST coordinate x.
 function _out_sequence(data::MSTSeriesData, x)
     p = data.params
     epsilon = ComplexF64(p.epsilon)
@@ -2337,26 +2476,13 @@ function _in_sequence(data::MSTSeriesData, x)
     return MSTUSequence(a0, 2 * (p.l + 1), delta, z)
 end
 
-function _eval_log_du(backend::HyperUBackend, a, b, z)
-    ac = ComplexF64(a)
-    _near_zero(ac) && return HyperEval(ComplexF64(-Inf), :log_du_a_zero, 0.0, 0, :OK,
-        "dU/dz is exactly zero for a=0")
-    shifted = _eval_log_u(backend, ac + 1, ComplexF64(b) + 1, z)
-    if _usable(shifted.status)
-        return HyperEval(shifted.value + log(-ac), Symbol("log_du_", shifted.route),
-            shifted.estimated_relerr, shifted.iterations, shifted.status, shifted.message)
-    end
-    return _hfail(:log_du_no_route, shifted.message)
-end
-
-_log_u(a, b, z) = _eval_log_u(HYPER_U, a, b, z).value
-_log_du(a, b, z) = _near_zero(a) ? ComplexF64(-Inf) : _eval_log_du(HYPER_U, a, b, z).value
-
 const MST_TAIL_WINDOW = 3
 const MST_TAIL_STREAK = 3
 const MST_TAIL_SHARE = 0.25
 const MST_SUM_GAMMA = 2eps(Float64)
 
+# Compensated (Neumaier) sums of term triplets with their absolute sums, propagated
+# state errors and largest terms.
 mutable struct MSTAccum
     value::ComplexF64
     deriv::ComplexF64
@@ -2384,6 +2510,8 @@ MSTAccum() = MSTAccum(
     0,
 )
 
+# Convergence monitor of one direction of a series: recent term ratios and the
+# geometric tail bound they imply.
 mutable struct MSTTail
     direction::Int
     last::NTuple{3,Float64}
@@ -2406,6 +2534,8 @@ MSTTail(direction::Int) = MSTTail(
     :UNTRIED,
 )
 
+# Result of _mst_budget: the sum, its error split into rounding, state and tail parts,
+# and the status.
 struct MSTBudget
     sum::MSTTriplet
     estimated_relerr::Float64
@@ -2548,6 +2678,9 @@ function _extend_tail!(acc, tail, termfun, errorfun, start, nmax, reltol, abstol
     return tail
 end
 
+# Sums termfun(n) outward from n = 0 in both directions until each tail bound stays below
+# MST_TAIL_SHARE of the target for MST_TAIL_STREAK terms. The error is rounding plus
+# propagated state error (errorfun) plus tail bound, compared with budget_tol.
 function _mst_budget(
     termfun,
     errorfun;
@@ -2614,6 +2747,7 @@ function _mst_budget(
     )
 end
 
+# Relative error of the n-th term: coefficient error plus U-state error.
 function _term_error(data::MSTSeriesData, sequence::MSTUSequence, n::Integer)
     index = _seq_index(n)
     coefficient_error = _coefficient_error(data, n)
@@ -2637,6 +2771,8 @@ end
     return total + scaled_magnitude * phase, scale, scaled_magnitude
 end
 
+# Sum of exp(logtermfun(n)) over n = 0, +-1, ... until the new terms fall below reltol,
+# in log-norm form.
 function _sum_symmetric_logs(logtermfun;
     reltol::Float64=MST_REL_ERROR,
     ninit::Int=MST_N_INIT,
@@ -2682,6 +2818,8 @@ function _sum_symmetric_logs(logtermfun;
     )
 end
 
+# Budgeted sum of the infinity-out (U-function) series; throws MSTCertificateError
+# unless the budget is :OK.
 function _sum_type2(data::MSTSeriesData, x; reltol::Float64=MST_REL_ERROR,
         sequence=nothing)
     sequence = sequence === nothing ? _out_sequence(data, x) : sequence
@@ -2709,6 +2847,7 @@ function _sum_type2(data::MSTSeriesData, x; reltol::Float64=MST_REL_ERROR,
     )
 end
 
+# Prefactor of the infinity-out series and its x-derivative.
 function _up_prefactor(p::MSTParams, r::Number)
     z = ComplexF64(mst_z(p, r))
     epsv = ComplexF64(p.epsilon)
@@ -2736,6 +2875,7 @@ function _dup_prefactor_dx(p::MSTParams, r::Number)
     return value / (2 * z * (z - epsv * kappa))
 end
 
+# P and dP/dx of the infinity-out solution at r, with relative error and log scale.
 function _mst_out_p_pair(data::MSTSeriesData, r, sequence=nothing, budget=nothing)
     p = data.params
     x = mst_x(p, r)
@@ -2756,6 +2896,7 @@ function _mst_out_p_pair(data::MSTSeriesData, r, sequence=nothing, budget=nothin
     return P, Px, estimated_relerr, log_scale
 end
 
+# Budgeted sum of the infinity-in series; throws MSTCertificateError unless :OK.
 function _sum_true_in(data::MSTSeriesData, x; reltol::Float64=MST_REL_ERROR,
         sequence=nothing)
     sequence = sequence === nothing ? _in_sequence(data, x) : sequence
@@ -2781,6 +2922,7 @@ function _sum_true_in(data::MSTSeriesData, x; reltol::Float64=MST_REL_ERROR,
     )
 end
 
+# P and dP/dx of the infinity-in solution at r, with relative error and log scale.
 function _mst_in_p_pair(data::MSTSeriesData, r, sequence=nothing, budget=nothing)
     p = data.params
     x = mst_x(p, r)
@@ -2797,6 +2939,8 @@ function _mst_in_p_pair(data::MSTSeriesData, r, sequence=nothing, budget=nothing
     return P, Px, estimated_relerr, series.log_scale
 end
 
+# Closure r -> coefficients (A0, A1, B0, B1) with X = A0 P + A1 dP/dx and
+# dX/dr* = B0 P + B1 dP/dx.
 function _p_converter(params)
     tt = _teukolsky_transformation_module()
     return getfield(tt, :P_to_GSN_coefficients_from_matrix)(
@@ -2809,6 +2953,7 @@ function _p_converter(params)
     )
 end
 
+# GSN X and dX/dx from (P, dP/dx) and the converter coefficients.
 function _p_to_gsn_dx(
     params::DirectGSNParameters,
     P,
@@ -2838,10 +2983,13 @@ function _p_to_gsn_dx(
         coefficients.params, P, Px, direct_x, transform; radius)
 end
 
+# Normalization sum of a_n over n, in log-norm form.
 function _incoming_raw_factor(data::MSTSeriesData)
     return _sum_symmetric_logs(n -> log_series_coefficient!(data, n))
 end
 
+# Compensated sum of exp(logtermfun(n)) over |n| <= nmax in log-norm form, with a
+# rounding bound.
 function _nia_full_logsum(logtermfun, nmax::Int)
     nmax >= 0 || throw(ArgumentError(
         "MST NIA full-term sum requires nmax >= 0."))
@@ -2882,6 +3030,7 @@ function _nia_full_logsum(logtermfun, nmax::Int)
     )
 end
 
+# Double-double l + n + shift + offset and 2(l + n) + shift + 2 offset.
 @inline _dd_factor(
     p::MSTParams,
     offset::DDComplex,
@@ -2910,6 +3059,7 @@ end
 @inline _nia_dd_twice_factor(p::MSTParams, n::Int, shift::Int=0) =
     _dd_twice(p, DDComplex(p.nu_offset), n, shift)
 
+# Double-double alpha_n, beta_n and gamma_n of the MST recurrence at nu = l + offset.
 function _dd_alpha(n::Int, p::MSTParams, offset::DDComplex)
     epsc = DDComplex(p.epsilon)
     kappa = DDComplex(p.kappa)
@@ -2991,6 +3141,7 @@ end
 @inline _nia_gamma_dd(n::Int, p::MSTParams) =
     _dd_gamma(n, p, DDComplex(p.nu_offset))
 
+# Sum over |n| <= nmax of a_n (-1)^n (nu+1+s-i epsilon)_n / (nu+1-s+i epsilon)_n.
 function _nia_aminus_sum(data::MSTSeriesData, nmax::Int)
     p = data.params
     return _nia_full_logsum(nmax) do n
@@ -3001,6 +3152,8 @@ function _nia_aminus_sum(data::MSTSeriesData, nmax::Int)
     end
 end
 
+# MSTSeriesData with a_n for |n| <= MST_N_MAX from double-double backward recurrences
+# started at +-cutoff.
 function _nia_series_data(params::MSTParams, cutoff::Int)
     cutoff >= MST_N_MAX ||
         throw(ArgumentError(
@@ -3092,6 +3245,7 @@ struct MSTAmplitudeSum
     error::Float64
 end
 
+# Representation shifts nu + k and acceptance thresholds of the amplitude certificates.
 const MST_AMP_SHIFTS = (-4, -3, 2, 3)
 const MST_AMP_NMAX = 120
 const MST_AMP_CHECK_NMAX = 96
@@ -3102,6 +3256,8 @@ const MST_AMP_CONDITION_MAX = 1.0e7
 const MST_DD_NU_RESIDUAL_MAX = 1.0e-24
 const MST_DD_CONDITION_MAX = 1.0e12
 
+# Double-double ratios a_n / a_(n-1) (positive) and a_(-n) / a_(-n+1) (negative) for
+# n = 1..nmax, from backward recurrences started at +-cutoff.
 function _dd_ratios(
     p::MSTParams,
     offset::DDComplex;
@@ -3169,6 +3325,7 @@ function _dd_ratios(
     return positive, negative
 end
 
+# Double-double MST equation beta_0 + alpha_0 R_1 + gamma_0 L_(-1) at nu = l + offset.
 function _dd_equation(
     p::MSTParams,
     offset::DDComplex;
@@ -3185,6 +3342,8 @@ function _dd_equation(
     )
 end
 
+# Newton refinement of nu - l in double-double; throws unless the scaled residual
+# reaches MST_DD_NU_RESIDUAL_MAX.
 function _dd_refine(
     p::MSTParams;
     cutoff::Int=MST_NIA_TAIL,
@@ -3275,6 +3434,8 @@ function _dd_sum_result(total::DDComplex, absolute_sum)
     )
 end
 
+# Double-double sums of base times cumulative products of ratios and weights, over
+# |n| <= nmax and |n| <= check_nmax.
 function _dd_sum_pair(
     base,
     positive,
@@ -3321,6 +3482,8 @@ function _dd_sum_pair(
     return sum_at(nmax), sum_at(check_nmax)
 end
 
+# Double-double amplitude sums (coefficient sum, A_- sum, K_nu sums, D sum) at full and
+# check order.
 function _dd_amp_sums(
     data::MSTSeriesData,
     offset::DDComplex;
@@ -3494,6 +3657,7 @@ function _dd_amp_sums(
     return fsum, asum, ksum, dsum
 end
 
+# Double-double version of _amp_pair at nu = l + offset.
 function _dd_amp_pair(
     data::MSTSeriesData,
     offset::DDComplex;
@@ -3562,6 +3726,8 @@ function _amp_logsum(logtermfun, nmin::Int, nmax::Int)
         ComplexF64[logtermfun(n) for n in nmin:nmax])
 end
 
+# Log-sum of a_n times a weight accumulated from exp(ratio_log(n)) outward from n = 0;
+# _amp_rec_pair also returns the sum over [check_min, check_max].
 function _amp_rec_sum(
     ratio_log,
     data::MSTSeriesData,
@@ -3588,6 +3754,7 @@ function _amp_rec_sum(
     return _amp_logsum_values(logs)
 end
 
+# Log-sums of `logs` over the full range and over [check_min, check_max].
 function _amp_pair_sum(
     logs,
     nmin::Int,
@@ -3660,6 +3827,7 @@ end
 _amp_lfactorial(n::Int) = _amp_lgamma(n + 1)
 _amp_lsin(z) = log(ComplexF64(sin(ComplexF64(z))))
 
+# Sum of a_n over |n| <= nmax.
 function _amp_coeff_sum(data::MSTSeriesData, nmax::Int)
     return _amp_logsum(-nmax, nmax) do n
         log_series_coefficient!(data, n)
@@ -3676,6 +3844,8 @@ function _amp_coeff_pair(
     return _amp_pair_sum(logs, -nmax, -check_nmax, check_nmax)
 end
 
+# A_- sum of a_n (-1)^n (nu+1+s-i epsilon)_n / (nu+1-s+i epsilon)_n; the _fast and _pair
+# versions build the weights by recurrence.
 function _amp_aminus_sum(data::MSTSeriesData, nmax::Int)
     p = data.params
     nu = _nu_shift(p)
@@ -3720,6 +3890,7 @@ function _amp_aminus_pair(
     end
 end
 
+# Upper (n >= 0) and lower (n <= 0) sums of K_nu.
 function _amp_knu_sums(data::MSTSeriesData, nmax::Int)
     p = data.params
     nu = _nu_shift(p)
@@ -3837,6 +4008,8 @@ function _amp_knu_pair(
     )
 end
 
+# Sum of a_n Gamma(1+nu+n+s+i epsilon) Gamma(1+nu+n+i tau) /
+# (Gamma(1+nu+n-s-i epsilon) Gamma(1+nu+n-i tau)), used in up_inc.
 function _amp_dsum(data::MSTSeriesData, nmax::Int)
     p = data.params
     nu = _nu_shift(p)
@@ -3901,6 +4074,7 @@ function _amp_d_pair(
     end
 end
 
+# log K_nu from its upper and lower sums, with its absolute error.
 function _amp_klog(data::MSTSeriesData, sums)
     p = data.params
     nu = _nu_shift(p)
@@ -3954,6 +4128,9 @@ _amp_conj(x::MSTAmplitudeSum) =
 _amp_conj(x::Tuple) = map(_amp_conj, x)
 _amp_conj(x::NamedTuple) = map(v -> v isa Complex ? conj(v) : v, x)
 
+# Logs of the six asymptotic amplitudes (in/up incidence, transmission, reflection)
+# and their absolute errors from the coefficient sum, the A_- sum, the K sums at nu and
+# -nu - 1 and the D sums (Sasaki & Tagoshi, Living Rev. Relativ. 6, 6 (2003)).
 function _amp_build(
     data::MSTSeriesData,
     data2::MSTSeriesData,
@@ -4170,6 +4347,8 @@ function _amp_shared_data(source::MSTSeriesData, params::MSTParams, d::Int,
     return data, mirror
 end
 
+# Amplitude logs from the sums over |n| <= nmax; `fast` builds the summand weights by
+# ratio recurrences.
 @noinline function _amp_logs(
     data::MSTSeriesData,
     nmax::Int;
@@ -4196,6 +4375,7 @@ end
         data, data2, fsum, asum, ksum1, ksum2, dsum1, dsum2)
 end
 
+# Amplitude logs at order nmax and at the check order check_nmax.
 @noinline function _amp_pair(
     data::MSTSeriesData,
     nmax::Int,
@@ -4236,6 +4416,7 @@ end
     return full, check
 end
 
+# Teukolsky incidence/transmission and reflection/transmission ratios of :IN or :UP.
 function _amp_teuk_pair(logs, branch::Symbol)
     if branch == :IN
         return (
@@ -4259,6 +4440,7 @@ _amp_ratio_errors(logs, branch::Symbol) = branch == :IN ?
     (logs.up_inc_error + logs.up_trans_error,
         logs.up_ref_error + logs.up_trans_error)
 
+# Converts Teukolsky amplitude ratios to GSN ones with the ConversionFactors amplitudes.
 function _amp_gsn_pair(p::MSTParams, branch::Symbol, teuk)
     cf = _conversion_module()
     trans, inc, ref = if branch == :IN
@@ -4280,6 +4462,7 @@ function _amp_gsn_pair(p::MSTParams, branch::Symbol, teuk)
     )
 end
 
+# Max-norm distance between two amplitude pairs, relative to the largest amplitude.
 function _amp_distance(first, second)
     scale = max(
         abs(first[1]), abs(first[2]),
@@ -4298,6 +4481,8 @@ end
 _amp_component_distance(value, other) =
     Float64.(abs.(value .- other) ./ abs.(value))
 
+# Candidate with the smallest summed distance to the others, with its spread and its
+# distance to the nearest other representation.
 function _amp_medoid(candidates)
     best = nothing
     best_score = Inf
@@ -4329,6 +4514,7 @@ function _amp_medoid(candidates)
     ))
 end
 
+# Indices and distance of the closest pair of candidates.
 function _amp_pair(candidates)
     pair = nothing
     distance = Inf
@@ -4351,6 +4537,7 @@ function _amp_pair(candidates)
     return pair, Float64(distance)
 end
 
+# Distance of a candidate from the same representation summed to MST_AMP_CHECK_NMAX.
 function _amp_check(base, shared, candidate, branch)
     data, mirror = shared[candidate.shift]
     logs = _amp_logs(data, MST_AMP_CHECK_NMAX; data2=mirror)
@@ -4398,6 +4585,7 @@ function _amp_nu_error(base, centered, source_shift, candidate, branch, step)
         _amp_gsn_pair(moved, branch, _amp_teuk_pair(logs, branch)))
 end
 
+# MSTSeriesData of the representation nu = centered + shift.
 function _amp_data(base::MSTParams, centered, shift)
     return MSTSeriesData(MSTParams(
         base.s,
@@ -4410,6 +4598,16 @@ function _amp_data(base::MSTParams, centered, shift)
     ))
 end
 
+"""
+    mst_nia_amplitudes(s, l, m, a, omega, lambda, branch; nu=nothing)
+
+Analytic MST asymptotic amplitudes of `branch` (`:IN` or `:UP`) certified across the
+representations nu + k, k in `MST_AMP_SHIFTS`, which share one coefficient set. The
+medoid of the candidates is returned when spread, nearest agreement, truncation and
+condition pass; otherwise the closest coherent pair is tried, and an
+`MSTCertificateError` is thrown if it fails too. The result holds the Teukolsky and GSN
+amplitude ratios (`teuk`, `gsn`), the transmission log and the certificate diagnostics.
+"""
 @noinline function mst_nia_amplitudes(
     s::Integer,
     l::Integer,
@@ -4531,6 +4729,7 @@ end
     ))
 end
 
+# Amplitudes at the principal nu with a truncation check at MST_AMP_CHECK_NMAX.
 @noinline function _principal_amplitudes(
     data::MSTSeriesData,
     branch::Symbol,
@@ -4599,6 +4798,8 @@ end
     )
 end
 
+# Amplitudes as in _principal_amplitudes, with nu refined and the sums evaluated in
+# double-double.
 @noinline function _refined_amplitudes(
     data::MSTSeriesData,
     branch::Symbol,
@@ -4675,6 +4876,13 @@ end
     )
 end
 
+"""
+    mst_principal_amplitudes(coefficients_or_params, branch)
+
+Analytic MST asymptotic amplitudes of `branch` (`:IN` or `:UP`) at the principal nu of
+the mode, certified by a truncation and a condition check; throws `MSTCertificateError`
+otherwise.
+"""
 @noinline mst_principal_amplitudes(
     coefficients::DirectCoefficientSet,
     branch::Symbol,
@@ -4685,6 +4893,8 @@ end
     branch::Symbol,
 ) = _principal_amplitudes(_mst_data(params), branch)
 
+# Branch strength and amplitude ratio on the negative imaginary axis from given series
+# data, at one truncation order.
 function _nia_branch_strength(
     data::MSTSeriesData;
     nmax::Int=MST_NIA_SUM_MAX,
@@ -4743,6 +4953,15 @@ function _nia_branch_strength(
     )
 end
 
+"""
+    direct_mst_nia_branch_strength(s, l, m, a, omega, lambda; nu=nothing)
+
+Strength of the branch cut of the MST solution on the negative imaginary frequency axis,
+omega = -i sigma with sigma > 0, from series coefficients computed by double-double
+backward recurrence. The estimated error combines the sum error, the change between two
+truncation orders and the change under one-ulp perturbations of a, omega, lambda and nu;
+`certificate_accepted` is true when it is at most `MST_NIA_CERT_TOL`.
+"""
 function direct_mst_nia_branch_strength(
     s::Integer,
     l::Integer,
@@ -4836,6 +5055,12 @@ function direct_mst_nia_branch_strength(
     ))
 end
 
+"""
+    nia_strength_fast(s, l, m, a, omega, lambda; nu=nothing)
+
+Cheaper `direct_mst_nia_branch_strength`: lower recurrence cutoffs and sum orders, and
+an error estimate from two truncation orders only.
+"""
 function nia_strength_fast(
     s::Integer,
     l::Integer,
@@ -4879,6 +5104,15 @@ function nia_strength_fast(
     ))
 end
 
+"""
+    direct_mst_nia_jump(s, l, m, a, omega, lambda, unit_incidence, unit_reflection; nu=nothing, require_certificate=true)
+
+Jump coefficient across the branch cut on the negative imaginary frequency axis at
+omega = -i sigma (sigma > 0), from the branch strength q of
+`direct_mst_nia_branch_strength` and the unit-transmission incidence and reflection
+amplitudes. Wronskians and the jump are carried in log-polar form. With
+`require_certificate`, an uncertified strength throws `MSTCertificateError`.
+"""
 function direct_mst_nia_jump(
     s::Integer,
     l::Integer,
@@ -5011,6 +5245,7 @@ function direct_mst_nia_jump(
     ))
 end
 
+# Log-norm normalization of the outgoing branch from the A_- sum and its prefactor.
 function _outgoing_raw_factor(data::MSTSeriesData)
     p = data.params
     fsum = _sum_symmetric_logs() do n
@@ -5037,6 +5272,8 @@ function _outgoing_raw_factor(data::MSTSeriesData)
     )
 end
 
+# The same normalization from fixed-order A_- sums (full and check order); throws when
+# truncation or conditioning exceed `tolerance`.
 function _outgoing_raw_fast(data::MSTSeriesData, tolerance::Float64)
     full, check = _amp_aminus_pair(
         data, MST_AMP_NMAX, MST_AMP_CHECK_NMAX)
@@ -5068,6 +5305,8 @@ function _outgoing_raw_fast(data::MSTSeriesData, tolerance::Float64)
     )
 end
 
+# Log factor taking the raw MST series of `branch` to unit normalization: the raw sum
+# times f3 or f4 over the conversion amplitude Binc or Bref.
 function _raw_unit_logfactor(data::MSTSeriesData, params, branch::Symbol, raw=nothing)
     cf = _conversion_module()
     f3, f4 = _legacy_factors(params)
@@ -5095,6 +5334,8 @@ function _raw_unit_logfactor(data::MSTSeriesData, params, branch::Symbol, raw=no
     )
 end
 
+# n-th term of the hypergeometric (Type-1) physical-in series and its first two
+# x-derivatives, weighted by a_n / norm.
 function _type1_triplet(data::MSTSeriesData, n::Integer, x, norm::LogNormSum)
     p = data.params
     npnu = _npnu(p, n)
@@ -5133,6 +5374,8 @@ const MST_DD_REG_SERIES_MAX = 4096
 const MST_DD_REG_TOL = 8eps(Float64)
 const MST_DD_REG_POLE_RADIUS = 0.125
 
+# Double-double n-th Type-1 term: coefficient times
+# 2F1(n+nu+1-i tau, -n-nu-i tau; 1-s-i(epsilon+tau); x) and its first two derivatives.
 function _dd_type1_term(
     p::MSTParams,
     n::Int,
@@ -5163,6 +5406,7 @@ function _dd_type1_term(
     )
 end
 
+# Double-double physical-in sums normalized by sum a_n, at order nmax and check_nmax.
 function _dd_type1_pair(
     data::MSTSeriesData,
     offset::DDComplex,
@@ -5255,6 +5499,7 @@ end
 @inline _dd_shift(value::DDComplex, shift) =
     dc_add(value, DDComplex(shift))
 
+# Hypergeometric parameter c = 1 - s - i(epsilon + tau) of the Type-1 series.
 @inline function _dd_hyper_c(p::MSTParams)
     return dc_sub(
         DDComplex(1 - p.s),
@@ -5262,6 +5507,8 @@ end
     )
 end
 
+# True when c is within MST_DD_REG_POLE_RADIUS of a nonpositive integer, where the
+# regularized Type-1 series is used.
 @inline function _dd_regime(p::MSTParams)
     c = dc_value(_dd_hyper_c(p))
     nearest = round(Int, -real(c))
@@ -5270,6 +5517,8 @@ end
         abs(c + nearest) <= MST_DD_REG_POLE_RADIUS
 end
 
+# Double-double power series of the regularized 2F1(a, b; c; z) / Gamma(c). Near a
+# nonpositive integer c the series starts past the pole and recurs backward to k = 0.
 function _dd_reg_series(
     a::DDComplex,
     b::DDComplex,
@@ -5385,6 +5634,8 @@ function _dd_reg_series(
     )
 end
 
+# Regularized 2F1(a, b; c; z) / Gamma(c) through the Pfaff transformation
+# (1 - z)^(-a) 2F1(a, c - b; c; z / (z - 1)), for |z / (z - 1)| <= 1/2.
 function _dd_reg_2f1(
     a::DDComplex,
     b::DDComplex,
@@ -5421,6 +5672,7 @@ function _dd_reg_2f1(
     return merge(series, (; value))
 end
 
+# Regularized 2F1 of the n-th Type-1 term and its first two x-derivatives.
 function _dd_reg_triplet(
     p::MSTParams,
     offset::DDComplex,
@@ -5478,6 +5730,7 @@ function _dd_reg_triplet(
     )
 end
 
+# Regularized Type-1 physical-in sums times Gamma(c), at order nmax and check_nmax.
 function _dd_reg_pair(
     data::MSTSeriesData,
     offset::DDComplex,
@@ -5606,6 +5859,7 @@ function _dd_reg_pair(
     return sum_at(nmax), sum_at(check_nmax)
 end
 
+# Double-double converter coefficients (A0, A1, B0, B1), as in _p_converter.
 function _dd_transform(params, r)
     kappa = params.kappa
     epsilon = 2 * params.omega
@@ -5648,6 +5902,8 @@ function _dd_transform(params, r)
     return A0, A1, B0, B1
 end
 
+# GSN (X, dX/dx) times `scale` from a double-double P state, with the condition of the
+# linear combination.
 function _dd_convert(
     params,
     state,
@@ -5695,6 +5951,7 @@ function _dd_convert(
     )
 end
 
+# Regularized Type-1 version of _dd_pin_state.
 function _dd_reg_pin(
     coefficients::DirectCoefficientSet,
     data::MSTSeriesData,
@@ -5771,6 +6028,8 @@ function _dd_reg_pin(
     )
 end
 
+# Double-double physical-in GSN state at direct_x from the Type-1 series (regularized
+# near a pole of Gamma(c)), with residual, truncation and condition checks.
 function _dd_pin_state(
     coefficients::DirectCoefficientSet,
     data::MSTSeriesData,
@@ -5856,6 +6115,8 @@ function _dd_pin_state(
     )
 end
 
+# Physical-in P and dP/dx at r from the budgeted Type-1 series normalized by `norm`,
+# with a radial-equation residual check.
 function _mst_pin_result(data::MSTSeriesData, r, norm::LogNormSum)
     x = mst_x(data.params, r)
     budget = _mst_budget(
@@ -5905,6 +6166,7 @@ function _mst_state_at(coefficients::DirectCoefficientSet, branch::Symbol, direc
     return _mst_state_at(coefficients, data, branch, direct_x)
 end
 
+# MSTSeriesData at the solved nu of the mode.
 function _mst_data(params::DirectGSNParameters)
     nu_offset = _mst_nu_offset(
         params.s, params.l, params.m, params.a, params.omega, params.lambda)
@@ -5940,6 +6202,8 @@ function _mst_state_at(
     )
 end
 
+# Unit-normalized GSN state (X, dX/dx, relative error) of :in or :out at direct_x; the
+# optional arguments reuse a converter, sequence, budget and normalization factor.
 function _mst_state_at_params(
     params::DirectGSNParameters,
     data::MSTSeriesData,
@@ -5987,9 +6251,8 @@ end
 _finite_triplet(t::MSTTriplet) =
     _finite_complex(t.value) && _finite_complex(t.deriv) && _finite_complex(t.second)
 
-_add_triplet(a::MSTTriplet, b::MSTTriplet) =
-    MSTTriplet(a.value + b.value, a.deriv + b.deriv, a.second + b.second)
-
+# Coefficients q1, q2 of x(1 - x) P'' + q1 P' + q2 P = 0, the equation checked by
+# _p_residual.
 function _p_q_coefficients(p::MSTParams, x)
     s = ComplexF64(p.s)
     epsc = ComplexF64(p.epsilon)
@@ -6005,6 +6268,7 @@ function _p_q_coefficients(p::MSTParams, x)
     return q1, q2
 end
 
+# Relative residual of that equation for a (P, P', P'') triplet.
 function _p_residual(p::MSTParams, x, triplet::MSTTriplet)
     xc = ComplexF64(x)
     q1, q2 = _p_q_coefficients(p, xc)
@@ -6015,6 +6279,7 @@ function _p_residual(p::MSTParams, x, triplet::MSTTriplet)
     return abs(numer) / max(denom, floatmin(Float64))
 end
 
+# Common log scale of the infinity-out terms, taken from the n = 0 term.
 function _out_term_log_scale(data::MSTSeriesData, x, sequence)
     p = data.params
     epsc = ComplexF64(p.epsilon)
@@ -6032,6 +6297,8 @@ function _out_term_log_scale(data::MSTSeriesData, x, sequence)
     return Float64(real(log_weight) + state.log_scale + log(norm))
 end
 
+# n-th term of the infinity-out (infinity-in below) series and its first two
+# x-derivatives, built from the U-function state h_n.
 function _out_term_triplet(data::MSTSeriesData, n::Integer, x,
         sequence=nothing, common_log_scale::Float64=0.0)
     p = data.params
@@ -6106,6 +6373,8 @@ function _out_log_transform(p::MSTParams, x)
     return Lu - Lt, Lup - Ltp
 end
 
+# P, P' and P'' of the infinity-out (infinity-in below) solution from the series
+# triplet and the log-derivative of its prefactor.
 function _out_p_triplet(data::MSTSeriesData, r, series::MSTTriplet)
     p = data.params
     x = mst_x(p, r)
@@ -6129,6 +6398,7 @@ function _in_p_triplet(data::MSTSeriesData, r, series::MSTTriplet)
     return MSTTriplet(ComplexF64(P), ComplexF64(Px), ComplexF64(Pxx))
 end
 
+# Budgeted series sum at r and the radial-equation residual of its transform.
 function _budget_residual(data::MSTSeriesData, termfun, transformfun, r, sequence;
         log_scale::Float64=0.0)
     p = data.params
@@ -6180,6 +6450,7 @@ end
     return max(result.residual, result.tail)
 end
 
+# Sum and residual check of the :in or :out series at r; an error gives an Inf residual.
 function _branch_check(data::MSTSeriesData, branch::Symbol, r)
     try
         x = mst_x(data.params, r)
@@ -6209,6 +6480,7 @@ function _branch_check(data::MSTSeriesData, branch::Symbol, r)
     )
 end
 
+# Residual checks of the requested branches at x = 1 - |omega| y.
 function _mst_residual_at_y(
     coefficients::DirectCoefficientSet,
     data::MSTSeriesData,
@@ -6244,8 +6516,12 @@ function _mst_residual_at_y(
     )
 end
 
+# Factor by which the trial seed y shrinks (independent of the score).
 _mst_shrink(score) = sqrt(10.0)
 
+# Seed point for the MST series, in y = (1 - x) / |omega|: tries a capped fraction of the
+# matching y, shrinks y until all branch residuals pass, refines the boundary by
+# geometric bisection, and returns the seed with its cached sequences and budgets.
 function _mst_residual_seed_x(
     coefficients::DirectCoefficientSet,
     data::MSTSeriesData,
@@ -6398,6 +6674,13 @@ function _mst_residual_seed_x(
     )
 end
 
+"""
+    direct_mst_plan(coefficients, match_x; branches=(:in, :out))
+
+Plan for MST infinity states of `branches` near `match_x`: the series data, a seed point
+where the series pass their residual checks (`selection`), the P-to-GSN converter, the
+physical-in normalization and the raw-to-unit factors of each branch.
+"""
 function direct_mst_plan(
     coefficients::DirectCoefficientSet,
     match_x::Float64;
@@ -6425,6 +6708,12 @@ function direct_mst_plan(
     )
 end
 
+"""
+    direct_mst_eval_plan(plan; pin_scale=nothing, out_scale=nothing, logscaled=false, handoff_x=nothing)
+
+The fields of a `direct_mst_plan` result needed for evaluation, with optional scales,
+a log-scaling flag, and `handoff_x` replacing the seed point.
+"""
 direct_mst_eval_plan(
     plan;
     pin_scale=nothing,
@@ -6449,6 +6738,8 @@ direct_mst_eval_plan(
         throw(ArgumentError("MST infinity branch must be :in or :out."))
 end
 
+# Log-scaled MST state of a normalized branch at x with its relative error; `sequence`
+# and `budget` reuse cached work.
 function _mst_logscaled_state(
     coefficients::DirectCoefficientSet,
     plan,
@@ -6477,6 +6768,12 @@ function _mst_logscaled_state(
     return state, Float64(error_estimate)
 end
 
+"""
+    direct_mst_principal_plan(coefficients; branches=(:in, :out))
+
+Plan for MST states at the principal nu: series data, P-to-GSN converter and the
+raw-to-unit factors of `branches`.
+"""
 function direct_mst_principal_plan(
     coefficients::DirectCoefficientSet;
     branches=(:in, :out),
@@ -6496,6 +6793,12 @@ function direct_mst_principal_plan(
     )
 end
 
+"""
+    direct_mst_principal_state(coefficients, plan, branch, direct_x)
+
+MST state of `branch` at a real or complex `direct_x` away from 0 and 1, from a
+`direct_mst_principal_plan`. Returns `(X, dXdx, log_scale, estimated_relerr)`.
+"""
 function direct_mst_principal_state(
     coefficients::DirectCoefficientSet,
     plan,
@@ -6520,6 +6823,13 @@ function direct_mst_principal_state(
     )
 end
 
+"""
+    MSTPhysicalPlan
+
+Plan returned by `direct_mst_physical_plan`: coefficient set, MST series data, branch
+(`:IN` or `:UP`), certified amplitudes, P-to-GSN converter, normalization factors, the
+double-double nu offset (or `nothing`) and the amplitude representation.
+"""
 struct MSTPhysicalPlan{C,D,A,F,P,S,O,R}
     coefficients::C
     data::D
@@ -6538,6 +6848,7 @@ end
     return normalized == :in ? :IN : :UP
 end
 
+# MSTSeriesData with a_n for |n| <= MST_N_MAX from the double-double ratios at `offset`.
 function _dd_state_data(params::MSTParams, offset::DDComplex)
     positive, negative = _dd_ratios(
         params,
@@ -6573,6 +6884,9 @@ function _dd_state_data(params::MSTParams, offset::DDComplex)
     return data
 end
 
+# Certified amplitudes of `branch` from the first representation that passes: principal
+# nu, double-double refined nu, then shifted representations (mst_nia_amplitudes).
+# Returns (series data, amplitudes, DD offset or nothing, representation).
 function _physical_amplitude_plan(data::MSTSeriesData, branch::Symbol)
     errors = String[]
     try
@@ -6631,6 +6945,7 @@ function _physical_amplitude_plan(data::MSTSeriesData, branch::Symbol)
     ))
 end
 
+# Log factor from the Teukolsky transmission amplitude to the GSN one (Btrans or Ctrans).
 function _physical_transmission_factor(result, params, branch::Symbol)
     conversion = _conversion_module()
     factor = branch == :IN ?
@@ -6649,6 +6964,13 @@ function _physical_transmission_factor(result, params, branch::Symbol)
     )
 end
 
+"""
+    direct_mst_physical_plan(coefficients, branch)
+
+Plan for the physical IN (`branch` `:in`) or UP (`:out`) MST solution, with certified
+asymptotic amplitudes and normalization factors; see `direct_mst_physical_state` and
+`direct_mst_physical_amplitudes`.
+"""
 function direct_mst_physical_plan(
     coefficients::DirectCoefficientSet,
     branch::Symbol,
@@ -6679,6 +7001,14 @@ function direct_mst_physical_plan(
     )
 end
 
+"""
+    direct_mst_physical_state(plan, direct_x)
+
+GSN state `(X, dXdx)` of the plan's physical solution at `direct_x` in (0, 1): IN from
+the hypergeometric (Type-1) series, in double-double when the plan holds a refined nu;
+UP from the U-function series. Also returns the estimated error, residual, truncation,
+condition and series range.
+"""
 function direct_mst_physical_state(
     plan::MSTPhysicalPlan,
     direct_x::Real,
@@ -6787,6 +7117,12 @@ end
     return ComplexF64(logtransmission + log(ComplexF64(ratio)))
 end
 
+"""
+    direct_mst_physical_amplitudes(plan)
+
+Asymptotic amplitudes of the plan's branch at unit transmission (GSN and Teukolsky
+incidence and reflection), the raw Teukolsky logs, nu, and the certificate diagnostics.
+"""
 function direct_mst_physical_amplitudes(plan::MSTPhysicalPlan)
     result = plan.amplitudes
     transmission_log = ComplexF64(result.transmission_log)
@@ -6821,6 +7157,12 @@ function direct_mst_physical_amplitudes(plan::MSTPhysicalPlan)
     )
 end
 
+"""
+    direct_mst_monodromy_state(params, direct_x; tolerance=1e-11, nu=nothing)
+
+Infinity-out MST state at `direct_x` in (0, 1) with nu from `mst_nu_complex` (or the
+given `nu`), certified at `tolerance`. Returns `(X, dXdx, estimated_relerr, nu, condition)`.
+"""
 function direct_mst_monodromy_state(
     params::DirectGSNParameters,
     direct_x::Real;
@@ -6887,6 +7229,15 @@ function direct_mst_monodromy_state(
     )
 end
 
+"""
+    direct_mst_anchor(coefficients_or_params, branch, direct_x; nu=nothing, tolerance=nothing, fallback_tolerance=nothing)
+
+MST state `(X, dXdx)` of `branch` at `direct_x` in (0, 1). With `tolerance` (at most 1e-8)
+the series budget and the radial-equation residual must meet it; `fallback_tolerance`
+also accepts a sum limited by rounding, state or tail error up to that bound
+(`relaxed_sum = true`). `nu` overrides the solved nu. Throws `MSTCertificateError` when
+rejected.
+"""
 function direct_mst_anchor(
     coefficients::DirectCoefficientSet,
     branch::Symbol,
@@ -7015,6 +7366,7 @@ function direct_mst_anchor(
     )
 end
 
+# Same as above for DirectGSNParameters.
 function direct_mst_anchor(
     params::DirectGSNParameters,
     branch::Symbol,
@@ -7149,6 +7501,12 @@ function direct_mst_anchor(
     )
 end
 
+"""
+    direct_mst_logscaled_seed(coefficients, plan, branch)
+
+Log-scaled MST state of `branch` at the plan's seed point, reusing the plan's cached
+sequence and budget; returns `(state, estimated_relerr)`.
+"""
 function direct_mst_logscaled_seed(
     coefficients::DirectCoefficientSet,
     plan,
@@ -7167,6 +7525,12 @@ function direct_mst_logscaled_seed(
     )
 end
 
+"""
+    direct_mst_logscaled_state(coefficients, plan, branch, direct_x; radius=nothing)
+
+MST state of `branch` at `direct_x` in (0, 1) as a `DirectLogScaledState`, with its
+estimated relative error.
+"""
 function direct_mst_logscaled_state(
     coefficients::DirectCoefficientSet,
     plan,
@@ -7181,6 +7545,12 @@ function direct_mst_logscaled_state(
     return _mst_logscaled_state(coefficients, plan, normalized, x; radius)
 end
 
+"""
+    direct_mst_scaled_state(coefficients, plan, branch, direct_x; scale, radius=nothing)
+
+`direct_mst_logscaled_state` materialized with `scale`; returns
+`(X, dXdx, estimated_relerr)`.
+"""
 function direct_mst_scaled_state(
     coefficients::DirectCoefficientSet,
     plan,
@@ -7199,6 +7569,13 @@ function direct_mst_scaled_state(
     )
 end
 
+"""
+    direct_mst_pin_state(coefficients, plan, direct_x; scale=nothing, radius=nothing)
+
+Physical-in MST state at `direct_x` in (0, 1) from the hypergeometric series with the
+plan's normalization, times `scale` (default the plan's `pin_scale`, else 1). Returns
+`(X, dXdx, estimated_relerr, residual)`.
+"""
 function direct_mst_pin_state(
     coefficients::DirectCoefficientSet,
     plan,
@@ -7228,6 +7605,12 @@ function direct_mst_pin_state(
     )
 end
 
+"""
+    direct_mst_state(coefficients, plan, branch, direct_x; radius=nothing)
+
+Unit-normalized MST state of `branch` (`:in` or `:out`) at `direct_x` in (0, 1) from a
+`direct_mst_plan`; returns `(X, dXdx, estimated_relerr)`.
+"""
 function direct_mst_state(
     coefficients::DirectCoefficientSet,
     plan,
@@ -7259,6 +7642,8 @@ function direct_mst_state(
     return (X=value, dXdx=derivative, estimated_relerr=error_estimate)
 end
 
+# Low-frequency expansion of nu - l to order epsilon^2
+# (Sasaki & Tagoshi, Living Rev. Relativ. 6, 6 (2003)).
 function _mst_guess_offset(s, l, epsilon)
     lf = Float64(l)
     sf = Float64(s)
@@ -7268,8 +7653,14 @@ function _mst_guess_offset(s, l, epsilon)
     return correction * epsilon^2 / (2 * lf + 1)
 end
 
+"""
+    mst_guess(s, l, epsilon)
+
+Low-frequency estimate of the MST nu, l + O(epsilon^2).
+"""
 mst_guess(s, l, epsilon) = Float64(l) + _mst_guess_offset(s, l, epsilon)
 
+# MST equation beta_0 + alpha_0 R_1 + gamma_0 L_(-1) at nu = l + nu_offset; nu is a root.
 function _mst_eq_value(nu_offset, s, l, m, a, omega, lambda)
     nu_value = ComplexF64(l) + ComplexF64(nu_offset)
     p = MSTParams(s, l, m, a, omega, lambda, nu_value, nu_offset)
@@ -7287,6 +7678,9 @@ _mst_eq_offset(nu_offset, s, l, m, a, omega, lambda) =
 mst_eq(nu_real, s, l, m, a, omega, lambda) =
     _mst_eq_offset(ComplexF64(nu_real) - ComplexF64(l), s, l, m, a, omega, lambda)
 
+# nu - l for real omega: the guess when negligible; mst_nu_complex when the monodromy
+# trace leaves [-1, 1]; otherwise the real root, bracketed around the guess and refined
+# by regula falsi with bisection safeguards (secant iteration without a bracket).
 function _mst_nu_offset(
     s,
     l,
@@ -7383,6 +7777,7 @@ function _mst_nu_offset(
     return ComplexF64(x1)
 end
 
+# nu - l for complex omega by damped Newton iteration from the low-frequency guess.
 function _mst_nu_offset(
     s,
     l,
@@ -7456,6 +7851,7 @@ struct MSTMonodromyParams
     q::ComplexF64
 end
 
+# Confluent Heun parameters of the Teukolsky radial equation for the monodromy of nu.
 function _monodromy_params(s, m, a, omega, lambda)
     epsilon = 2omega
     kappa = sqrt(1 - a^2)
@@ -7482,6 +7878,8 @@ end
 
 MSTMonodromySeries() = MSTMonodromySeries(ComplexF64[1], 0.0im, 1.0+0.0im)
 
+# Extends in place the kind-1 or kind-2 series coefficients used by _monodromy_stokes
+# up to order nmax.
 function _monodromy_series!(
     series::MSTMonodromySeries,
     kind::Int,
@@ -7551,6 +7949,8 @@ end
 _monodromy_series(kind::Int, params::MSTMonodromyParams, nmax::Int) =
     _monodromy_series!(MSTMonodromySeries(),kind,params,nmax)
 
+# Stokes-multiplier term added to cos(2 pi mu) in _monodromy_trace_data, from the two
+# series truncated at nmax.
 function _monodromy_stokes(
     params::MSTMonodromyParams,
     nmax::Int,
@@ -7618,6 +8018,8 @@ end
 _monodromy_trace(s, m, a, omega, lambda) =
     _monodromy_trace_data(s, m, a, omega, lambda).value
 
+# Seed for nu from acos of the monodromy trace, reduced mod 1; prefers Im nu opposite in
+# sign to Im omega, then the smallest |Re nu|.
 function _monodromy_seed(s, m, a, omega, lambda)
     base = acos(_monodromy_trace(s, m, a, omega, lambda)) / (2pi)
     candidates = ComplexF64[]
@@ -7637,6 +8039,8 @@ function _monodromy_seed(s, m, a, omega, lambda)
     return first(candidates)
 end
 
+# Finite-difference derivatives of `equation` at `current` for several real and imaginary
+# steps; _refine_nu tries each as a Newton direction.
 function _nu_derivatives(equation, current, value)
     scale = max(1.0, abs(current))
     result = ComplexF64[]
@@ -7661,6 +8065,7 @@ function _nu_derivatives(equation, current, value)
     return result
 end
 
+# Damped Newton refinement of `seed`; returns (nu, residual scaled by `scale`).
 function _refine_nu(
     equation,
     seed,
@@ -7703,6 +8108,13 @@ function _refine_nu(
     return (; nu=best, residual=best_residual)
 end
 
+"""
+    mst_nu_complex(s, l, m, a, omega, lambda; tol=3.2e-13)
+
+MST nu seeded from cos(2 pi nu) given by the monodromy of the confluent Heun equation
+and refined by damped Newton steps on the MST equation, trying several integer shifts of
+the seed. Throws `MSTCertificateError` when no shift reaches `tol`.
+"""
 function mst_nu_complex(
     s,
     l,
@@ -7738,11 +8150,20 @@ function mst_nu_complex(
     ))
 end
 
+"""
+    mst_nu(s, l, m, a, omega, lambda; maxiter=60, tol=1e-13)
+
+Renormalized angular momentum nu of the MST formalism for the mode (s, l, m), spin `a`,
+frequency `omega` and eigenvalue `lambda`, as `l + (nu - l)`. Real frequencies use a
+bracketed real root (or `mst_nu_complex` when nu is complex); complex frequencies use
+damped Newton iteration.
+"""
 function mst_nu(s, l, m, a, omega, lambda; maxiter::Int=60, tol::Float64=1.0e-13)
     offset = _mst_nu_offset(s, l, m, a, omega, lambda; maxiter=maxiter, tol=tol)
     return ComplexF64(l) + offset
 end
 
+# Coefficients of eta(r) in powers of 1/r up to r^-4, and its evaluation at r.
 @inline function _eta_coeffs(params)
     coefficient(order) = ComplexF64(eta_coefficient(
         params.s, params.m, params.a, params.omega, params.lambda, order))
@@ -7761,6 +8182,8 @@ end
         coefficients[3]) * u + coefficients[2]) * u + coefficients[1]
 end
 
+# Closed-form Wronskian denominator of the direct basis at x for :horizon or :infinity,
+# from eta(r) (Abel's identity).
 function _closed_abel(coefficients::DirectCoefficientSet, endpoint::Symbol, x::Number)
     params = coefficients.params
     kappa = params.kappa
@@ -7826,6 +8249,13 @@ function _closed_abel(coefficients::DirectCoefficientSet, endpoint::Symbol, x::N
     throw(ArgumentError("direct Abel denominator endpoint must be :infinity or :horizon"))
 end
 
+"""
+    direct_abel_denominator(coefficients, endpoint, match_x)
+
+Closed-form Wronskian denominator of the direct GSN basis at `match_x` (real in (0, 1),
+or complex away from 0 and 1) for `endpoint` `:infinity` or `:horizon`. Returns a named
+tuple with the log `exponent`, `denominator`, `status` and `mode`.
+"""
 function direct_abel_denominator(
     coefficients::DirectCoefficientSet,
     endpoint::Symbol,

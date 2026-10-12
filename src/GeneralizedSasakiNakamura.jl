@@ -37,6 +37,8 @@ _DEFAULT_rhoout = 5000
 _DEFAULT_horizon_expansion_order_for_cplx_freq = 25
 _DEFAULT_infinity_expansion_order_for_cplx_freq = 25
 
+# Horizon series order grows like 10 log10(1/(1 - |a|)) for near-extremal spins (50 at |a| >= 1).
+# Returns (scale, order); the scale also pushes rsin inwards in the legacy ODE route.
 function _adaptive_horizon_expansion_order(a, order::Int)
     spin = abs(float(real(a)))
     spin >= 1 && return (1.0, max(order, 50))
@@ -46,11 +48,8 @@ end
 
 # Outer boundary for the numerical integration: placed where omega * rstar reaches
 # _INFINITY_BOUNDARY_PHASE, i.e. rsout = max(rsout_default, phase / |omega|), so the
-# large-r asymptotic series is always evaluated well inside its region of validity.
-# (The previous rule grew rsout only logarithmically in 1/omega while raising the
-# series order like 10 log10(1/omega); below omega ~ 1e-3 that put omega * rsout
-# below the order, where the asymptotic series diverges, and beyond order ~70 its
-# coefficients overflow -- the initial data became garbage, then NaN.)
+# large-r asymptotic series is always evaluated well inside its region of validity
+# (with omega * rsout below the series order the asymptotic series diverges).
 # The returned order is a CAP: fansatz/dfansatz_dr truncate the series at its
 # smallest term (optimal truncation of an asymptotic series), so a generous cap is
 # harmless and the actual number of terms is chosen by the series itself.
@@ -581,35 +580,8 @@ function _teukolsky_from_direct_isem(s, l, m, a, omega, boundary_condition; xm=n
     return ISEM.DirectGSN.direct_teukolsky_radial_function(route)
 end
 
-function _try_legacy_riccati_then_linear(context, riccati_build, linear_build)
-    saw_warn = Ref(false)
-    logger = EarlyFilteredLogger(
-        log -> begin
-            if log.level == Logging.Warn
-                saw_warn[] = true
-            end
-            return log.level >= Logging.Error
-        end,
-        current_logger(),
-    )
-
-    try
-        sol = with_logger(logger) do
-            riccati_build()
-        end
-        if saw_warn[]
-            @info "method = \"auto\" tried Riccati, received a warning, and switched to method = \"linear\"." context=context
-            return linear_build()
-        end
-        return sol
-    catch err
-        @info "method = \"auto\" tried Riccati, received an error, and switched to method = \"linear\"." context=context error=sprint(showerror, err)
-        return linear_build()
-    end
-end
-
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, tol=nothing, rsmp=nothing, lambda=nothing)
+    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, tol=nothing, rsmp=nothing, lambda=nothing, xm=nothing, N=nothing, sfe=nothing, lfe=nothing)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -624,7 +596,7 @@ Note that the `OUT` and `DOWN` solutions are constructed by linearly combining t
 The GSN function is numerically solved, for real values of `omega`, in the interval of *tortoise coordinates* $r_{*} \in$ `[rsin, rsout]` using the ODE solver (from `DifferentialEquations.jl`) specified by `ODE_algorithm` (default: `AutoVern9(Rosenbrock23(autodiff=false))`) 
 with tolerance specified by `tolerance` (default: `1e-12`); `tol` is an alias that takes precedence over `tolerance`.
 A precomputed spin-weighted spheroidal eigenvalue can be passed as `lambda`; by default it is computed from `s`, `l`, `m` and `a*omega`. The solution method is determined by the keyword `method` (default: `auto`).
-The default `auto` tries `GSN-ISEM` first and falls back to the legacy automatic radial route only if direct construction fails and `xm` was not supplied. With explicit `xm`, construction failure is reported instead of switching to a solver that cannot use that junction. Explicit `GSN-ISEM` is strict; the previous `ISEM` implementation and the legacy ODE paths remain available explicitly. The former `direct_ISEM` spelling is accepted as a strict compatibility alias.
+The default `auto` tries `GSN-ISEM` first and falls back to the legacy automatic radial route only if direct construction fails and `xm` was not supplied. With explicit `xm`, construction failure is reported instead of switching to a solver that cannot use that junction. Explicit `GSN-ISEM` is strict; the original `ISEM` implementation (`method="ISEM"`) and the ODE paths (`"Riccati"`, `"linear"`) can be selected explicitly. `method="direct_ISEM"` is accepted as a strict alias of `"GSN-ISEM"`.
 Omit `xm` for automatic matching. In the tested UP mode
 `(-2, 2, 2, 0.7, 0.4198385710926635 - 2.09355961067422im)`, explicit
 `xm=0.4` has incidence error `1.8151e-5` in reflection-amplitude units
@@ -1088,6 +1060,16 @@ function _gsn_radial_legacy(
     end
 end
 
+@doc raw"""
+    GSN_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition; method="auto", tol=nothing, xm=nothing, N=nothing, sfe=nothing, lfe=nothing)
+
+Compute the GSN function for the mode `(s, l, m, a, omega)` with boundary condition `IN`, `UP`, `OUT` or `DOWN`,
+choosing the numerical domain automatically (see the method with explicit `rsin, rsout` for the meaning of `method`
+and the other keywords). Negative `a` is handled through the `(m, a) -> (-m, -a)` symmetry, and `omega = 0` returns
+the exact static `IN` or `UP` solution.
+
+Return a `GSNRadialFunction`.
+"""
 function GSN_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition;
     method="auto", tolerance=nothing, tol=nothing,
@@ -1137,7 +1119,7 @@ function GSN_radial(
 end
 
 @doc raw"""
-    GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, method="auto")
+    GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, tol=nothing, method="auto", xm=nothing, N=nothing, sfe=nothing, lfe=nothing)
 
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
@@ -1146,6 +1128,9 @@ Note that for _real_ frequencies, the numerical inner boundary (rsin) and outer 
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
 while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
+These domain and order choices apply to the ODE routes; with the default `method="auto"` both solutions are first constructed with `GSN-ISEM`.
+
+Return the tuple `(Xin, Xup)` of `GSNRadialFunction`s.
 """
 function GSN_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, tol=nothing, method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, use_gsn_asymptotic_patches=nothing, gsn_horizon_delta_r_max=nothing, gsn_infinity_phase_min=nothing)
     _check_radial_options(method, xm; rhom, TSinInf, TSoutInf, TSinHor, TSoutHor,
@@ -1294,7 +1279,7 @@ end
 
 
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, rsmp=nothing)
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition, rsin, rsout; horizon_expansion_order::Int=_DEFAULT_horizon_expansion_order, infinity_expansion_order::Int=_DEFAULT_infinity_expansion_order, method="auto", data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, tol=nothing, rsmp=nothing, xm=nothing, N=nothing, sfe=nothing, lfe=nothing)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency [which *can be complex*]) 
 and boundary condition specified by `boundary_condition`, which can be either
@@ -1312,7 +1297,7 @@ with the normalization convention that the transmission amplitude is normalized 
 When `method` is `"auto"`, the homogeneous Teukolsky solution tries
 `GSN-ISEM` first and falls back to the legacy automatic radial route only if
 direct construction fails. Explicit `method="GSN-ISEM"` is strict;
-`method="ISEM"` retains the previous implementation.
+`method="ISEM"` selects the original ISEM implementation.
 
 Note, however, when `omega = 0`, the exact Teukolsky function expressed using Gauss hypergeometric functions will be returned (i.e., instead of using the GSN formalism). 
 In this case, only `s`, `l`, `m`, `a`, `omega`, `boundary_condition` will be parsed.
@@ -1417,6 +1402,16 @@ function _teukolsky_from_gsn(gsn_func,s,m,a,omega,data_type,requested_tolerance)
     )
 end
 
+@doc raw"""
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega, boundary_condition; method="auto", tol=nothing, xm=nothing, N=nothing, sfe=nothing, lfe=nothing)
+
+Compute the Teukolsky function for the mode `(s, l, m, a, omega)` with boundary condition `IN`, `UP`, `OUT` or `DOWN`,
+choosing the numerical domain automatically (see the method with explicit `rsin, rsout` for the meaning of `method`
+and the other keywords). Negative `a` is handled through the `(m, a) -> (-m, -a)` symmetry, and `omega = 0` returns
+the exact static `IN` or `UP` solution.
+
+Return a `TeukolskyRadialFunction`.
+"""
 function Teukolsky_radial(
     s::Int, l::Int, m::Int, a, omega, boundary_condition; method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing, tol=nothing
 )
@@ -1471,16 +1466,18 @@ function Teukolsky_radial(
 end
 
 @doc raw"""
-    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, method="auto")
+    Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, tol=nothing, method="auto", xm=nothing, N=nothing, sfe=nothing, lfe=nothing)
 
 Compute the Teukolsky function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
-When `method` is `"auto"`, this overload tries `GSN-ISEM` first and falls back to the legacy automatic radial route only if direct construction fails. Explicit `method="GSN-ISEM"` is strict; `method="ISEM"` retains the previous implementation.
+When `method` is `"auto"`, this overload tries `GSN-ISEM` first and falls back to the legacy automatic radial route only if direct construction fails. Explicit `method="GSN-ISEM"` is strict; `method="ISEM"` selects the original ISEM implementation.
 
 Note that for _real_ frequencies, the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
 while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
+
+Return the tuple `(Rin, Rup)` of `TeukolskyRadialFunction`s.
 """
 function Teukolsky_radial(s::Int, l::Int, m::Int, a, omega; data_type=Solutions._DEFAULTDATATYPE, ODE_algorithm=Solutions._DEFAULTSOLVER, tolerance=nothing, tol=nothing, method="auto", xm=nothing, rhom=nothing, sfe=nothing, lfe=nothing, TSinInf=nothing, TSoutInf=nothing, TSinHor=nothing, TSoutHor=nothing, N=nothing)
     if a < zero(a)
@@ -1886,12 +1883,14 @@ end
 
 
 """
-    with_pointparticle_submission(f, a, p, e, x; Nmax, Kmax, stop_requested=nothing)
+    with_pointparticle_submission(f, a, p, e, x; Nmax=2^14, Kmax=2^12, stop_requested=nothing, lifecycle_observer=nothing)
 
-Reuse one orbit's read-only trajectory/geometry during this lexical submission.
-Every admitted mode owns its mutable cache/scratch. Completion, exceptions and
-cooperative cancellation drain admitted work before internal caches are released.
-Returned scientific API objects retain their legitimate independent references.
+Create a submission for the orbit `(a, p, e, x)` and the sampling-grid caps `Nmax`, `Kmax`, call `f(submission)`
+and return its result. Mode and flux calls inside `f` that pass `submission=submission` share one read-only
+trajectory and sampling geometry, while every admitted mode keeps its own private cache.
+`stop_requested` is an optional zero-argument callback; when it returns `true` no further modes are admitted.
+On normal return, error or cancellation, all admitted modes and registered tasks are drained before the internal
+caches are released; returned results remain valid.
 """
 function with_pointparticle_submission(f::Function,a,p,e,x;Nmax::Int=2^14,Kmax::Int=2^12,
         stop_requested=nothing,lifecycle_observer=nothing)
@@ -1899,13 +1898,23 @@ function with_pointparticle_submission(f::Function,a,p,e,x;Nmax::Int=2^14,Kmax::
 end
 export with_pointparticle_submission
 
-"Request cooperative closure of a point-particle submission's future admission."
+"""
+    cancel_pointparticle_submission!(submission; reason="cooperative cancellation")
+
+Stop admitting new modes and tasks to `submission`; modes already running finish normally, and later admission
+attempts throw `PublicSubmissionCancelled` with `reason`. Return `nothing`.
+"""
 function cancel_pointparticle_submission!(scope;reason="cooperative cancellation")
     ModeSummation.request_submission_cancel!(scope;reason)
 end
 export cancel_pointparticle_submission!
 
-"Spawn a registered submission task whose internal argument payload is detached on exit."
+"""
+    spawn_pointparticle_submission!(f, submission)
+
+Start `f()` on a new task registered with `submission` and return the `Task`. The task is joined before the
+submission is released; spawning after admission has closed throws `PublicSubmissionCancelled`.
+"""
 function spawn_pointparticle_submission!(f::Function,scope)
     ModeSummation.spawn_submission_task!(f,scope)
 end
@@ -1915,22 +1924,30 @@ export spawn_pointparticle_submission!
     Teukolsky_pointparticle_flux(a, p, e, x; tol=1e-8, lmax=30, nmax=500, kmax=20)
 
 Compute total point-particle fluxes by automatically selecting the mode-summation strategy from the orbit type.
-For eccentric and generic tails, `tail_levin=nothing` uses the cost-certified
-automatic selector, `true` forces adaptive Levin, and `false` keeps adaptive
-trapezoidal sampling. `levin_local_n` controls the local adaptive-Levin
+For eccentric and generic tails, `tail_levin=nothing` switches to adaptive Levin
+for `n >= levin_nmin` once the uniform trapezoidal grid would be much more
+expensive than the adaptive one, `true` forces adaptive Levin from `levin_nmin`,
+and `false` keeps adaptive trapezoidal sampling. `levin_local_n` controls the local adaptive-Levin
 interval count when that path is selected.
 `minimum_consecutive` is the number of consecutive shells below the tolerance
 required to stop a summation; the default `nothing` uses 5 for circular
 equatorial orbits and 2 otherwise.
-For generic orbits, generic_beta=1e-4 sets the per-mode budget floor
-to generic_beta * tol * abs(branch_total). generic_deep=1e-5 permits
-an outward l-tail segment to stop once a mode is at most that fraction of its
-current cutoff. Peak-search walks retain the original shell cutoff and
-confirmation count, without the tail budget or deep stop. Setting either value
-to zero restores that stopping component.
-The defaults follow the generic stopping-rule study; the bottom/peak
-walk, growing-m guards and m margin of 5 are retained.
+For generic orbits, `generic_beta=1e-4` raises the per-mode cutoff of the
+n != 0 shells to at least `generic_beta * tol * abs(branch_total)`, and
+`generic_deep=1e-5` lets an outward l walk stop as soon as one mode is at most
+that fraction of its cutoff. Peak-search walks use the plain shell cutoff and
+confirmation count, without the tail budget or the deep stop. Setting either
+value to zero disables that rule.
+The generic l walks of k != 0 branches start at the expected l peak, an m
+shell that is still growing does not count towards the stop, and the positive-m
+walk only stops more than 5 past the m with the largest shell.
+Pass `submission` (see `with_pointparticle_submission`) to reuse the orbit's
+sampling geometry across calls.
 The keyword `lifecycle_observer` is a diagnostic hook and is not guaranteed to be stable.
+
+Return a `TeukolskyPointParticleFlux` with the total energy, angular-momentum and
+Carter-constant fluxes at infinity and at the horizon, or `nothing` (with a
+warning) when `(a, p, e, x)` is not a bound orbit.
 """
 function Teukolsky_pointparticle_flux(a, p, e, x; submission=nothing, tol = 1e-8, lmax = 30, nmax = 500, kmax = 20, minimum_consecutive = nothing, N = 64, N0 = N, K = 16, K0 = K, Nmax = (submission === nothing ? 2^14 : submission.Nmax), Kmax = (submission === nothing ? 2^12 : submission.Kmax), sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, truncation_floor = 1e-16, mode_abs_floor = truncation_floor, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, generic_beta = ModeSummation.DEFAULT_GENERIC_BETA, generic_deep = ModeSummation.DEFAULT_GENERIC_DEEP, tail_levin = nothing, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = mode_abs_floor, levin_local_n::Int = ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, levin_max_depth::Int = 8, info::Bool = false, stop_requested=nothing, lifecycle_observer=nothing)
     if !_teukolsky_flux_bound_orbit(a, p, e, x)
@@ -1977,8 +1994,9 @@ function Teukolsky_pointparticle_flux(a, p, e, x; submission=nothing, tol = 1e-8
     )
 end
 
-# Preserve exact total-flux classification. Single-mode ISEM keeps its
-# original tolerance-based route and borrows an owner for that actual route.
+# Orbit family of the mode cache for a single-mode call: ISEM methods classify the
+# orbit with a 1e-12 tolerance on e and |x|, as their convolution routes do; the
+# legacy methods use the submission's family.
 function _pointparticle_cache_family(method, e, x, fallback::Symbol)
     method in ("auto", "isem_trapezoidal", "isem_levin") || return fallback
     radial_zero = isapprox(e, 0.0; atol = 1e-12)
@@ -1987,8 +2005,8 @@ function _pointparticle_cache_family(method, e, x, fallback::Symbol)
         (equatorial ? :eccentric : :generic)
 end
 
-# Original near-e ISEM radiative branches construct an e=0 KG orbit. Keep
-# their private fallback instead of borrowing geometry from the raw-e owner.
+# For ISEM methods with 0 < |e| <= 1e-12 the convolution routes build their own
+# e = 0 orbit, so they must not share the submission geometry built for the raw e.
 _pointparticle_share_geometry(method, e) =
     !(method in ("auto", "isem_trapezoidal", "isem_levin") &&
         !isequal(e, 0.0) && isapprox(e, 0.0; atol = 1e-12))
@@ -2008,7 +2026,11 @@ Legacy non-ISEM paths remain available as `method = "trapezoidal"` and `method =
 Both ISEM convolution paths use `GSN-ISEM` for their homogeneous radial input.
 The ISEM trapezoidal path starts from `N = 256`, `K = 64` and doubles the grid until the mode converges to `tol`, up to `Nmax = 2^12` and `Kmax = 2^9`.
 For adaptive ISEM Levin, `levin_max_depth` controls the maximum bisection depth; `Nmax` and `Kmax` are the grid caps of the trapezoidal and non-adaptive paths.
+Pass `submission` (see `with_pointparticle_submission`) to reuse the orbit's sampling geometry across calls.
 The keyword `lifecycle_observer` is a diagnostic hook and is not guaranteed to be stable.
+
+Return a `TeukolskyPointParticleMode` holding the mode information, the Teukolsky amplitude, the three fluxes,
+the trajectory, the Y solution, the spin-weighted spheroidal harmonic and the method settings used.
 """
 function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", submission=nothing, N::Int=-1, K::Int=-1, Nmax::Int = (submission === nothing ? 2^12 : submission.Nmax), Kmax::Int = (submission === nothing ? 2^9 : submission.Kmax), tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, truncation_floor::Float64 = 1e-16, mode_abs_floor::Float64 = truncation_floor, zero_low_flux::Bool = false, threaded_sampling::Bool = false, levin_max_depth::Int = 8, levin_adaptive::Bool = true, stop_requested=nothing, lifecycle_observer=nothing)
     method = lowercase(String(method))
@@ -2115,6 +2137,10 @@ Legacy non-ISEM paths remain available as `method = "trapezoidal"` and `method =
 Both ISEM convolution paths use `GSN-ISEM` for their homogeneous radial input.
 We sample the trajectory over a grid of size N x K, where N and K are the number of Chebyshev nodes in the radial and the polar direction, respectively.
 Note that they must be powers of 2.
+The remaining keywords are those of `Teukolsky_pointparticle_mode`.
+
+Return a `GSNPointParticleMode`, whose amplitude is the Teukolsky amplitude divided by the GSN-to-Teukolsky
+transmission conversion factor (`Btrans` for s = + 2, `Ctrans` for s = - 2).
 """
 function GSN_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", submission=nothing, N::Int=-1, K::Int=-1, Nmax::Int = (submission === nothing ? 2^12 : submission.Nmax), Kmax::Int = (submission === nothing ? 2^9 : submission.Kmax), tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, truncation_floor::Float64 = 1e-16, mode_abs_floor::Float64 = truncation_floor, zero_low_flux::Bool = false, threaded_sampling::Bool = false, levin_max_depth::Int = 8, levin_adaptive::Bool = true, stop_requested=nothing, lifecycle_observer=nothing)
     Teukolsky_mode = Teukolsky_pointparticle_mode(s, l, m, n, k, a, p, e, x; method=method, N=N, K=K, Nmax=Nmax, Kmax=Kmax, tol=tol, sample_tol=sample_tol, max_flux=max_flux, truncation_floor=truncation_floor, mode_abs_floor=mode_abs_floor, zero_low_flux=zero_low_flux, threaded_sampling=threaded_sampling, levin_max_depth=levin_max_depth, levin_adaptive=levin_adaptive, submission=submission, stop_requested=stop_requested, lifecycle_observer=lifecycle_observer)

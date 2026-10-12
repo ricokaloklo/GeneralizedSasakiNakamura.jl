@@ -2,8 +2,8 @@
 #
 # * Without GSN_SOURCE: `using GeneralizedSasakiNakamura` from the active environment (Pkg.test or any
 #   environment that has the package).
-# * With GSN_SOURCE=<checkout or private tree>: include "$GSN_SOURCE/src/GeneralizedSasakiNakamura.jl" the way
-#   local include workflow does. GSN_SWSH_PATH optionally selects a dependency checkout.
+# * With GSN_SOURCE=<source checkout>: include "$GSN_SOURCE/src/GeneralizedSasakiNakamura.jl" directly
+#   (GSN_SOURCE_FILE overrides the file). GSN_SWSH_PATH optionally selects a dependency checkout.
 #
 # Included at top level of Main by runtests.jl, and by each group file when that file is run on its own.
 

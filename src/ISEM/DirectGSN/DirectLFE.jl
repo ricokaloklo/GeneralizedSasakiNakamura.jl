@@ -4,6 +4,11 @@ export LFEPlan, lfe_plan, lfe_ab!, lfe_ab_fast!
 export lfe_carrier_ab!, lfe_log_series!
 export lfe_carrier_phase, lfe_carrier_rate, lfe_table_stats
 
+# Large-frequency (LFE) ordinary-point coefficients. A binary table stores each
+# coefficient as a weighted sum of monomials in (lambda, m, omega, sin nu, cos nu);
+# these are summed in double-double arithmetic to limit cancellation at large omega.
+# DIRECT_GSN_LFE_FAST_RATIONAL and DIRECT_GSN_LFE_FUSED_DD_HORNER (read at load
+# time, default "1") select the binary64 series division and the fused DD Horner step.
 const TABLE_PATH = joinpath(
     @__DIR__, "Generated", "direct_gsn_lfe_tables_v1.bin")
 const TABLE_MAGIC = UInt8[0x44, 0x47, 0x4e, 0x4c, 0x46, 0x45, 0x31, 0x00]
@@ -12,6 +17,7 @@ const LFE_FAST_RATIONAL = get(
 const LFE_FUSED_DD_HORNER = get(
     ENV, "DIRECT_GSN_LFE_FUSED_DD_HORNER", "1") == "1"
 
+# Double-double numbers: value = high + low with |low| <= ulp(high) / 2.
 struct DDReal
     high::Float64
     low::Float64
@@ -53,6 +59,7 @@ mutable struct LFEPlan
     ellvec::Vector{DDComplex}
 end
 
+# Error-free sum (Knuth TwoSum): value + error == left + right exactly.
 @inline function two_sum(left::Float64, right::Float64)
     value = left + right
     right_virtual = value - left
@@ -101,6 +108,7 @@ end
     ComplexF64(-imag(value.low), real(value.low)),
 )
 
+# Complex product with its rounding error, using fma for the partial products.
 @inline function complex_product(left::ComplexF64, right::ComplexF64)
     rr = real(left) * real(right)
     ii = imag(left) * imag(right)
@@ -159,6 +167,7 @@ end
     return dc_normalize(ComplexF64(high_re, high_im), low)
 end
 
+# Double-double division: binary64 quotient refined by two residual corrections.
 @inline function dc_div(numerator::DDComplex, denominator::DDComplex)
     quotient = DDComplex(numerator.high / denominator.high)
     for _ in 1:2
@@ -177,6 +186,8 @@ function read_vector(io, ::Type{T}, count::Integer) where {T}
     return values
 end
 
+# One (s, basis) table: header, monomial exponents, per-coefficient term lists
+# and weights, and per-output Horner coefficient lists.
 function read_table(io)
     s = Int(read(io, Int8))
     basis_code = read(io, UInt8)
@@ -251,6 +262,8 @@ function real_powers(value, maximum_power)
     return powers
 end
 
+# Evaluate the table coefficients for `params` in double-double and allocate
+# the series work buffers for `order`.
 function lfe_plan(params, basis::Symbol, order::Integer)
     table = get(TABLES, (Int(params.s), basis), nothing)
     table === nothing && error(
@@ -309,6 +322,7 @@ function lfe_plan(params, basis::Symbol, order::Integer)
     )
 end
 
+# Packed P/Q values at x0, by Horner evaluation in y0 = 1 - x0.
 function evaluate_pq!(plan::LFEPlan, x0)
     table = plan.table
     factor = 1.0 - Float64(x0)
@@ -336,6 +350,8 @@ function evaluate_pq!(plan::LFEPlan, x0)
     return plan.pq
 end
 
+# Power series of numerator / denominator by recursive division (double-double
+# here, binary64 in rational_fast!).
 function rational_series!(out, numerator, denominator, order)
     q0 = denominator[1]
     qinv = dc_div(DDComplex(1), q0)
@@ -370,6 +386,7 @@ function lfe_layout(s::Integer)
     error("unsupported Direct GSN LFE spin $s")
 end
 
+# Taylor coefficients of A and B about x0 up to `order`.
 function lfe_ab!(a_out, b_out, plan::LFEPlan, x0, order::Integer)
     LFE_FAST_RATIONAL && return lfe_ab_fast!(
         a_out, b_out, plan, x0, order)
@@ -425,6 +442,7 @@ end
         log(numerator) - log(denominator)
 end
 
+# Integral of lfe_carrier_rate from start_x to destination_x, in closed form.
 function lfe_carrier_phase(params, sign, start_x, destination_x)
     kappa = params.kappa
     rplus = 1 + kappa
@@ -440,6 +458,8 @@ function lfe_carrier_phase(params, sign, start_x, destination_x)
     )
 end
 
+# WKB phase rate in x: sign * (2 kappa omega / y^2 + 2 omega / y + nu_h / x),
+# with y = 1 - x and nu_h the horizon exponent scale.
 function lfe_carrier_rate(params, sign, x)
     y = 1 - x
     horizon = (2 * params.omega * (1 + params.kappa) -
@@ -449,6 +469,7 @@ function lfe_carrier_rate(params, sign, x)
         2 * params.omega / y + horizon / x)
 end
 
+# Taylor coefficients of lfe_carrier_rate about x0 (one order higher than A, B).
 function carrier_series!(plan::LFEPlan, params, x0, order, sign)
     order + 2 <= length(plan.carrier) ||
         throw(ArgumentError("LFE carrier buffer is too short"))
@@ -479,6 +500,8 @@ function carrier_series!(plan::LFEPlan, params, x0, order, sign)
     return plan.carrier
 end
 
+# A and B series for the envelope W in X = exp(i int c dx) W, with c the carrier
+# rate: A + 2 i c and B + i c' - c^2 + i A c.
 function carrier_coefficients!(plan::LFEPlan, params, x0, order, sign)
     order_int = Int(order)
     order_int + 1 <= length(plan.avec) ||
@@ -533,6 +556,8 @@ function lfe_carrier_ab!(a_out, b_out, plan::LFEPlan, params,
     return order_int + 1, order_int + 1
 end
 
+# Series of the Riccati variable w = W'/W of the carrier envelope (from w0) and of
+# its integral ell = log W - log W(x0).
 function lfe_log_series!(w_out, ell_out, plan::LFEPlan, params,
         x0, order::Integer, sign, w0)
     order_int = Int(order)

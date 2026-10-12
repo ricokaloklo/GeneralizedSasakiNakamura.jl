@@ -138,6 +138,12 @@ struct DirectLogScaledPatch
     log_scale::Float64
 end
 
+"""
+    DirectTruncation
+
+Record of a series used below its requested order: where (`location`), for
+which branch, the requested and effective orders, and the reason.
+"""
 struct DirectTruncation
     location::Symbol
     branch::Symbol
@@ -158,6 +164,15 @@ struct DirectLogScaledBasis
     truncations::Vector{DirectTruncation}
 end
 
+"""
+    DirectBasis
+
+One propagated solution: its kind (`:horizon_in`, `:horizon_out`,
+`:infinity_out` or `:infinity_in`), the endpoint series and seed, the patches
+from the seed to the match point, and the state there (`match_X`,
+`match_dXdx`). `endpoint_valid` is false when the basis was started from a
+state rather than an endpoint series.
+"""
 struct DirectBasis{P}
     kind::Symbol
     scale::ComplexF64
@@ -384,6 +399,9 @@ _param_kappa(params) = hasproperty(params, :kappa) ? getproperty(params, :kappa)
 _param_omega(params) = getproperty(params, :omega)
 _param_m(params) = getproperty(params, :m)
 
+# Slow-variation indicator at a point from f = a'/2 + a^2/4 - b (the invariant
+# of the normal form u'' = f u): max(|f'|/|f|^(3/2), sqrt(|f''/2|)/|f|).
+# Small values mean the eikonal form is accurate.
 function _eikonal_indicator(a_coeffs, b_coeffs)
     length(a_coeffs) >= 4 && length(b_coeffs) >= 3 || return Inf
     @inbounds begin
@@ -431,6 +449,9 @@ end
 
 _is_horizon(kind::Symbol) = kind in (:horizon_in, :horizon_out)
 
+# Constant phase that normalizes each endpoint branch: exp(-/+ i p (r_+ + 2 log kappa))
+# for horizon in/out with p = omega - m a / (2 r_+), and
+# exp(+/- i omega (r_- + 2 log kappa)) for infinity out/in, with r_+/- = 1 +/- kappa.
 function direct_endpoint_scale(kind::Symbol, params)
     a = _param_a(params)
     kappa = _param_kappa(params)
@@ -448,6 +469,9 @@ function direct_endpoint_scale(kind::Symbol, params)
     throw(ArgumentError("unknown direct GSN endpoint kind $kind."))
 end
 
+# Infinity series exp(Sigma/Y) Y^rho sum_n c_n Y^n with Y = y / variable_scale,
+# times variable_scale^rho; the pair and triple forms add x-derivatives
+# (dx = -dy).
 function _scaled_infinity_series_value(coeffs, rho, Sigma, y, variable_scale)
     Y = y / variable_scale
     scale = variable_scale^rho
@@ -511,13 +535,6 @@ function _endpoint_state(kind::Symbol, coeffs, exponent1, exponent2, x, variable
     return value, derivative
 end
 
-function _median_clean(values::Vector{Float64})
-    isempty(values) && return NaN
-    sort!(values)
-    n = length(values)
-    return isodd(n) ? values[cld(n, 2)] : 0.5 * (values[div(n, 2)] + values[div(n, 2) + 1])
-end
-
 function _endpoint_tail_radius(coeffs::Vector{ComplexF64}, target::Float64,
         cap::Float64)
     order = length(coeffs) - 1
@@ -547,11 +564,8 @@ function _endpoint_last_term_radius(coeffs::Vector{ComplexF64},
     return isfinite(radius) && radius > 0 ? min(cap, radius) : cap
 end
 
-function _endpoint_effective_radius(coeffs::Vector{ComplexF64}, cap::Float64)
-    buffer = Vector{Float64}(undef, length(coeffs))
-    return _endpoint_effective_radius!(buffer, coeffs, cap)
-end
-
+# Median of the ratios |c_(n-1)/c_n| over the upper half of the series, an
+# estimate of its radius of convergence, capped at `cap`.
 function _endpoint_effective_radius!(buffer::Vector{Float64}, coeffs, cap::Float64)
     count = 0
     first_idx = max(2, div(length(coeffs), 2))
@@ -581,6 +595,8 @@ function _endpoint_effective_radius!(buffer::Vector{Float64}, coeffs, cap::Float
     return min(cap, radius)
 end
 
+# Taylor coefficients about an ordinary point of X'' + a X' + b X = 0 with
+# X(0) = c0, X'(0) = c1, given the series of a and b.
 function _ordinary_point_coeffs!(
     coeffs::Vector{ComplexF64},
     a_coeffs,
@@ -691,6 +707,9 @@ function _horizon_tail_metric(coeffs, x)
     return tail / max(abs(value), eps(Float64))
 end
 
+# Seed point for a horizon Frobenius series with exponent mu: start from the
+# radius allowed by the tail and shrink until max(tail, ODE residual, roundoff)
+# <= tol. Returns (seed_x, score), the best seed if tol is never met.
 function direct_select_horizon_seed(coeffs, mu, a_coeffs, b_coeffs,
         match_x; tol=1e-14, tail_aware=false)
     radius = tail_aware ? _endpoint_tail_radius(coeffs, tol, match_x) :
@@ -719,15 +738,6 @@ end
 @inline _tail_seed(coefficients::DirectCoefficientSet) =
     direct_horizon_tail(coefficients.params)
 
-function _ordinary_residual_metric(a_coeffs, b_coeffs, coeffs, h, value, derivative)
-    _, _, second = direct_poly_triple(coeffs, h)
-    A = direct_poly_value(a_coeffs, h)
-    B = direct_poly_value(b_coeffs, h)
-    residual = second + A * derivative + B * value
-    scale = abs(second) + abs(A * derivative) + abs(B * value)
-    return abs(residual) / max(scale, eps(Float64))
-end
-
 function _tail_metric(coeffs, value, h, order::Integer)
     start_k = max(0, order - 2)
     tail = 0.0
@@ -748,6 +758,8 @@ end
     return clamp(0.98 * estimate, 0.05, 0.9)
 end
 
+# Shrink a Taylor step from h_start until the last-terms tail metric meets tol
+# (or min_step is reached); returns the best attempt and its state.
 function _single_step(coeffs, direction, h_start, min_step, tol, order)
     h_abs = h_start
     best_score = Inf
@@ -816,6 +828,8 @@ function _pair_step(coeffs1, coeffs2, direction, h_start, min_step, tol,
     )
 end
 
+# Highest order whose coefficients pass `direct_series_issue`, and the reason
+# for stopping (:none if all pass).
 function _credible_solution_order(coeffs, order::Integer)
     max_order = min(Int(order), length(coeffs) - 1)
     scale = max(abs(coeffs[1]), max_order >= 1 ? abs(coeffs[2]) : 0.0, 1.0)
@@ -851,6 +865,8 @@ function _infinity_adjacent_metric(coeffs, y, order::Int=length(coeffs) - 1)
     return abs(current - previous) / max(abs(current), eps(Float64))
 end
 
+# Order and trial y with the smallest max(tail, adjacent-order) metric of an
+# infinity series; used as a first guess for the endpoint search.
 function _asymptotic_order_and_seed_radius(coeffs::Vector{ComplexF64}, target::Float64)
     max_order = length(coeffs) - 1
     best_order = min(12, max_order)
@@ -983,6 +999,9 @@ function _best_scaled_y_branch_metric(a_scaled, b_scaled, coeffs, rho, Sigma)
     return widest_accepted === nothing ? best : widest_accepted
 end
 
+# Low-frequency infinity selection in the scaled coordinate Y = y/omega (real
+# omega > 0); picks for each branch the widest Y meeting
+# _INFINITY_ENDPOINT_TARGET, or the best score if none does.
 function _scaled_y_infinity_selection(coefficients::DirectCoefficientSet, order::Int)
     params = coefficients.params
     omega = _param_omega(params)
@@ -1035,6 +1054,8 @@ function _infinity_work_order(controls)
     return Int(value)
 end
 
+# Wronskian in * out' - out * in' (x-derivatives) of the two normalized infinity
+# series at endpoint_y.
 function direct_infinity_seed_wronskian(
     coefficients::DirectCoefficientSet,
     endpoint_y::Float64,
@@ -1079,6 +1100,9 @@ function direct_infinity_seed_wronskian(
     )
 end
 
+# Search y = 1 - x by octaves (then intermediate phases) for an endpoint where
+# both infinity series pass tail, adjacent-order and residual checks and the
+# optional `certificate` is met; throws DirectEndpointCertificateError if none.
 function _select_infinity_endpoint_order(
     coefficients::DirectCoefficientSet,
     match_x::Float64,
@@ -1169,6 +1193,9 @@ function _select_infinity_endpoint_order(
     ))
 end
 
+# Infinity endpoint selection: the scaled-y selection for the low-frequency
+# basis, else `_select_infinity_endpoint_order`, retried at order 32 (non-lfe,
+# requested order < 32) when it fails or gives an endpoint closer than _MIN_STEP.
 function direct_select_infinity_endpoint(
     coefficients::DirectCoefficientSet,
     match_x::Float64;
@@ -1198,6 +1225,9 @@ function direct_select_infinity_endpoint(
     return selected
 end
 
+# Basis seeded from an endpoint series at seed_coord, scaled by
+# `direct_endpoint_scale` and propagated to match_x. With certified_steps it
+# returns nothing when a step misses the tolerance; step_budget caps the steps.
 function _build_basis_series(
     coefficients::DirectCoefficientSet,
     kind::Symbol,
@@ -1354,6 +1384,9 @@ function _build_basis_series(
     )
 end
 
+# Propagation that mixes methods: an LFE carrier patch from infinity when
+# available, eikonal segments where the coefficients vary slowly, and Taylor
+# patches elsewhere. Returns a DirectBasis with endpoint_valid = false.
 function _hybrid_state(
     coefficients::DirectCoefficientSet,
     kind::Symbol,
@@ -1575,6 +1608,7 @@ function _hybrid_state(
     )
 end
 
+# Paired form of `_hybrid_state` with common steps for both solutions.
 function _hybrid_pair(
     coefficients::DirectCoefficientSet,
     kind1::Symbol,
@@ -1826,6 +1860,14 @@ function _hybrid_pair(
     return basis1, basis2
 end
 
+"""
+    direct_iterate_from_state(coefficients, kind, seed_x, seed_X, seed_dXdx, match_x; controls, scratch=nothing, allow_eikonal=false, allow_partial=false)
+
+Propagate the state `(seed_X, seed_dXdx)` from `seed_x` to `match_x` and return
+a `DirectBasis` of kind `kind` without an endpoint series. Eikonal segments are
+used when enabled for these parameters and either `kind` is not a horizon kind
+or `allow_eikonal` is set; Taylor patches are used otherwise.
+"""
 function direct_iterate_from_state(
     coefficients::DirectCoefficientSet,
     kind::Symbol,
@@ -1935,6 +1977,8 @@ end
 @inline _scaled_finite(value) =
     isfinite(real(value)) && isfinite(imag(value))
 
+# State (X, dXdx) times exp(log_scale), stored as a unit-size pair and the
+# accumulated log of its magnitude.
 function direct_logscaled_state(X, dXdx, log_scale::Real=0.0)
     value = ComplexF64(X)
     derivative = ComplexF64(dXdx)
@@ -1982,6 +2026,8 @@ function direct_materialize_logscaled_state(
     )
 end
 
+# Taylor propagation of a log-scaled state, renormalizing after every patch so
+# that states beyond the Float64 range stay representable.
 function direct_iterate_logscaled_from_state(
     coefficients::DirectCoefficientSet,
     kind::Symbol,
@@ -2067,6 +2113,10 @@ function direct_iterate_logscaled_from_state(
     )
 end
 
+# Small-frequency propagation in the scaled coordinate y = (1 - x)/|omega| from
+# seed_x toward target_y, stopping early when stop_check(x, X, dXdx) is true or
+# a step fails its checks. Returns a basis with DirectScaledPatch patches, or
+# nothing if no step was taken.
 function direct_iterate_scaled_y(
     coefficients::DirectCoefficientSet,
     kind::Symbol,
@@ -2973,6 +3023,9 @@ end
     return true
 end
 
+# Horizon series and seed point. When the seed is limited by truncation rather
+# than roundoff, an order-_HORIZON_REACH_ORDER series is tried and kept if it
+# moves the seed out enough to save propagation (cost = log(match_x / seed)).
 function _horizon_seed(coefficients, branch, controls, match_x)
     order = getproperty(controls, :horizon_order)
     solution = direct_zero_local_solution(coefficients, branch, order)
@@ -3032,6 +3085,9 @@ function _horizon_pair(coefficients, branch1, branch2, controls, match_x)
     return candidate1, candidate2, candidate_seed
 end
 
+# Horizon basis of one branch (:in or :out) from the Frobenius series at the
+# horizon, propagated outward to match_x: eikonal or hybrid paths when enabled,
+# otherwise Taylor patches.
 function direct_iterate_from_zero(
     coefficients::DirectCoefficientSet,
     branch::Symbol;
@@ -3208,6 +3264,10 @@ function _lfei_pair(coefficients, selected, branch1, branch2, match_x)
         wrap(data2, candidate.patch2, seed2, candidate.state2)
 end
 
+# Infinity basis of one branch (:out/:up or :in/:down) from the selected
+# endpoint series, propagated inward to match_x (single LFE carrier patch when
+# lfe is on and it reaches). certified_steps and step_budget are passed to
+# `_build_basis_series`.
 function direct_iterate_from_infinity(
     coefficients::DirectCoefficientSet,
     branch::Symbol;
@@ -3380,6 +3440,8 @@ function _patch_contains(patch::DirectLogScaledPatch, x)
     return lo - 20eps(Float64) <= x <= hi + 20eps(Float64)
 end
 
+# Binary search for the first patch whose interval (with a 20 eps margin)
+# contains x, for patches ordered in either direction; 0 if none does.
 function _patch_index(patches, x)
     isempty(patches) && return 0
     forward = patches[1].center_x <= patches[end].center_x
@@ -3436,6 +3498,8 @@ function _patch_state(patch::DirectScaledPatch, x)
         -patch.scale * derivative_y / patch.omega_scale
 end
 
+# Value of a basis at x: the endpoint series between the endpoint and the seed
+# (when valid), otherwise the patch covering x; errors outside the basis.
 function direct_basis_value(basis::DirectBasis, x)
     x == basis.seed_x && return basis.seed_X
     if basis.endpoint_valid && _is_horizon(basis.kind)
@@ -3479,6 +3543,8 @@ function direct_basis_state(basis::DirectBasis, x)
     error("direct GSN basis does not cover x=$x")
 end
 
+# State at x when the caller also supplies infinity_y = 1 - x computed from the
+# physical radius; near infinity this keeps the digits that forming 1 - x loses.
 function direct_basis_state(basis::DirectBasis{DirectPatch}, x, infinity_y)
     if basis.endpoint_valid && !_is_horizon(basis.kind) && x >= basis.seed_x
         value, derivative, _ = _scaled_infinity_series_triple(
@@ -3489,7 +3555,7 @@ function direct_basis_state(basis::DirectBasis{DirectPatch}, x, infinity_y)
     index = _patch_index(basis.patches, x)
     index > 0 || return direct_basis_state(basis, x)
     patch = basis.patches[index]
-    # Keep the small complement supplied by the physical radius.
+    # Offset from the patch centre, x - center_x = (1 - center_x) - infinity_y.
     value, derivative = direct_poly_pair(
         patch.coeffs, (1 - patch.center_x) - infinity_y)
     return patch.scale * value, patch.scale * derivative

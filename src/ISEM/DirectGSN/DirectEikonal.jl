@@ -32,6 +32,8 @@ const EIKONAL_COMPRESSION_MIN = 1536.0
 const EIKONAL_SFE_COMPRESSION_MIN = 8192.0
 const EIKONAL_ROUTE_COMPRESSION_MIN = 192.0
 const EIKONAL_IN_PHASE_MIN = 5.0
+# Optional counters of accepted and rejected eikonal steps, compiled in only when
+# DIRECT_GSN_EIKONAL_PROFILE=1 is set at load time (read with `eikonal_profile`).
 const EIKONAL_PROFILE = get(ENV, "DIRECT_GSN_EIKONAL_PROFILE", "0") == "1"
 const _PROFILE_ACCEPTED = Threads.Atomic{Int}(0)
 const _PROFILE_REJECTED = Threads.Atomic{Int}(0)
@@ -110,6 +112,9 @@ end
     return :other
 end
 
+# One eikonal patch on [center_x, next_x]. With h = x - center_x the solution is
+# scale * exp(-aint/2) * Z * (cplus * exp(xi*eta) * plus + cminus * exp(-xi*eta) * minus),
+# where A, B, eta, Z, aint, plus and minus are Taylor coefficients in h.
 struct DirectEikonalPatch
     center_x::Float64
     next_x::Float64
@@ -190,6 +195,10 @@ end
 _finite(z) = isfinite(real(z)) && isfinite(imag(z))
 _finite_vector(values) = all(_finite, values)
 
+# Decide whether eikonal propagation is worth trying for these parameters, from
+# the angular compression (l + 1/2)/kappa, the phase compression
+# max(|omega|, |k_H|, |m Omega_H|)/kappa, the frequency regime and the route
+# branch. Returns a DirectEikonalSelection with the reason for the decision.
 function eikonal_preflight(
     params,
     regime::Symbol=:ordinary,
@@ -289,27 +298,9 @@ function _poly_derivative!(out, source)
     return out
 end
 
-function _poly_power!(out, source, exponent)
-    fill!(out, 0)
-    g0 = source[1]
-    _finite(g0) && !iszero(g0) || return false
-    out[1] = g0^exponent
-    _finite(out[1]) || return false
-    @inbounds for n in 1:(length(out) - 1)
-        rhs = ComplexF64(0)
-        lhs = ComplexF64(0)
-        for k in 0:(n - 1)
-            rhs += out[k + 1] * (n - k) * source[n - k + 1]
-        end
-        for k in 1:(n - 1)
-            lhs += source[k + 1] * (n - k) * out[n - k + 1]
-        end
-        out[n + 1] = (exponent * rhs - lhs) / (n * g0)
-        _finite(out[n + 1]) || return false
-    end
-    return true
-end
-
+# Taylor series of g^(1/2), g^(-1/2), g^(-3) and g^(-1/4) from that of g, by
+# the recurrence n g0 u_n = sum_k (p(n-k) - k) g_(n-k) u_k for u = g^p; false
+# if g(0) is zero or a coefficient is not finite.
 function _poly_wkb_powers!(root, invroot, inverse_cube, quarter,
         source)
     for output in (root, invroot, inverse_cube, quarter)
@@ -376,6 +367,11 @@ function _poly_integral!(result, source)
     return result
 end
 
+# Local eikonal (WKB) plan of X'' + A X' + B X = 0 from the Taylor series of A
+# and B at the current point. With f = A'/2 + A^2/4 - B and ft = f / f0,
+# xi = sqrt(f0), eta = integral of sqrt(ft), Z = ft^(-1/4), and plus/minus are
+# the amplitude corrections to `terms` orders in 1/(+xi) and 1/(-xi). Writes
+# into `scratch` (patches must copy it); nothing if a series is not finite.
 function _eikonal_plan!(
     a_coeffs,
     b_coeffs,
@@ -474,6 +470,8 @@ end
     end
 end
 
+# Allocating form of `_eikonal_plan!`: the plan vectors are fresh, so patches
+# built with `_patch` (no copy) stay valid after the next plan.
 function _eikonal_plan(
     a_coeffs,
     b_coeffs,
@@ -571,6 +569,8 @@ end
     end
 end
 
+# Fix the coefficients cplus/cminus of the two eikonal modes so that the
+# kernel reproduces (X0, dX0) at h = 0; nothing if the modes are degenerate.
 function _eikonal_kernel(plan::EikonalPlan, X0, dX0)
     eta0, deta0 = direct_poly_pair(plan.eta, 0.0)
     z0, dz0 = direct_poly_pair(plan.Z, 0.0)
@@ -689,6 +689,8 @@ end
     return chi, dchi, d2chi
 end
 
+# Two kernels built from the same plan: the series are evaluated once from
+# kernel1 and only the mode coefficients cplus/cminus differ.
 function _kernel_pair2(kernel1::EikonalKernel, kernel2::EikonalKernel,
         h, degree=length(kernel1.A) - 1)
     eta, deta = _poly_pair(kernel1.eta, h, degree)
@@ -757,6 +759,9 @@ function _pair_error(candidate, reference)
         abs(candidate[2] - reference[2])) / scale
 end
 
+# State at offset h with two error measures: the relative residual of
+# X'' + A X' + B X = 0, and the change when the series are cut
+# EIKONAL_CHECK_GAP orders lower.
 function _kernel_step(kernel::EikonalKernel, h)
     value, derivative, second = _kernel_triple(kernel, h)
     A = direct_poly_value(kernel.A, h)
@@ -795,6 +800,8 @@ function _kernel_steps(kernel1::EikonalKernel, kernel2::EikonalKernel, h)
     )
 end
 
+# Shrink the step by 0.8 until the residual and truncation checks pass; returns
+# nothing below min_step. `rejected` records whether any shrink happened.
 function _accepted_single(kernel, direction, h_abs, min_step,
     residual_limit, check_limit)
     rejected = false
@@ -892,6 +899,9 @@ function _copy_patch_pair(kernel1::EikonalKernel, kernel2::EikonalKernel,
     return patch1, patch2
 end
 
+# Propagate (seed_X, seed_dXdx) from seed_x to target_x with eikonal patches,
+# re-planning at each patch start. Returns patches, the final state and step
+# statistics, or nothing as soon as a plan or an accepted step is unavailable.
 function eikonal_path(
     coefficients::DirectCoefficientSet,
     seed_x,
@@ -966,6 +976,10 @@ function eikonal_path(
         max_residual, max_check)
 end
 
+# Like `eikonal_path`, but each step of length 2h is checked against two
+# half-steps, the second re-planned at the midpoint; the step is accepted only
+# when the full and split states agree within `split_limit`. With
+# `allow_partial`, a failure returns the patches built so far (with `x`).
 function eikonal_split(
     coefficients::DirectCoefficientSet,
     seed_x,
@@ -1148,6 +1162,8 @@ function eikonal_split(
         max_residual, max_check, max_split)
 end
 
+# Paired form of `eikonal_split` with a common step size for both solutions.
+# Returns nothing (no partial result) when any step fails.
 function eikonal_split_pair(
     coefficients::DirectCoefficientSet,
     seed_x,
@@ -1348,6 +1364,8 @@ function eikonal_split_pair(
         max_residual, max_check, max_split)
 end
 
+# Paired form of `eikonal_path`: two solutions share one plan per step (they
+# differ only in cplus/cminus) and advance with a common step size.
 function eikonal_pair(
     coefficients::DirectCoefficientSet,
     seed_x,
