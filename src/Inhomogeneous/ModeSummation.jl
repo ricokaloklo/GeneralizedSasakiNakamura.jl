@@ -137,15 +137,27 @@ const DEFAULT_GENERIC_DEEP = 1e-5
 # |flux| <= threshold, or (deep > 0) one mode has |flux| <= deep * threshold. Returns the last l walked.
 function _l_walk(eval_l, ls, threshold, minimum_consecutive::Int; deep = 0.0)
     below_count = 0
+    walk_max = 0.0
     last_l = first(ls) - step(ls)
     for l in ls
         last_l = l
         value = abs(eval_l(l))
         below_count = value <= threshold ? below_count + 1 : 0
-        (below_count >= minimum_consecutive || (deep > 0 && value <= deep * threshold)) && break
+        (below_count >= minimum_consecutive || _deep_stop(value, deep, threshold, walk_max)) && break
+        walk_max = max(walk_max, value)
     end
     return last_l
 end
+
+# Modes more than this factor below the largest mode of their l walk are taken as zeros by symmetry
+# (e.g. every other l at a = 0, |flux| ~ 1e-35 next to neighbours of ~1e-7), not as a decaying tail.
+const _STRUCTURAL_ZERO_RATIO = 1e-20
+
+# Deep stop of an l walk: one mode with |flux| <= deep * threshold ends the walk, unless it is a zero by
+# symmetry relative to the largest earlier mode of the walk (`walk_max`; none yet means no deep stop), in
+# which case only the consecutive-mode rule can stop the walk.
+@inline _deep_stop(value, deep, threshold, walk_max) =
+    deep > 0 && walk_max > 0 && value <= deep * threshold && value > _STRUCTURAL_ZERO_RATIO * walk_max
 
 # l walk of one k != 0 branch; each mode is evaluated at most once, and every segment stops after minimum_consecutive
 # modes below threshold. Infinity (from_bottom = false): up from the peak, then down from the peak towards lmin.
@@ -1752,6 +1764,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                 shell_m_angular = 0.0
                 shell_m_carter = 0.0
                 below_count_l = 0
+                walk_max_l = 0.0
                 for l in 2:lmax
                     mode = eval_mode(s, l, 0, n, 0, max_flux)
                     record_mode(s, l, 0, n, 0, mode)
@@ -1763,9 +1776,10 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                     shell_n_carter += 2 * mode["CarterConstantFlux"]
                     total_modes += 2
                     below_count_l = abs(mode["EnergyFlux"]) <= threshold ? below_count_l + 1 : 0
-                    if below_count_l >= minimum_consecutive || (deep > 0 && abs(mode["EnergyFlux"]) <= deep * threshold)
+                    if below_count_l >= minimum_consecutive || _deep_stop(abs(mode["EnergyFlux"]), deep, threshold, walk_max_l)
                         break
                     end
+                    walk_max_l = max(walk_max_l, abs(mode["EnergyFlux"]))
                 end
 
                 shell_k += shell_m
@@ -1782,6 +1796,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                     shell_m_angular = 0.0
                     shell_m_carter = 0.0
                     below_count_l = 0
+                    walk_max_l = 0.0
                     for l in lmin:lmax
                         mode = eval_mode(s, l, m, n, 0, max_flux)
                         record_mode(s, l, m, n, 0, mode)
@@ -1793,9 +1808,10 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                         shell_n_carter += 2 * mode["CarterConstantFlux"]
                         total_modes += 2
                         below_count_l = abs(mode["EnergyFlux"]) <= threshold ? below_count_l + 1 : 0
-                        if below_count_l >= minimum_consecutive || (deep > 0 && abs(mode["EnergyFlux"]) <= deep * threshold)
+                        if below_count_l >= minimum_consecutive || _deep_stop(abs(mode["EnergyFlux"]), deep, threshold, walk_max_l)
                             break
                         end
+                        walk_max_l = max(walk_max_l, abs(mode["EnergyFlux"]))
                     end
                     if abs(shell_m) > Max_flux
                         Max_flux = abs(shell_m)
@@ -1821,6 +1837,7 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                     shell_m_angular = 0.0
                     shell_m_carter = 0.0
                     below_count_l = 0
+                    walk_max_l = 0.0
                     for l in lmin:lmax
                         mode = eval_mode(s, l, m, n, 0, max_flux)
                         record_mode(s, l, m, n, 0, mode)
@@ -1832,9 +1849,10 @@ function _generic_mode_summation_scoped(scope, a, p, e, x; N0 = 64, K0 = 16, Nma
                         shell_n_carter += 2 * mode["CarterConstantFlux"]
                         total_modes += 2
                         below_count_l = abs(mode["EnergyFlux"]) <= threshold ? below_count_l + 1 : 0
-                        if below_count_l >= minimum_consecutive || (deep > 0 && abs(mode["EnergyFlux"]) <= deep * threshold)
+                        if below_count_l >= minimum_consecutive || _deep_stop(abs(mode["EnergyFlux"]), deep, threshold, walk_max_l)
                             break
                         end
+                        walk_max_l = max(walk_max_l, abs(mode["EnergyFlux"]))
                     end
                     shell_k += shell_m
                     shell_k_angular += shell_m_angular
