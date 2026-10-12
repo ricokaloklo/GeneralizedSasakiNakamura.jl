@@ -252,7 +252,7 @@ For modes with large `n`, eccentric and generic summations can switch from unifo
     TeukolskyPointParticleFlux(
         orbital_parameters(a = 0.9, p = 6.0, e = 0.0, x = 1.0),
         orbit_type = circular,
-        infinity_energy_flux = 0.0005658659548571375,
+        infinity_energy_flux = 0.0005658659548571374,
         infinity_angular_momentum_flux = 0.008825776472648025,
         infinity_carter_constant_flux = 0.0,
         horizon_energy_flux = -4.177363290666302e-6,
@@ -263,7 +263,7 @@ For modes with large `n`, eccentric and generic summations can switch from unifo
         convolution_integral = (strategy = "no convolution integral is needed",),
         tolerance = 1.0e-8,
         truncation_floor = (infinity = 1.0e-16, horizon = 1.0e-16),
-        cost = 0.6137290000915527 seconds,
+        cost = 0.7429449558258057 seconds,
     )
     ```
 
@@ -275,19 +275,19 @@ For modes with large `n`, eccentric and generic summations can switch from unifo
     TeukolskyPointParticleFlux(
         orbital_parameters(a = 0.9, p = 6.0, e = 0.0, x = 0.5),
         orbit_type = inclined,
-        infinity_energy_flux = 0.0006637621566020543,
-        infinity_angular_momentum_flux = 0.0060183149433979885,
-        infinity_carter_constant_flux = 0.04294455189603736,
-        horizon_energy_flux = -3.0865749224058106e-6,
-        horizon_angular_momentum_flux = -0.00010495330048599927,
-        horizon_carter_constant_flux = 8.871154473182051e-5,
+        infinity_energy_flux = 0.0006637621566020537,
+        infinity_angular_momentum_flux = 0.0060183149433979816,
+        infinity_carter_constant_flux = 0.04294455189603733,
+        horizon_energy_flux = -3.086574922405811e-6,
+        horizon_angular_momentum_flux = -0.00010495330048599925,
+        horizon_carter_constant_flux = 8.87115447318205e-5,
         total_modes = 11466,
         k_reached_inf = 15,
         k_reached_hor = 13,
         convolution_integral = (strategy = "ISEM adaptive trapezoidal for all modes",),
         tolerance = 1.0e-8,
         truncation_floor = (infinity = 1.0e-16, horizon = 1.0e-16),
-        cost = 10.54723310470581 seconds,
+        cost = 8.963544130325317 seconds,
     )
     ```
 
@@ -304,18 +304,18 @@ julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.7, 0.5; tol = 1e-8)
 TeukolskyPointParticleFlux(
     orbital_parameters(a = 0.9, p = 6.0, e = 0.7, x = 0.5),
     orbit_type = generic,
-    infinity_energy_flux = 0.001146913075693756,
-    infinity_angular_momentum_flux = 0.006380279786756462,
-    infinity_carter_constant_flux = 0.041463294475529405,
-    horizon_energy_flux = -9.20041236363546e-6,
-    horizon_angular_momentum_flux = -0.0003627225703136479,
-    horizon_carter_constant_flux = 0.0009653818407531111,
-    total_modes = 1146074,
+    infinity_energy_flux = 0.0011469130759772415,
+    infinity_angular_momentum_flux = 0.006380279789657716,
+    infinity_carter_constant_flux = 0.04146329448763504,
+    horizon_energy_flux = -9.200412363629793e-6,
+    horizon_angular_momentum_flux = -0.0003627225703136506,
+    horizon_carter_constant_flux = 0.0009653818407530993,
+    total_modes = 1319722,
     n_reached = (infinity = 145, horizon = 84),
     convolution_integral = (strategy = "ISEM adaptive trapezoidal for all computed n; tail ISEM adaptive Levin enabled but not triggered", tail_levin_nmin = 50, tail_levin_local_n = 16, tail_levin_max_depth = 8),
     tolerance = 1.0e-8,
     truncation_floor = (infinity = 1.0e-16, horizon = 1.0e-16),
-    cost = 1269.3770909309387 seconds,
+    cost = 1302.8743920326233 seconds,
 )
 ```
 
