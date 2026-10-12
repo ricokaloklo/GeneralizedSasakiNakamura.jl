@@ -1,3 +1,5 @@
+# Angular eigen-branch at one c = a*omega: separation constant `angular_A`, `lambda`, the spherical-harmonic
+# `mixing` vector, residual, truncation order, precision bits, sheet id, status and route-specific `metadata`.
 struct AngularBranchResult{T,C,V,M}
     c::C
     angular_A::C
@@ -13,13 +15,23 @@ end
 
 const _QNM_REQUIRED_ANGULAR_APIS = (
     :continue_angular_mode,
-    :_big_spectral_matrix,
 )
 
+# The BigFloat angular spectral matrix is `_big_spectral_matrix` in SpinWeightedSpheroidalHarmonics 1.4.0 and
+# the precision-generic `construct_spectral_matrix` in later versions; both give the same matrix.
+_has_big_spectral_matrix() = isdefined(SpinWeightedSpheroidalHarmonics, :_big_spectral_matrix) ||
+    isdefined(SpinWeightedSpheroidalHarmonics, :construct_spectral_matrix)
+
+_big_angular_spectral_matrix(c, s::Int, m::Int, size::Int) =
+    isdefined(SpinWeightedSpheroidalHarmonics, :_big_spectral_matrix) ?
+        SpinWeightedSpheroidalHarmonics._big_spectral_matrix(c, s, m, size) :
+        SpinWeightedSpheroidalHarmonics.construct_spectral_matrix(c, s, m, size)
+
 function _require_qnm_angular_backend()
-    missing_apis = filter(
+    missing_apis = Any[filter(
         name -> !isdefined(SpinWeightedSpheroidalHarmonics, name),
-        _QNM_REQUIRED_ANGULAR_APIS)
+        _QNM_REQUIRED_ANGULAR_APIS)...]
+    _has_big_spectral_matrix() || push!(missing_apis, :construct_spectral_matrix)
     isempty(missing_apis) && return nothing
     backend_path = try
         pathof(SpinWeightedSpheroidalHarmonics)
@@ -84,7 +96,7 @@ function _angular_branch_bigfloat(mode::QNMMode, c::Complex{BigFloat};
     seed = SpinWeightedSpheroidalHarmonics.continue_angular_mode(
         mode.s, mode.l, mode.m, ComplexF64(c);
         sheet_id, truncation_order, cache=nothing)
-    matrix = SpinWeightedSpheroidalHarmonics._big_spectral_matrix(
+    matrix = _big_angular_spectral_matrix(
         c, mode.s, mode.m, seed.matrix_size)
     coefficients = Complex{BigFloat}.(seed.coefficients)
     pivot = argmax(abs.(coefficients))
