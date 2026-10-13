@@ -1335,6 +1335,79 @@ function _automatic_precision_fallback(mode::QNMMode, a, omega;
     end
 end
 
+# Root at a = 1 from the packaged table of exact-extremal roots (ExtremalRootTable.jl),
+# which were computed with the kappa ladder below. A ZDM entry returns the synchronous
+# endpoint; a DM entry seeds the exact-extremal recurrence, and its root is kept only
+# when the recurrence is accepted and reproduces the tabulated frequency to 1e-10.
+# Otherwise (or for modes, conventions and guesses outside the table) returns nothing
+# and the ladder runs.
+function _tabulated_extremal_root(mode::QNMMode, a::T; guess, convention::Symbol,
+        inversion_index, angular_order::Int, sheet_id::Symbol) where {T<:AbstractFloat}
+    (T === Float64 && a == one(T) && guess === nothing &&
+        mode.branch == :positive_real && convention == :overtone &&
+        inversion_index === :auto) || return nothing
+    entry = get(_EXTREMAL_ROOT_TABLE, (mode.s, mode.l, mode.m, mode.n), nothing)
+    entry === nothing && return nothing
+    family, seed, cf_error, cf_iterations = entry
+    if family == :ZDM
+        endpoint = _extremal_zdm_endpoint_result(mode, a; angular_order,
+            sheet_id, convention, requested_inversion_index=inversion_index)
+        return LeaverResult(endpoint.mode, endpoint.convention,
+            endpoint.overtone_index, endpoint.inversion_index, endpoint.a,
+            endpoint.omega, endpoint.angular_A, endpoint.lambda,
+            endpoint.mixing, endpoint.cf_value, endpoint.cf_error,
+            endpoint.cf_iterations, endpoint.root_residual,
+            endpoint.angular_residual, endpoint.precision_bits,
+            endpoint.status, endpoint.stop_reason,
+            merge(endpoint.provenance, (family_classification=:ZDM,
+                extremal_seed_source=:packaged_table)))
+    end
+    exact = extremal_qnm_root(mode, complex(T(real(seed)), T(imag(seed)));
+        angular_order=angular_order + 8,
+        sheet_id=Symbol(sheet_id, :_exact_extremal_root))
+    angular = exact.angular
+    angular_usable = angular !== nothing && angular.status in (
+        :continued, :predictor_corrected, :spherical_anchor,
+        :high_precision_refined)
+    (exact.status == :accepted && angular_usable &&
+        abs(exact.omega - seed) <= T(1e-10) * max(one(T), abs(seed))) ||
+        return nothing
+    contract = _schwarzschild_label_contract(mode, convention)
+    nan_complex = complex(T(NaN), T(NaN))
+    return LeaverResult(
+        mode, convention, mode.n, mode.n, a, exact.omega,
+        angular.angular_A, angular.lambda, angular.mixing, nan_complex,
+        T(cf_error), cf_iterations, exact.residual, T(angular.residual),
+        _precision_bits(T),
+        :accepted, :accepted_exact_extremal_root,
+        (
+            family_classification=:DM,
+            input_type=string(typeof(a)),
+            working_type=string(T),
+            label_convention=contract.label_convention,
+            branch_label=contract.branch_label,
+            endpoint_kind=contract.endpoint_kind,
+            extremal_endpoint=true,
+            endpoint_method=:exact_extremal_recurrence,
+            spectrum_object=:discrete_damped_pole,
+            simple_pole=true,
+            radial_observables=:exact_extremal_gsn_scattering_basis,
+            gsn_amplitude_limit_implemented=true,
+            exact_extremal_depth=exact.depth,
+            exact_extremal_depth_drift=exact.depth_drift,
+            exact_extremal_depth_rows=exact.depth_rows,
+            exact_extremal_seed_shift=exact.seed_shift,
+            extremal_seed_source=:packaged_table,
+            angular_route=angular.metadata.route,
+            angular_sheet=angular.sheet_id,
+            angular_order=angular_order + 8,
+            root_equation=:richartz_extremal_recurrence,
+            family=:DM,
+            claim_boundary=:exact_extremal_frequency_root,
+        ),
+    )
+end
+
 # Root at abs(a) = 1: solve a near-extremal kappa ladder, classify the family,
 # and return the ZDM endpoint or the exact-extremal damped root.
 function _extremal_damped_limit_result(mode::QNMMode, a::T;
@@ -1346,6 +1419,9 @@ function _extremal_damped_limit_result(mode::QNMMode, a::T;
         stability_tolerance, maximum_root_iterations::Int,
         trust_radius, automatic_precision_fallback::Bool,
         fallback_precision_bits::Int) where {T<:AbstractFloat}
+    tabulated = _tabulated_extremal_root(mode, a; guess, convention,
+        inversion_index, angular_order, sheet_id)
+    tabulated === nothing || return tabulated
     kappas = T[T(0.04), T(0.02), T(0.01), T(0.005), T(0.0025)]
     spins = T[copysign(sqrt(one(T) - kappa^2), a)
         for kappa in kappas]
