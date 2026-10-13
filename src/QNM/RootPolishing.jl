@@ -1390,7 +1390,52 @@ function _extremal_damped_limit_result(mode::QNMMode, a::T;
         if !source_usable && T === Float64
             bits = max(192, fallback_precision_bits)
             source_precision_fallback = true
-            result = setprecision(bits) do
+            # The high-precision fallback first polishes from the extrapolation of
+            # the ladder roots already accepted, instead of repeating the
+            # continuation from the Schwarzschild label at the deepest
+            # continued-fraction depth. The polished root is kept only within a
+            # quarter of the last ladder step of that prediction (the same level);
+            # otherwise the continuation below runs as before.
+            ladder_prediction = guess === nothing && length(roots) >= 2 ?
+                _polynomial_predictor(
+                    spin_defects[max(1, length(roots) - 2):length(roots)],
+                    roots[max(1, length(roots) - 2):end],
+                    spin_defects[index]) : nothing
+            result = nothing
+            if ladder_prediction !== nothing
+                predicted = setprecision(bits) do
+                    kappa_big = BigFloat(kappas[index])
+                    spin_big = copysign(
+                        sqrt(one(BigFloat) - kappa_big^2), BigFloat(a))
+                    _qnm_frequency_labeled(
+                        mode, spin_big;
+                        guess=_complex_of_type(BigFloat, ladder_prediction),
+                        convention,
+                        inversion_index=selected_inversion,
+                        continuation_coordinate=:nu,
+                        angular_order=angular_order + 8,
+                        sheet_id=Symbol(
+                            sheet_id, :_extremal_limit_high_precision_, index),
+                        cf_tolerance=BigFloat(cf_tolerance),
+                        cf_minimum_iterations=max(cf_minimum_iterations, 600),
+                        cf_maximum_iterations=max(cf_maximum_iterations, 60000),
+                        root_tolerance=min(BigFloat(root_tolerance), big"1e-14"),
+                        stability_tolerance=min(
+                            BigFloat(stability_tolerance), big"1e-14"),
+                        maximum_root_iterations=max(maximum_root_iterations, 60),
+                        trust_radius=min(BigFloat(trust_radius), big"0.02"),
+                        automatic_precision_fallback=false,
+                        fallback_precision_bits=bits,
+                    )
+                end
+                ladder_step = abs(roots[end] - roots[end-1])
+                same_level = abs(_complex_of_type(T, predicted.omega) -
+                    ladder_prediction) <= ladder_step / 4
+                predicted_usable = predicted.status == :accepted ||
+                    (mode.n >= 5 && predicted.status == :estimated)
+                predicted_usable && same_level && (result = predicted)
+            end
+            result === nothing && (result = setprecision(bits) do
                 kappa_big = BigFloat(kappas[index])
                 spin_big = copysign(
                     sqrt(one(BigFloat) - kappa_big^2), BigFloat(a))
@@ -1420,7 +1465,7 @@ function _extremal_damped_limit_result(mode::QNMMode, a::T;
                     automatic_precision_fallback=false,
                     fallback_precision_bits=bits,
                 )
-            end
+            end)
         end
         if !(result.status == :accepted ||
                 (mode.n >= 5 && result.status == :estimated)) &&
