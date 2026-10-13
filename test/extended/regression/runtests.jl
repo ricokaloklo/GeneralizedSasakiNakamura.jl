@@ -179,12 +179,19 @@ end
 end
 
 # Detailed QNM normalization bridge: residual and Richardson drifts within their gates.
+# The default 220 excitation factor comes from one variational solve, which has no
+# direction stencil; the Richardson backend keeps its direction gate.
 @testset "detailed QNM normalization bridge" begin
     detailed = qnm(0.68, -2, 2, 2, 0; detailed=true)
     @test detailed.status == :accepted
     @test detailed.excitation.bridge_residual <= 1e-10
-    @test detailed.excitation.direction_drift <= 1e-7
     @test detailed.excitation.step_drift <= 1e-7
+    richardson = qnm(0.68, -2, 2, 2, 0; detailed=true,
+        excitation_options=(backend=:richardson,))
+    @test richardson.status == :accepted
+    @test richardson.excitation.bridge_residual <= 1e-10
+    @test richardson.excitation.direction_drift <= 1e-7
+    @test richardson.excitation.step_drift <= 1e-7
 end
 
 # Weak-damping UP state: R(5), R(10) at grid 64/134/38/164/8 UP (omega = 0.1-0.05i) against the independent

@@ -353,9 +353,10 @@ function _ordinary_qnm_root(a, s, l, m, n, primary_guess, root_options;
 end
 
 # Solve the negative-real (mirror) root. Without `mirror_guess` it is the reflection -conj(omega) of the
-# (s, l, -m, n) ordinary root at the same spin (or of the supplied `ordinary_root` for m = 0), returned as the
-# partner; a = 0 near-algebraically-special modes are solved directly. With `mirror_guess` the root is polished on
-# the negative-real branch from that guess. Returns (root, seed, partner_root).
+# accepted (s, l, -m, n) ordinary root at the same spin (or of the supplied `ordinary_root` for m = 0), returned as
+# the partner; a = 0 near-algebraically-special modes are solved directly. With `mirror_guess`, or when the partner
+# is not accepted, the root is polished on the negative-real branch from the guess or from -conj of the partner.
+# Returns (root, seed, partner_root).
 function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
         ordinary_root=nothing, convention=:overtone,
         inversion_index=:auto, segment=0)
@@ -368,20 +369,31 @@ function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
             convention, inversion_index, segment)
         return root, root.omega, nothing
     end
+    partner_root = nothing
     if mirror_guess === nothing
         partner_root = m == 0 && ordinary_root !== nothing ? ordinary_root :
             _solve_qnm_root(QNMMode(Int(s), Int(l), -Int(m), Int(n), :positive_real),
                 a, nothing, root_options; convention, inversion_index, segment)
-        reflect() = _mirror_reflected_result(mode, partner_root;
-            angular_order=get(root_options, :angular_order, 32),
-            sheet_id=get(root_options, :sheet_id, :qnm_straight_from_spherical))
-        root = partner_root.omega isa Complex{BigFloat} ?
-            setprecision(reflect, BigFloat, partner_root.precision_bits) : reflect()
-        return root, root.omega, partner_root
+        if partner_root.status == :accepted
+            reflect() = _mirror_reflected_result(mode, partner_root;
+                angular_order=get(root_options, :angular_order, 32),
+                sheet_id=get(root_options, :sheet_id, :qnm_straight_from_spherical))
+            root = partner_root.omega isa Complex{BigFloat} ?
+                setprecision(reflect, BigFloat, partner_root.precision_bits) : reflect()
+            return root, root.omega, partner_root
+        end
     end
-    root = _solve_qnm_root(mode, a, mirror_guess, root_options;
-        convention, inversion_index, segment=segment === :auto ? 0 : segment)
-    return root, mirror_guess, nothing
+    # Explicit guess, or a partner that was not accepted: polish on the negative-real
+    # branch from the guess or from the partner's reflected frequency.
+    seed = mirror_guess === nothing ? -conj(partner_root.omega) : mirror_guess
+    mirror_segment = partner_root !== nothing ? _qnm_root_segment(partner_root) :
+        segment === :auto ? 0 : segment
+    solve_mirror() = _solve_qnm_root(mode, a, seed, root_options;
+        convention, inversion_index, segment=mirror_segment)
+    root = partner_root !== nothing && partner_root.omega isa Complex{BigFloat} ?
+        setprecision(solve_mirror, BigFloat, partner_root.precision_bits) :
+        solve_mirror()
+    return root, seed, partner_root
 end
 
 """
