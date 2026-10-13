@@ -1344,6 +1344,8 @@ function _tabulated_spin_seed(mode::QNMMode, a)
     mode.branch == :positive_real || return nothing
     a isa Union{Float64,Integer} || return nothing
     spin = Float64(a)
+    _SPIN_TABLE_MAXIMUM_SPIN < spin < one(spin) &&
+        return _two_end_spin_seed(mode, spin)
     zero(spin) <= spin <= _SPIN_TABLE_MAXIMUM_SPIN || return nothing
     entry = get(_SPIN_ROOT_TABLE, (mode.s, mode.l, mode.m, mode.n), nothing)
     entry === nothing && return nothing
@@ -1360,15 +1362,92 @@ function _tabulated_spin_seed(mode::QNMMode, a)
     cubic = lagrange(nodes)
     nearest = sort(sortperm(abs.(us .- u))[1:3])
     quadratic = lagrange(nearest)
-    return (seed=cubic, inversion=inversion, error=abs(cubic - quadratic))
+    error = abs(cubic - quadratic)
+    return (seed=cubic, inversion=inversion, error,
+        radius=max(10 * error, 1.0e-6 * abs(cubic)),
+        source=:packaged_spin_table,
+        predictor=:packaged_table_cubic_interpolation)
 end
 
-# The tabulated seed is kept when the polished root is accepted with the tabulated
-# inversion index and lies within ten error estimates (at least 1e-6 relative) of it.
+# Seed for 0.9995 < a < 1, anchored at both ends: the packaged root at a = 1
+# (ExtremalRootTable.jl; the synchronous endpoint m/2 for a ZDM entry) and the two
+# spin-table nodes nearest the extremal end. From the nearest node the root is marched in
+# kappa = sqrt(1 - a^2) by factors of 0.8, each step predicted by the quadratic in kappa
+# through the a = 1 root and the last two roots, and kept only within a quarter of the
+# surface gravity sqrt(1 - a^2) / (2 r_+) of its prediction, the level-spacing fraction
+# that also bounds the terminal extrapolation. Returns nothing when a step fails.
+function _two_end_spin_seed(mode::QNMMode, spin::Float64)
+    key = (mode.s, mode.l, mode.m, mode.n)
+    entry = get(_SPIN_ROOT_TABLE, key, nothing)
+    extremal = get(_EXTREMAL_ROOT_TABLE, key, nothing)
+    (entry === nothing || extremal === nothing) && return nothing
+    roots, inversions = entry
+    nodes = findall(u -> one(u) - u^2 <= _SPIN_TABLE_MAXIMUM_SPIN, _SPIN_TABLE_U)
+    near, far = nodes[end], nodes[end-1]
+    inversion = inversions[near]
+    (inversion >= 0 && inversions[far] == inversion &&
+        isfinite(roots[near]) && isfinite(roots[far]) &&
+        isfinite(extremal[2])) || return nothing
+    nodal_kappa(u) = sqrt(one(u) - (one(u) - u^2)^2)
+    radius(kappa) = kappa / (8 * (one(kappa) + kappa))
+    target = sqrt(one(spin) - spin^2)
+    kappas = [nodal_kappa(_SPIN_TABLE_U[far]), nodal_kappa(_SPIN_TABLE_U[near])]
+    omegas = ComplexF64[roots[far], roots[near]]
+    predictor = omegas[end]
+    while kappas[end] > target
+        kappa = max(target, 0.8 * kappas[end])
+        k0, k1, k2 = zero(spin), kappas[end-1], kappas[end]
+        w0, w1, w2 = extremal[2], omegas[end-1], omegas[end]
+        predictor = w0 * (kappa - k1) * (kappa - k2) / ((k0 - k1) * (k0 - k2)) +
+            w1 * (kappa - k0) * (kappa - k2) / ((k1 - k0) * (k1 - k2)) +
+            w2 * (kappa - k0) * (kappa - k1) / ((k2 - k0) * (k2 - k1))
+        step_spin = kappa == target ? spin : sqrt(one(spin) - kappa^2)
+        polished = _polish_frequency_root(mode, step_spin, predictor;
+            angular_order=32, sheet_id=:qnm_straight_from_spherical,
+            inversion_index=inversion,
+            cf_tolerance=mode.n >= 8 ? 1.0e-12 : 1.0e-13,
+            cf_minimum_iterations=300,
+            cf_maximum_iterations=_default_cf_maximum_iterations(
+                mode, step_spin, nothing),
+            root_tolerance=5.0e-10, maximum_root_iterations=30,
+            trust_radius=0.2)
+        (polished.converged &&
+            abs(polished.omega - predictor) <= radius(kappa)) || return nothing
+        push!(kappas, kappa)
+        push!(omegas, polished.omega)
+    end
+    return (seed=omegas[end], inversion, error=abs(omegas[end] - predictor),
+        radius=radius(target),
+        source=:packaged_two_end_anchor,
+        predictor=:packaged_table_kappa_anchored_march)
+end
+
+# Root for 0.9995 < |a| < 1 with a two-end anchored seed. A Float64 solve from the seed
+# is tried first; when it is not kept, the default solve is returned if it agrees with the
+# seed, and otherwise the seeded solve is repeated with the automatic BigFloat fallback,
+# so that the seed fixes the label while the default path keeps its cost where it agrees.
+function _two_end_anchored_frequency(mode::QNMMode, a, spin_seed; kwargs...)
+    fallback = get(kwargs, :automatic_precision_fallback, true)
+    quick = _qnm_frequency_labeled(mode, a; kwargs..., spin_seed,
+        automatic_precision_fallback=false)
+    # A failed solve records no guess source; the seed was then used.
+    get(quick.provenance, :guess_source, spin_seed.source) == spin_seed.source ||
+        return quick.status == :accepted || !fallback ? quick :
+            _qnm_frequency_labeled(mode, a; kwargs...)
+    _spin_seed_consistent(quick, spin_seed) && return quick
+    default = _qnm_frequency_labeled(mode, a; kwargs...)
+    (_spin_seed_consistent(default, spin_seed) || !fallback) && return default
+    seeded = _qnm_frequency_labeled(mode, a; kwargs..., spin_seed)
+    return _spin_seed_consistent(seeded, spin_seed) ? seeded : default
+end
+
+# A tabulated seed is kept when the polished root is accepted with the tabulated
+# inversion index and lies within the seed's acceptance radius: ten error estimates (at
+# least 1e-6 relative) for an interpolated node seed, a quarter of the surface gravity
+# for a two-end anchored one.
 _spin_seed_consistent(result, seed) = result.status == :accepted &&
     result.inversion_index == seed.inversion &&
-    abs(result.omega - seed.seed) <=
-        max(10 * seed.error, 1.0e-6 * abs(seed.seed))
+    abs(result.omega - seed.seed) <= seed.radius
 
 # Root at a = 1 from the packaged table of exact-extremal roots (ExtremalRootTable.jl),
 # which were computed with the kappa ladder below. A ZDM entry returns the synchronous
@@ -1911,11 +1990,15 @@ function qnm_frequency(mode::QNMMode, a; segment=0, kwargs...)
                 QNMMode(internal_mode.s, internal_mode.l, -internal_mode.m,
                     internal_mode.n, internal_mode.branch) : internal_mode,
                 a isa Real ? abs(a) : a) : nothing
-        seeded = _qnm_frequency_labeled(internal_mode, a; spin_seed, kwargs...)
-        spin_seed === nothing ||
-            get(seeded.provenance, :guess_source, nothing) != :packaged_spin_table ||
-            _spin_seed_consistent(seeded, spin_seed) ? seeded :
-            _qnm_frequency_labeled(internal_mode, a; kwargs...)
+        if spin_seed !== nothing && spin_seed.source == :packaged_two_end_anchor
+            _two_end_anchored_frequency(internal_mode, a, spin_seed; kwargs...)
+        else
+            seeded = _qnm_frequency_labeled(internal_mode, a; spin_seed, kwargs...)
+            spin_seed === nothing ||
+                get(seeded.provenance, :guess_source, nothing) != spin_seed.source ||
+                _spin_seed_consistent(seeded, spin_seed) ? seeded :
+                _qnm_frequency_labeled(internal_mode, a; kwargs...)
+        end
     else
         _qnm_frequency_segmented(internal_mode, a, selected_segment;
             kwargs...)
@@ -2413,9 +2496,9 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
             automatic_inversion && T === Float64 ? (
             seed=complex(T(real(spin_seed.seed)), T(imag(spin_seed.seed))),
             seed_spin=aT,
-            source=:packaged_spin_table,
+            source=spin_seed.source,
             seed_inversion_index=spin_seed.inversion,
-            seed_predictor=:packaged_table_cubic_interpolation,
+            seed_predictor=spin_seed.predictor,
             seed_duplicate_distance=T(Inf),
         ) : guess === nothing ?
         _schwarzschild_seed(
@@ -2505,7 +2588,9 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
 
             target_coordinate = selected_coordinate == :nu ? asin(aT) : aT
             sequence_anchor = _spin_sequence_anchor(mode, T)
-            sequence_target = selected_coordinate == :nu ?
+            # A two-end anchored seed is polished at the target itself.
+            sequence_target = selected_coordinate == :nu ||
+                guess_source == :packaged_two_end_anchor ?
                 target_coordinate : abs(aT) > sequence_anchor ?
                 copysign(sequence_anchor, aT) : aT
             continuation_state = (; accepted_spins, accepted_coordinates,
