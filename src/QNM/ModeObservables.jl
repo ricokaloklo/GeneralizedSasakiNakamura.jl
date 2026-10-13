@@ -374,7 +374,10 @@ function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
         partner_root = m == 0 && ordinary_root !== nothing ? ordinary_root :
             _solve_qnm_root(QNMMode(Int(s), Int(l), -Int(m), Int(n), :positive_real),
                 a, nothing, root_options; convention, inversion_index, segment)
-        if partner_root.status == :accepted
+        # A partner sequence that ended on the negative imaginary axis ends the mirror
+        # sequence at the same spin: its reflection is returned with the same status.
+        if partner_root.status == :accepted ||
+                partner_root.stop_reason == :negative_imaginary_axis_endpoint
             reflect() = _mirror_reflected_result(mode, partner_root;
                 angular_order=get(root_options, :angular_order, 32),
                 sheet_id=get(root_options, :sheet_id, :qnm_straight_from_spherical))
@@ -385,7 +388,14 @@ function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
     end
     # Explicit guess, or a partner that was not accepted: polish on the negative-real
     # branch from the guess or from the partner's reflected frequency.
-    seed = mirror_guess === nothing ? -conj(partner_root.omega) : mirror_guess
+    # A reflected partner frequency on the positive-real side of the axis is moved to
+    # Re(omega) = -max(|Re|, 1e-3) so that the polish starts on the mirror branch.
+    seed = mirror_guess !== nothing ? mirror_guess :
+        let reflected = -conj(partner_root.omega)
+            _branch_consistent(mode, reflected) ? reflected :
+                complex(-max(abs(real(reflected)), oftype(real(reflected), 1.0e-3)),
+                    imag(reflected))
+        end
     mirror_segment = partner_root !== nothing ? _qnm_root_segment(partner_root) :
         segment === :auto ? 0 : segment
     solve_mirror() = _solve_qnm_root(mode, a, seed, root_options;
