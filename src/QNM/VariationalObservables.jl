@@ -1,8 +1,8 @@
-# Keep the fast route within its independently checked mode family. No root
+# Keep the fast route within a bounded mode family, with per-call checks. No root
 # finding, mirror construction or extremal-family classification happens here.
 function _qnm_variational_scope(root)
     m = root.mode
-    return m.s == -2 && m.l == 2 && abs(m.m) == 2 && m.n == 0 &&
+    return m.s in -2:2 && abs(m.s) <= m.l <= 4 && 0 <= m.n <= 3 &&
         abs(root.a) <= 1 && isfinite(root.omega) &&
         !iszero(real(root.omega)) && imag(root.omega) < 0 &&
         !(get(root.provenance, :extremal_endpoint, false) &&
@@ -18,7 +18,7 @@ function _qnm_use_variational(root, options)
         get(options, :radial_solver, GSN_radial) in (GSN_radial, _qnm_default_radial_solver) &&
         get(options, :teukolsky_solver, Teukolsky_radial) in (nothing, Teukolsky_radial)
     if backend === :variational && (!compatible || !_qnm_variational_scope(root))
-        throw(ArgumentError("variational backend supports default solvers, no explicit stencil/direction check, and s=-2,l=2,abs(m)=2,n=0 simple poles"))
+        throw(ArgumentError("variational backend supports default solvers, no explicit stencil/direction check, and integer s=-2:2,abs(s)<=l<=4,n=0:3 simple poles"))
     end
     return backend !== :richardson && compatible && _qnm_variational_scope(root)
 end
@@ -37,10 +37,23 @@ function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
     inputs = _radial_evaluation_inputs(root)
     # Start farther from the regular singular point with more series terms;
     # near extremality this reduces near-horizon ODE step rejection.
+    extreme = abs(root.a) == 1
+    af,wf=Float64(inputs.a),ComplexF64(inputs.omega)
+    kappa=sqrt(max(0.,1-af*af))
+    p=wf-root.mode.m*af/(2*(1+kappa))
+    complex_horizon=!extreme && abs(af)>.9 && abs(real(p))>.1 &&
+        abs(imag(wf))/kappa>.5
+    # Spin-field endpoint conversion is ill-conditioned at extremality.
+    # Only the small boundary calculation uses higher precision, not the IVP.
+    bits = extreme && root.mode.s != 0 ? 128 : 53
     coarse = _qnm_variational_excitation(root; horizon_scale=0.4,
-        horizon_order=24, infinity_radius=80.0)
+        horizon_order=24, infinity_radius=80.0, horizon_ray=extreme,
+        extremal_scale=24.0, extremal_radius=0.2, extremal_order=40,
+        extremal_precision=bits,horizon_tortoise=complex_horizon)
     fine = _qnm_variational_excitation(root; tol=3e-12, horizon_scale=0.8,
-        horizon_order=40, infinity_order=40, infinity_radius=100.0)
+        horizon_order=40, infinity_order=40, infinity_radius=100.0,
+        horizon_ray=extreme, extremal_scale=32.0, extremal_radius=0.15,
+        extremal_order=64, extremal_precision=bits,horizon_tortoise=complex_horizon)
     drift(x,y) = abs(x-y)/max(abs(x), abs(y), floatmin(Float64))
     refinement = maximum((drift(coarse.alpha,fine.alpha),
         drift(coarse.reflection,fine.reflection),drift(coarse.B_gsn,fine.B_gsn)))
@@ -76,7 +89,9 @@ function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
             evaluation_policy=inputs.policy,frequency_projection_drift=inputs.projection_drift,
             evaluation_a=inputs.a,evaluation_omega=inputs.omega,
             radial_sample_requests=2,radial_unique_samples=1,
-            augmented_ivps=4,shifted_frequency_solves=0,
+            augmented_ivps=extreme ? 6 : 4,shifted_frequency_solves=0,
+            horizon_endpoint_precision_bits=bits,
+            horizon_coordinate=complex_horizon ? :complex_tortoise : :radius,
             refinement_alpha=drift(coarse.alpha,fine.alpha),
             refinement_reflection=drift(coarse.reflection,fine.reflection),
             refinement_B=drift(coarse.B_gsn,fine.B_gsn),
@@ -155,8 +170,9 @@ _qnm_gsn_excitation_factor(root::LeaverResult;kwargs...) =
 """
     qnm_excitation_factor(root::LeaverResult; backend=:auto, kwargs...)
 
-Use checked frequency sensitivities for the validated gravitational 220 family,
-or the original Richardson algorithm otherwise. Force either with
+Use checked frequency sensitivities for integer spins -2 through 2, l<=4,
+n<=3 simple poles, or the original Richardson algorithm otherwise. Failed
+refinement or contour checks fall back to Richardson. Force either with
 `backend=:variational` or `:richardson`. Explicit stencils/custom solvers
 retain Richardson. The variational Teukolsky bridge includes the off-root
 product rule and does not claim an independent radial or direction check.

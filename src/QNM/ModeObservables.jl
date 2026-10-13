@@ -406,9 +406,10 @@ eigenvalue, directly evaluated GSN scattering amplitudes, frequency derivative
 and GSN excitation factor shown by its
 compact display.
 
-For the validated gravitational 220 family, the default excitation backend
-uses a checked variational solve at one frequency. Other modes and explicit
-stencils/custom solvers retain Richardson. Set
+For integer spins -2 through 2, l<=4 and n<=3 simple poles, the default
+excitation backend attempts a checked variational solve at one frequency.
+Failed refinement/contour checks, other modes, and explicit stencils/custom
+solvers retain Richardson. Set
 `excitation_options=(backend=:richardson,)` to select the original algorithm.
 The variational path keeps the supplied root; it does not run an additional
 GSN frequency polish, and rejects a root that fails the incidence check.
