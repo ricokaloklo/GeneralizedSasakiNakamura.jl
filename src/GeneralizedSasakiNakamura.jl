@@ -193,12 +193,12 @@ _is_horizon_superradiance_frequency(a, m, omega) = isreal(omega) &&
 
 # Numerical boundaries for the exact-extremal solver. For real omega the inner start
 # follows the scale of the irregular horizon expansion, h = r - 1 = 0.05 |2 omega - m a|^0.7
-# (at most 0.25, never deeper than r* = -80): starting deeper amplifies the error of
-# the asymptotic horizon state for s > 0, starting shallower leaves its region of use.
+# (at most 0.25, at r* >= -400): starting deeper amplifies the error of the asymptotic
+# horizon state for s > 0, starting shallower leaves its region of use.
 function _extremal_default_bounds(m, a, omega)
     if isreal(omega)
         h = min(0.05 * abs(2 * real(omega) - m * a)^0.7, 0.25)
-        rsin = h > 0 ? max(Coordinates.rstar_from_r(a, 1 + h), -80.0) : -80.0
+        rsin = h > 0 ? max(Coordinates.rstar_from_r(a, 1 + h), -400.0) : -400.0
         return (rsin, 160.0)
     end
     damping = abs(imag(omega))
