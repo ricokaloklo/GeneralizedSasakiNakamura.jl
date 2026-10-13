@@ -1498,9 +1498,14 @@ function _extremal_damped_limit_result(mode::QNMMode, a::T;
         source_precision_fallback = false
         source_usable = result.status == :accepted ||
             (mode.n >= 5 && result.status == :estimated)
-        if !source_usable && T === Float64
+        # A source sequence that ended on the negative imaginary axis is not revived by
+        # higher precision (as for finite spins, segment 0 is not restarted).
+        if !source_usable && T === Float64 &&
+                result.stop_reason != :negative_imaginary_axis_endpoint
             bits = max(192, fallback_precision_bits)
             source_precision_fallback = true
+            # The continued fraction of the high-precision fallback may use up to 600/kappa
+            # terms (the tail converges more slowly as kappa -> 0); its tolerance is unchanged.
             # The high-precision fallback first polishes from the extrapolation of
             # the ladder roots already accepted, instead of repeating the
             # continuation from the Schwarzschild label at the deepest
@@ -1529,7 +1534,8 @@ function _extremal_damped_limit_result(mode::QNMMode, a::T;
                             sheet_id, :_extremal_limit_high_precision_, index),
                         cf_tolerance=BigFloat(cf_tolerance),
                         cf_minimum_iterations=max(cf_minimum_iterations, 600),
-                        cf_maximum_iterations=max(cf_maximum_iterations, 60000),
+                        cf_maximum_iterations=max(cf_maximum_iterations, 60000,
+                            ceil(Int, 600 / kappas[index])),
                         root_tolerance=min(BigFloat(root_tolerance), big"1e-14"),
                         stability_tolerance=min(
                             BigFloat(stability_tolerance), big"1e-14"),
@@ -1567,7 +1573,8 @@ function _extremal_damped_limit_result(mode::QNMMode, a::T;
                     # a 1e-13 tail contract by an unattainable 1e-18 contract.
                     cf_tolerance=BigFloat(cf_tolerance),
                     cf_minimum_iterations=max(cf_minimum_iterations, 600),
-                    cf_maximum_iterations=max(cf_maximum_iterations, 60000),
+                    cf_maximum_iterations=max(cf_maximum_iterations, 60000,
+                            ceil(Int, 600 / kappas[index])),
                     root_tolerance=min(BigFloat(root_tolerance), big"1e-14"),
                     stability_tolerance=min(
                         BigFloat(stability_tolerance), big"1e-14"),

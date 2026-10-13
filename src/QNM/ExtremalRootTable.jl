@@ -2,6 +2,7 @@
 # `_extremal_damped_limit_result` (default convention, no guess). Keyed by (s, l, m, n) for
 # s = -2..2, l <= 4, n <= 3; value (family, omega, cf_error, cf_iterations) of the ladder result,
 # with omega and cf_error stored bit for bit. Modes the ladder did not accept are not listed.
+# (0,0,0,0) and (+-1,1,-1,1) need the 600/kappa continued-fraction ceiling of the fallback.
 _hex_float(bits::UInt64) = reinterpret(Float64, bits)
 const _EXTREMAL_ROOT_TABLE = Dict{NTuple{4,Int},Tuple{Symbol,ComplexF64,Float64,Int}}(
     (-2, 2, -2, 0) => (:DM, complex(_hex_float(0x3fd2a8cfdc9f29ea), _hex_float(0xbfb688dc7c7d34b9)), _hex_float(0x3d03cc989bd7a842), 60000),
@@ -88,6 +89,7 @@ const _EXTREMAL_ROOT_TABLE = Dict{NTuple{4,Int},Tuple{Symbol,ComplexF64,Float64,
     (-2, 4, 4, 2) => (:ZDM, complex(_hex_float(0x4000000000000000), _hex_float(0x0000000000000000)), _hex_float(0x7ff8000000000000), 0),
     (-2, 4, 4, 3) => (:ZDM, complex(_hex_float(0x4000000000000000), _hex_float(0x0000000000000000)), _hex_float(0x7ff8000000000000), 0),
     (-1, 1, -1, 0) => (:DM, complex(_hex_float(0x3fca281d732472a3), _hex_float(0xbfb76294c030d7fb)), _hex_float(0x3d0c7960993ba2f2), 60000),
+    (-1, 1, -1, 1) => (:DM, complex(_hex_float(0x3fc44f843b37f042), _hex_float(0xbfd3234b1be8651d)), _hex_float(0x3ca7b10713bd501a), 179200),
     (-1, 1, -1, 2) => (:DM, complex(_hex_float(0x3fbd362115aa8029), _hex_float(0xbfe19b4b009c9994)), _hex_float(0x3d385902125508dd), 89600),
     (-1, 1, -1, 3) => (:DM, complex(_hex_float(0x3fb709b255c288a5), _hex_float(0xbfea0c054d37ddfe)), _hex_float(0x3d18273f805f1ea6), 89600),
     (-1, 1, 0, 0) => (:DM, complex(_hex_float(0x3fd196c8b96ecad6), _hex_float(0xbfb3426f07164271)), _hex_float(0x3d2646d3ce7384f6), 60000),
@@ -180,6 +182,7 @@ const _EXTREMAL_ROOT_TABLE = Dict{NTuple{4,Int},Tuple{Symbol,ComplexF64,Float64,
     (-1, 4, 4, 1) => (:ZDM, complex(_hex_float(0x4000000000000000), _hex_float(0x0000000000000000)), _hex_float(0x7ff8000000000000), 0),
     (-1, 4, 4, 2) => (:ZDM, complex(_hex_float(0x4000000000000000), _hex_float(0x0000000000000000)), _hex_float(0x7ff8000000000000), 0),
     (-1, 4, 4, 3) => (:ZDM, complex(_hex_float(0x4000000000000000), _hex_float(0x0000000000000000)), _hex_float(0x7ff8000000000000), 0),
+    (0, 0, 0, 0) => (:DM, complex(_hex_float(0x3fbc390c29654430), _hex_float(0xbfb6e517dec9290c)), _hex_float(0x3d257ee2341d679b), 179200),
     (0, 0, 0, 1) => (:DM, complex(_hex_float(0x3faffc7f29117916), _hex_float(0xbfd467e18d1fdc73)), _hex_float(0x3cd62e4fe412fa9e), 120000),
     (0, 0, 0, 2) => (:DM, complex(_hex_float(0x3fa468385dea59cf), _hex_float(0xbfe261d3fd9999fa)), _hex_float(0x3d33d97474f76df2), 89600),
     (0, 1, -1, 0) => (:DM, complex(_hex_float(0x3fcea570652c2c43), _hex_float(0xbfb804aead085fa4)), _hex_float(0x3ccf993596f41cfd), 60000),
@@ -275,6 +278,7 @@ const _EXTREMAL_ROOT_TABLE = Dict{NTuple{4,Int},Tuple{Symbol,ComplexF64,Float64,
     (0, 4, 4, 2) => (:ZDM, complex(_hex_float(0x4000000000000000), _hex_float(0x0000000000000000)), _hex_float(0x7ff8000000000000), 0),
     (0, 4, 4, 3) => (:ZDM, complex(_hex_float(0x4000000000000000), _hex_float(0x0000000000000000)), _hex_float(0x7ff8000000000000), 0),
     (1, 1, -1, 0) => (:DM, complex(_hex_float(0x3fca281d732472a3), _hex_float(0xbfb76294c030d7fd)), _hex_float(0x3d0d7b086ba81226), 60000),
+    (1, 1, -1, 1) => (:DM, complex(_hex_float(0x3fc44f843b37f045), _hex_float(0xbfd3234b1be8651c)), _hex_float(0x3d385a01e395284c), 179200),
     (1, 1, -1, 2) => (:DM, complex(_hex_float(0x3fbd362115aa802a), _hex_float(0xbfe19b4b009c9995)), _hex_float(0x3d354bdd8d93e2bc), 89600),
     (1, 1, -1, 3) => (:DM, complex(_hex_float(0x3fb709b255c288a1), _hex_float(0xbfea0c054d37de00)), _hex_float(0x3d35e12f2d86b95d), 89600),
     (1, 1, 0, 0) => (:DM, complex(_hex_float(0x3fd196c8b96ecad6), _hex_float(0xbfb3426f07164274)), _hex_float(0x3d376abe198ddf1d), 60000),
