@@ -352,31 +352,14 @@ function _ordinary_qnm_root(a, s, l, m, n, primary_guess, root_options;
         convention, inversion_index, segment)
 end
 
-# Solve the negative-real (mirror) root. Without `mirror_guess` the seed is -conj of the (s, l, -m, n) ordinary root
-# (at |a| = 1 the root is that reflection)
-# (or the supplied `ordinary_root` for m = 0), returned as the partner; exact-extremal ZDM endpoints and a = 0
-# near-algebraically-special modes are solved without a seed. Returns (root, seed, partner_root).
+# Solve the negative-real (mirror) root. Without `mirror_guess` it is the reflection -conj(omega) of the
+# (s, l, -m, n) ordinary root at the same spin (or of the supplied `ordinary_root` for m = 0), returned as the
+# partner; a = 0 near-algebraically-special modes are solved directly. With `mirror_guess` the root is polished on
+# the negative-real branch from that guess. Returns (root, seed, partner_root).
 function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
         ordinary_root=nothing, convention=:overtone,
         inversion_index=:auto, segment=0)
     mode = QNMMode(Int(s), Int(l), Int(m), Int(n), :negative_real)
-    if abs(a) == one(a) && mirror_guess === nothing
-        # At exact extremality the mirror root is the reflection of the ordinary
-        # (s, l, -m, n) root at the same spin; it is not polished again.
-        partner_root = m == 0 && ordinary_root !== nothing ? ordinary_root :
-            _solve_qnm_root(QNMMode(Int(s), Int(l), -Int(m), Int(n), :positive_real),
-                a, nothing, root_options; convention, inversion_index, segment)
-        root = _mirror_reflected_result(mode, partner_root;
-            angular_order=get(root_options, :angular_order, 32),
-            sheet_id=get(root_options, :sheet_id, :qnm_straight_from_spherical))
-        return root, root.omega, partner_root
-    end
-    if abs(a) == one(a) && _extremal_zdm_endpoint_scope(mode, a)
-        root = _solve_qnm_root(
-            mode, a, mirror_guess, root_options;
-            convention, inversion_index, segment)
-        return root, root.omega, nothing
-    end
     endpoint_contract = _schwarzschild_label_contract(
         mode, _qnm_convention(convention))
     if mirror_guess === nothing && iszero(a) &&
@@ -385,35 +368,20 @@ function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
             convention, inversion_index, segment)
         return root, root.omega, nothing
     end
-    partner_root = if mirror_guess === nothing
-        if m == 0 && ordinary_root !== nothing
-            ordinary_root
-        else
-            partner_mode = QNMMode(
-                Int(s), Int(l), -Int(m), Int(n), :positive_real)
-            _solve_qnm_root(partner_mode, a, nothing, root_options;
-                convention, inversion_index, segment)
-        end
-    else
-        nothing
+    if mirror_guess === nothing
+        partner_root = m == 0 && ordinary_root !== nothing ? ordinary_root :
+            _solve_qnm_root(QNMMode(Int(s), Int(l), -Int(m), Int(n), :positive_real),
+                a, nothing, root_options; convention, inversion_index, segment)
+        reflect() = _mirror_reflected_result(mode, partner_root;
+            angular_order=get(root_options, :angular_order, 32),
+            sheet_id=get(root_options, :sheet_id, :qnm_straight_from_spherical))
+        root = partner_root.omega isa Complex{BigFloat} ?
+            setprecision(reflect, BigFloat, partner_root.precision_bits) : reflect()
+        return root, root.omega, partner_root
     end
-    # The mirror of segment k is -conj of the ordinary segment k; it inherits
-    # the partner's segment label.
-    mirror_segment = partner_root !== nothing ?
-        _qnm_root_segment(partner_root) : segment === :auto ? 0 : segment
-    function solve_mirror()
-        seed = mirror_guess === nothing ?
-            -conj(partner_root.omega) : mirror_guess
-        root = _solve_qnm_root(mode, a, seed, root_options;
-            convention, inversion_index, segment=mirror_segment)
-        return root, seed, partner_root
-    end
-    # Keep an automatic high-precision fallback at its actual precision;
-    # unary arithmetic must not silently promote it to the global 256 bits.
-    if partner_root !== nothing && partner_root.omega isa Complex{BigFloat}
-        return setprecision(solve_mirror, BigFloat, partner_root.precision_bits)
-    end
-    return solve_mirror()
+    root = _solve_qnm_root(mode, a, mirror_guess, root_options;
+        convention, inversion_index, segment=segment === :auto ? 0 : segment)
+    return root, mirror_guess, nothing
 end
 
 """
@@ -443,8 +411,9 @@ Boyer-Lindquist radius. `X` and `R` use the `IN` QNM basis. The direct public
 `missing`. The exact boundary and coordinate conventions are recorded in
 `branch.solutions`.
 
-For `mirror`, the seed is `-conj(omega[s,l,-m,n])`, and the returned root is
-re-polished on the negative-real branch; at `|a| = 1` it is that reflection itself. Amplitudes and frequency derivatives
+For `mirror`, the root is the exact reflection `-conj(omega[s,l,-m,n])` of the
+ordinary root at the same spin, with the angular data recomputed; with
+`mirror_guess` it is polished on the negative-real branch from that guess. Amplitudes and frequency derivatives
 are evaluated at that branch; the radial solver may use exact conjugation
 symmetry rather than solve the reflected equation again.
 
@@ -564,7 +533,7 @@ function qnm_pair(a, s::Integer, l::Integer, m::Integer, n::Integer;
         metadata=(
             mirror_seed=seed,
             mirror_seed_policy=mirror_guess === nothing ?
-                :homogeneous_spectral_symmetry_direct_repolish :
+                :homogeneous_spectral_symmetry_reflection :
                 :explicit_mirror_guess_direct_repolish,
             mirror_partner=partner_summary,
             amplitude_fill_policy=:direct_no_conjugate_fill,
