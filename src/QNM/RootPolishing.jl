@@ -1701,6 +1701,50 @@ function _spin_reflected_result(
     )
 end
 
+# Map an ordinary root of (s, l, -m, n) at spin a to the mirror root of (s, l, m, n)
+# at the same spin: omega -> -conj(omega) (the Teukolsky equation is invariant under
+# m -> -m with complex conjugation); the angular data are recomputed at the mapped
+# frequency. A zero-damping endpoint maps to the mirror endpoint omega = m a / 2.
+function _mirror_reflected_result(
+        mirror_mode::QNMMode, source::LeaverResult;
+        angular_order::Int, sheet_id::Symbol)
+    omega = -conj(source.omega)
+    angular = angular_branch(
+        mirror_mode, source.a, omega;
+        truncation_order=angular_order,
+        sheet_id=Symbol(sheet_id, :_mirror_reflection),
+    )
+    endpoint_fields = hasproperty(source.provenance, :synchronous_frequency) ?
+        (synchronous_frequency=omega,) : NamedTuple()
+    return LeaverResult(
+        mirror_mode,
+        source.convention,
+        source.overtone_index,
+        source.inversion_index,
+        source.a,
+        omega,
+        angular.angular_A,
+        angular.lambda,
+        angular.mixing,
+        conj(source.cf_value),
+        source.cf_error,
+        source.cf_iterations,
+        source.root_residual,
+        typeof(real(omega))(angular.residual),
+        source.precision_bits,
+        source.status,
+        source.stop_reason,
+        merge(source.provenance, endpoint_fields, (
+            mirror_reflection_applied=true,
+            mirror_reflection_map=:omega_to_minus_conj_omega_m_to_minus_m,
+            mirror_reflection_source_m=source.mode.m,
+            angular_route=angular.metadata.route,
+            angular_sheet=angular.sheet_id,
+            angular_order=angular.truncation_order,
+        )),
+    )
+end
+
 """
     qnm_frequency(a, s, l, m, n, branch=ordinary; convention=:overtone,
         segment=0, guess=nothing, kwargs...)

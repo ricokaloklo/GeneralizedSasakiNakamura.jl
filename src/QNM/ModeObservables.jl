@@ -351,12 +351,24 @@ function _ordinary_qnm_root(a, s, l, m, n, primary_guess, root_options;
 end
 
 # Solve the negative-real (mirror) root. Without `mirror_guess` the seed is -conj of the (s, l, -m, n) ordinary root
+# (at |a| = 1 the root is that reflection)
 # (or the supplied `ordinary_root` for m = 0), returned as the partner; exact-extremal ZDM endpoints and a = 0
 # near-algebraically-special modes are solved without a seed. Returns (root, seed, partner_root).
 function _mirror_qnm_root(a, s, l, m, n, mirror_guess, root_options;
         ordinary_root=nothing, convention=:overtone,
         inversion_index=:auto, segment=0)
     mode = QNMMode(Int(s), Int(l), Int(m), Int(n), :negative_real)
+    if abs(a) == one(a) && mirror_guess === nothing
+        # At exact extremality the mirror root is the reflection of the ordinary
+        # (s, l, -m, n) root at the same spin; it is not polished again.
+        partner_root = m == 0 && ordinary_root !== nothing ? ordinary_root :
+            _solve_qnm_root(QNMMode(Int(s), Int(l), -Int(m), Int(n), :positive_real),
+                a, nothing, root_options; convention, inversion_index, segment)
+        root = _mirror_reflected_result(mode, partner_root;
+            angular_order=get(root_options, :angular_order, 32),
+            sheet_id=get(root_options, :sheet_id, :qnm_straight_from_spherical))
+        return root, root.omega, partner_root
+    end
     if abs(a) == one(a) && _extremal_zdm_endpoint_scope(mode, a)
         root = _solve_qnm_root(
             mode, a, mirror_guess, root_options;
@@ -422,8 +434,8 @@ Boyer-Lindquist radius. `X` and `R` use the `IN` QNM basis. The direct public
 `missing`. The exact boundary and coordinate conventions are recorded in
 `branch.solutions`.
 
-For `mirror`, the seed is `-conj(omega[s,l,-m,n])`, but the returned root is
-re-polished on the negative-real branch. Amplitudes and frequency derivatives
+For `mirror`, the seed is `-conj(omega[s,l,-m,n])`, and the returned root is
+re-polished on the negative-real branch; at `|a| = 1` it is that reflection itself. Amplitudes and frequency derivatives
 are evaluated at that branch; the radial solver may use exact conjugation
 symmetry rather than solve the reflected equation again.
 

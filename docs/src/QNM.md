@@ -294,8 +294,8 @@ modes, co-rotating and counter-rotating alike (for example
 `(s, l, m, n) = (-2, 2, 2, 1)` and `(2, 2, 2, 0)` at `a = -1`), the incidence
 closure does not reach the gate; `qnm` then keeps the exact frequency but
 reports the failed incidence gate instead of an excitation factor. At exact
-extremality the mirror root is not inferred by conjugation and needs an
-explicit `mirror_guess`.
+extremality the mirror root is the reflection `-conj(ω)` of the ordinary
+`(s, l, -m, n)` root at the same spin.
 
 ## Lower-level functions
 
