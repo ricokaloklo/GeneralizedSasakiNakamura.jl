@@ -289,9 +289,13 @@ The `P_3` coefficient of that paper is used with `-2im(1 + 6iω)`; the printed
 `-2im(1 - 6iω)` does not satisfy the Teukolsky equation for `m ≠ 0`.
 
 The radial amplitudes at `a = ±1` come from integrating out of an irregular
-singular horizon. For co-rotating damped modes this is ill-conditioned in
-`Float64`; `qnm` then keeps the exact frequency but reports the failed incidence
-gate instead of an excitation factor.
+singular horizon, which is ill-conditioned in `Float64`. For several damped
+modes, co-rotating and counter-rotating alike (for example
+`(s, l, m, n) = (-2, 2, 2, 1)` and `(2, 2, 2, 0)` at `a = -1`), the incidence
+closure does not reach the gate; `qnm` then keeps the exact frequency but
+reports the failed incidence gate instead of an excitation factor. At exact
+extremality the mirror root is not inferred by conjugation and needs an
+explicit `mirror_guess`.
 
 ## Lower-level functions
 

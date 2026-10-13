@@ -127,8 +127,8 @@ end
 # series is used inside its region of usefulness for every detuning, instead of
 # a fixed r* that fails when 2 omega is close to m. For damped frequencies with
 # Re(alpha) > 0 the outgoing solution still grows against the ingoing one by
-# e^{2 Re(alpha)/h}; in Float64 this limits the incidence closure for corotating
-# damped modes, which the incidence gate reports.
+# e^{2 Re(alpha)/h}; in Float64 this can limit the incidence closure for damped
+# modes of either sense of rotation, which the incidence gate reports.
 function _extremal_qnm_horizon_start(m, a, omega; series_terms=40,
         minimum_h=1.0e-6, maximum_h=0.05)
     detuning = abs(2omega - m * sign(a))
