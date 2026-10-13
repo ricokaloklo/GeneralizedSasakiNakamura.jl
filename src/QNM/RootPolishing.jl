@@ -1335,6 +1335,41 @@ function _automatic_precision_fallback(mode::QNMMode, a, omega;
     end
 end
 
+# Seed for an ordinary root at 0 <= a <= _SPIN_TABLE_MAXIMUM_SPIN from the packaged
+# spin table (SpinRootTable.jl): cubic interpolation in u = sqrt(1 - a) on the four
+# nearest nodes, and the distance to the quadratic interpolant on the three nearest as
+# an error estimate. Returns nothing outside the table or when a node of the stencil is
+# missing or the stencil changes Leaver inversion index.
+function _tabulated_spin_seed(mode::QNMMode, a)
+    mode.branch == :positive_real || return nothing
+    a isa Union{Float64,Integer} || return nothing
+    spin = Float64(a)
+    zero(spin) <= spin <= _SPIN_TABLE_MAXIMUM_SPIN || return nothing
+    entry = get(_SPIN_ROOT_TABLE, (mode.s, mode.l, mode.m, mode.n), nothing)
+    entry === nothing && return nothing
+    roots, inversions = entry
+    us = _SPIN_TABLE_U
+    u = sqrt(one(spin) - spin)
+    nodes = sortperm(abs.(us .- u))[1:4]
+    sort!(nodes)
+    inversion = inversions[nodes[1]]
+    (inversion >= 0 && all(inversions[k] == inversion for k in nodes) &&
+        all(isfinite, roots[nodes])) || return nothing
+    lagrange(ks) = sum(roots[j] * prod((u - us[i]) / (us[j] - us[i])
+        for i in ks if i != j) for j in ks)
+    cubic = lagrange(nodes)
+    nearest = sort(sortperm(abs.(us .- u))[1:3])
+    quadratic = lagrange(nearest)
+    return (seed=cubic, inversion=inversion, error=abs(cubic - quadratic))
+end
+
+# The tabulated seed is kept when the polished root is accepted with the tabulated
+# inversion index and lies within ten error estimates (at least 1e-6 relative) of it.
+_spin_seed_consistent(result, seed) = result.status == :accepted &&
+    result.inversion_index == seed.inversion &&
+    abs(result.omega - seed.seed) <=
+        max(10 * seed.error, 1.0e-6 * abs(seed.seed))
+
 # Root at a = 1 from the packaged table of exact-extremal roots (ExtremalRootTable.jl),
 # which were computed with the kappa ladder below. A ZDM entry returns the synchronous
 # endpoint; a DM entry seeds the exact-extremal recurrence, and its root is kept only
@@ -1863,10 +1898,21 @@ function qnm_frequency(mode::QNMMode, a; segment=0, kwargs...)
     internal_n = _overtone_internal_index(mode, a, convention)
     internal_mode = internal_n == mode.n ? mode :
         QNMMode(mode.s, mode.l, mode.m, internal_n, mode.branch)
-    result = selected_segment === 0 ?
-        _qnm_frequency_labeled(internal_mode, a; kwargs...) :
+    result = if selected_segment === 0
+        spin_seed = get(kwargs, :guess, nothing) === nothing ?
+            _tabulated_spin_seed(a isa Real && a < 0 ?
+                QNMMode(internal_mode.s, internal_mode.l, -internal_mode.m,
+                    internal_mode.n, internal_mode.branch) : internal_mode,
+                a isa Real ? abs(a) : a) : nothing
+        seeded = _qnm_frequency_labeled(internal_mode, a; spin_seed, kwargs...)
+        spin_seed === nothing ||
+            get(seeded.provenance, :guess_source, nothing) != :packaged_spin_table ||
+            _spin_seed_consistent(seeded, spin_seed) ? seeded :
+            _qnm_frequency_labeled(internal_mode, a; kwargs...)
+    else
         _qnm_frequency_segmented(internal_mode, a, selected_segment;
             kwargs...)
+    end
     result = _with_sequence_segment(result, 0)
     internal_n == mode.n && return result
     return _relabel_result(result, mode)
@@ -2181,7 +2227,8 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
         automatic_precision_fallback::Bool=true,
         fallback_precision_bits::Int=128,
         segment::Int=0,
-        segment_seed=nothing)
+        segment_seed=nothing,
+        spin_seed=nothing)
     _require_qnm_angular_backend()
     selected_convention = _qnm_convention(convention)
     T = _working_type(a, guess)
@@ -2212,6 +2259,7 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
             automatic_precision_fallback,
             fallback_precision_bits,
             segment,
+            spin_seed,
         )
         mapped_order = hasproperty(source.provenance, :angular_order) ?
             source.provenance.angular_order : angular_order
@@ -2352,7 +2400,17 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
         _near_extremal_zdm_seed(mode, aT, selected_inversion) :
         guess === nothing &&
             label_contract.algebraically_special_pair ?
-        _near_as_anchor_seed(mode, aT, near_as_role) : guess === nothing ?
+        _near_as_anchor_seed(mode, aT, near_as_role) :
+        guess === nothing && spin_seed !== nothing && segment == 0 &&
+            automatic_coordinate && selected_convention == :overtone &&
+            automatic_inversion && T === Float64 ? (
+            seed=complex(T(real(spin_seed.seed)), T(imag(spin_seed.seed))),
+            seed_spin=aT,
+            source=:packaged_spin_table,
+            seed_inversion_index=spin_seed.inversion,
+            seed_predictor=:packaged_table_cubic_interpolation,
+            seed_duplicate_distance=T(Inf),
+        ) : guess === nothing ?
         _schwarzschild_seed(
             seed_mode, T;
             angular_order,
