@@ -46,14 +46,23 @@ function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
     # Spin-field endpoint conversion is ill-conditioned at extremality.
     # Only the small boundary calculation uses higher precision, not the IVP.
     bits = extreme && root.mode.s != 0 ? 128 : 53
+    setup_start=time_ns()
+    series=if extreme && abs(root.mode.s)==2 && abs(2wf-root.mode.m*af)<0.1
+        lambda,dlambda=_qnm_lambda_tangent(root.mode,af,wf)
+        _qnm_horizon_potential_series(root.mode.s,root.mode.m,af,wf,lambda,dlambda,20)
+    else
+        nothing
+    end
+    coarse_series=series===nothing ? nothing : map(c->c[1:17],series)
+    potential_setup_s=(time_ns()-setup_start)/1e9
     coarse = _qnm_variational_excitation(root; horizon_scale=0.4,
         horizon_order=24, infinity_radius=80.0, horizon_ray=extreme,
         extremal_scale=24.0, extremal_radius=0.2, extremal_order=40,
-        extremal_precision=bits,horizon_tortoise=complex_horizon)
+        extremal_precision=bits,horizon_tortoise=complex_horizon,potential_series=coarse_series)
     fine = _qnm_variational_excitation(root; tol=3e-12, horizon_scale=0.8,
         horizon_order=40, infinity_order=40, infinity_radius=100.0,
         horizon_ray=extreme, extremal_scale=32.0, extremal_radius=0.15,
-        extremal_order=64, extremal_precision=bits,horizon_tortoise=complex_horizon)
+        extremal_order=64, extremal_precision=bits,horizon_tortoise=complex_horizon,potential_series=series)
     drift(x,y) = abs(x-y)/max(abs(x), abs(y), floatmin(Float64))
     refinement = maximum((drift(coarse.alpha,fine.alpha),
         drift(coarse.reflection,fine.reflection),drift(coarse.B_gsn,fine.B_gsn)))
@@ -97,7 +106,8 @@ function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
             refinement_B=drift(coarse.B_gsn,fine.B_gsn),
             lambda=coarse.lambda,dlambda=coarse.dlambda,
             angular_seconds=coarse.angular_s+fine.angular_s,
-            endpoint_seconds=coarse.endpoint_s+fine.endpoint_s,
+            potential_setup_seconds=potential_setup_s,
+            endpoint_seconds=coarse.endpoint_s+fine.endpoint_s+potential_setup_s,
             propagation_seconds=coarse.propagation_s+fine.propagation_s))
 end
 

@@ -82,8 +82,43 @@ function _qnm_horizon_jet(s,m,a,w,lambda,r,order)
     return SVector(_primal(X),_primal(V),_tangent(X),_tangent(V))
 end
 
+# Expanded potentials lose digits near the degenerate horizon when the wave
+# detuning is small. Construct a local polynomial once, not BigFloat ODE states.
+function _qnm_horizon_potential_series(s,m,a,w,lambda,dlambda,order)
+    abs(a)==1 && abs(s)==2 && abs(2w-m*a)<0.1 || return nothing
+    return setprecision(BigFloat,128) do
+        wd=_frequency_dual(Complex{BigFloat}(w))
+        ld=_frequency_dual(Complex{BigFloat}(lambda),Complex{BigFloat}(dlambda))
+        T=ExtremalRadial.TaylorSeries
+        r=T.Taylor1([one(wd),one(wd)],order)
+        f=Potentials.sF(s,m,BigFloat(a),wd,ld,r)
+        u=Potentials.sU(s,m,BigFloat(a),wd,ld,r)
+        coefficients=(f=ntuple(k->ComplexF64(_primal(T.getcoeff(f,k-1))),order+1),
+            df=ntuple(k->ComplexF64(_tangent(T.getcoeff(f,k-1))),order+1),
+            u=ntuple(k->ComplexF64(_primal(T.getcoeff(u,k-1))),order+1),
+            du=ntuple(k->ComplexF64(_tangent(T.getcoeff(u,k-1))),order+1))
+        all(c->all(isfinite,c),coefficients) || error("nonfinite horizon potential series")
+        coefficients
+    end
+end
+
+@inline function _qnm_tangent_potentials(s,m,a,w,lambda,r,series)
+    if series !== nothing && abs(r-1)<=0.025
+        h=r-1
+        values=map(c->evalpoly(h,c),series)
+        # Reject a local evaluation whose last four terms are not negligible.
+        good=all(zip(series,values)) do (c,value)
+            tail=sum(abs(c[end-j])*abs(h)^(length(c)-1-j) for j in 0:3)
+            tail<=1e-13*max(abs(value),floatmin(Float64))
+        end
+        good && return (_frequency_dual(values.f,values.df),
+                        _frequency_dual(values.u,values.du))
+    end
+    return Potentials.sF(s,m,a,w,lambda,r),Potentials.sU(s,m,a,w,lambda,r)
+end
+
 @inline function _qnm_tangent_rhs(u,p,t)
-    s,m,a,w,lambda,r0,dr=p
+    s,m,a,w,lambda,r0,dr,series=p
     r=r0+t*dr
     # Factor Delta before dividing near a horizon; expanded cancellation can
     # make the adaptive integrator resolve arithmetic noise instead of the ODE.
@@ -91,8 +126,9 @@ end
     delta=(r-1-kappa)*(r-1+kappa)
     q=delta/(r*r+a*a)
     dq=((2r-2)*(r*r+a*a)-2r*delta)/(r*r+a*a)^2
-    A=Potentials.sF(s,m,a,w,lambda,r)/q-dq/q
-    B=Potentials.sU(s,m,a,w,lambda,r)/q^2
+    f,potential=_qnm_tangent_potentials(s,m,a,w,lambda,r,series)
+    A=f/q-dq/q
+    B=potential/q^2
     av,bv,ad,bd=_primal(A),_primal(B),_tangent(A),_tangent(B)
     return SVector{length(u)}(ntuple(length(u)) do i
         k=4*((i-1)÷4)
@@ -102,8 +138,8 @@ end
     end)
 end
 
-function _qnm_tangent_propagate(u,s,m,a,w,lambda,r0,r1,tol; tortoise=false)
-    parameters=(s,m,a,w,lambda,r0,r1-r0)
+function _qnm_tangent_propagate(u,s,m,a,w,lambda,r0,r1,tol; tortoise=false,series=nothing)
+    parameters=(s,m,a,w,lambda,r0,r1-r0,series)
     # The sensitivity is already an explicit state. Do not let SciML also
     # promote that state to dual numbers from an AD-valued parameter tuple.
     rhs=if tortoise
@@ -112,7 +148,7 @@ function _qnm_tangent_propagate(u,s,m,a,w,lambda,r0,r1,tol; tortoise=false)
             r=u[5]
             dr=(r*r-2r+a*a)/(r*r+a*a)*distance
             state=SVector(u[1],u[2],u[3],u[4])
-            v=_qnm_tangent_rhs(state,(s,m,a,w,lambda,r,dr),0.)
+            v=_qnm_tangent_rhs(state,(s,m,a,w,lambda,r,dr,series),0.)
             SVector(v[1],v[2],v[3],v[4],dr)
         end
     else
@@ -140,7 +176,7 @@ function _qnm_variational_excitation(root;tol=1e-11,horizon_order=16,
         infinity_order=32,infinity_radius=100.0,match_radius=3.0,horizon_scale=0.15,
         infinity_coordinate=:tortoise,extremal_scale=nothing,
         extremal_radius=0.03,extremal_order=64,horizon_ray=false,
-        extremal_precision=53,horizon_tortoise=false)
+        extremal_precision=53,horizon_tortoise=false,potential_order=16,potential_series=:auto)
     mode=root.mode
     s,m,a,w0=mode.s,mode.m,Float64(root.a),ComplexF64(root.omega)
     s in -2:2 || throw(ArgumentError("variational GSN supports integer spin -2 through 2"))
@@ -193,6 +229,8 @@ function _qnm_variational_excitation(root;tol=1e-11,horizon_order=16,
         throw(ArgumentError("infinity_coordinate must be :r or :tortoise"))
     end
     t0=time_ns()
+    series=potential_series===:auto ?
+        _qnm_horizon_potential_series(s,m,a,w0,lambda0,dlambda,potential_order) : potential_series
     h=if abs(a)==1 && extremal_precision>53
         setprecision(BigFloat,extremal_precision) do
             wb=_frequency_dual(Complex{BigFloat}(w0))
@@ -209,13 +247,13 @@ function _qnm_variational_excitation(root;tol=1e-11,horizon_order=16,
     t0=time_ns()
     hin,nh=if abs(a)==1 && horizon_ray
         turn=1+max(0.5,abs(2w0-m*a))*cis(angle(rh-1))
-        first,n1=_qnm_tangent_propagate(h,s,m,a,w,lambda,rh,turn,tol)
-        last,n2=_qnm_tangent_propagate(first,s,m,a,w,lambda,turn,rm,tol)
+        first,n1=_qnm_tangent_propagate(h,s,m,a,w,lambda,rh,turn,tol;series)
+        last,n2=_qnm_tangent_propagate(first,s,m,a,w,lambda,turn,rm,tol;series)
         last,n1+n2
     else
-        _qnm_tangent_propagate(h,s,m,a,w,lambda,rh,rm,tol;tortoise=horizon_tortoise)
+        _qnm_tangent_propagate(h,s,m,a,w,lambda,rh,rm,tol;tortoise=horizon_tortoise,series)
     end
-    both,ni=_qnm_tangent_propagate(vcat(incoming,outgoing),s,m,a,w,lambda,ri,rm,tol)
+    both,ni=_qnm_tangent_propagate(vcat(incoming,outgoing),s,m,a,w,lambda,ri,rm,tol;series)
     propagation_s=(time_ns()-t0)/1e9
     M=SMatrix{2,2}(both[1],both[2],both[5],both[6])
     Mw=SMatrix{2,2}(both[3],both[4],both[7],both[8])
