@@ -181,7 +181,8 @@ function _qnm_branch_observables(root, excitation_options;
             formalism=:GSN,
         ))
     end
-    if _is_extremal_damped_simple_pole(root)
+    if _is_extremal_damped_simple_pole(root) &&
+            !_qnm_use_variational(root, excitation_options)
         radial_solver = get(excitation_options, :radial_solver,
             _extremal_qnm_radial_solver)
         incidence_tolerance = get(excitation_options, :incidence_tolerance, 1.0e-8)
@@ -297,7 +298,8 @@ function _qnm_branch_observables(root, excitation_options;
             _estimated_decimal_digits(achieved_relative_precision),
         limiting_gate=limiting_gate,
         precision_basis=
-            high_damping_diagnostic ?
+            hasproperty(excitation.metadata, :precision_basis) ?
+            excitation.metadata.precision_basis : high_damping_diagnostic ?
             :richardson_drift_with_unclosed_scaled_incidence_not_error_bound :
             conditioned_near_extremal ?
             :richardson_drift_and_scaled_incidence_indicators_not_error_bounds :
@@ -420,9 +422,16 @@ end
 Compute one complete QNM branch in `M=1` units using five numerical labels.
 The optional sixth positional argument is `ordinary` or `mirror`; it defaults
 to `ordinary`. The default result computes only the frequency, angular
-eigenvalue, directly evaluated GSN scattering amplitudes, real-direction
-Richardson incidence derivative, and GSN excitation factor shown by its
+eigenvalue, directly evaluated GSN scattering amplitudes, frequency derivative
+and GSN excitation factor shown by its
 compact display.
+
+For the validated gravitational 220 family, the default excitation backend
+uses a checked variational solve at one frequency. Other modes and explicit
+stencils/custom solvers retain Richardson. Set
+`excitation_options=(backend=:richardson,)` to select the original algorithm.
+The variational path keeps the supplied root; it does not run an additional
+GSN frequency polish, and rejects a root that fails the incidence check.
 
 Set `detailed=true` to additionally compute the Teukolsky excitation-factor
 bridge and callable radial solution objects `X`, `Y`, and `R`.
@@ -468,6 +477,7 @@ function qnm(a, s::Integer, l::Integer, m::Integer, n::Integer,
         root_options::NamedTuple=NamedTuple(),
         excitation_options::NamedTuple=NamedTuple(),
         detailed::Bool=false)
+    frequency_start = time_ns()
     root = if branch == ordinary
         _ordinary_qnm_root(
             a, s, l, m, n, primary_guess, root_options;
@@ -477,8 +487,18 @@ function qnm(a, s::Integer, l::Integer, m::Integer, n::Integer,
             a, s, l, m, n, mirror_guess, root_options;
             convention, inversion_index, segment))
     end
-    return _qnm_branch_observables(
+    frequency_seconds = (time_ns() - frequency_start) / 1e9
+    excitation_start = time_ns()
+    result = _qnm_branch_observables(
         root, excitation_options; input_a=a, detailed)
+    excitation_seconds = (time_ns() - excitation_start) / 1e9
+    ResultType = result isa QNMResult ? QNMResult :
+        result isa QNMEstimate ? QNMEstimate :
+        result isa QNMEndpointResult ? QNMEndpointResult : QNMFailure
+    return ResultType(merge(result.data,
+        (timing=(frequency_seconds=frequency_seconds,
+            excitation_seconds=excitation_seconds,
+            includes_detailed_radial_objects=detailed),)))
 end
 
 function qnm(a, s::Integer, l::Integer, m::Integer, n::Integer,

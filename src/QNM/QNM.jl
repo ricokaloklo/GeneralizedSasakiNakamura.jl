@@ -39,6 +39,8 @@ include("NegativeImaginaryAxis.jl")
 include("ModeSequences.jl")
 include("ISEMValidation.jl")
 include("ExcitationFactors.jl")
+include("VariationalExcitation.jl")
+include("VariationalObservables.jl")
 include("ModeObservables.jl")
 
 export QNMMode, QNMBranch, QNMResult, QNMEstimate, QNMFailure,

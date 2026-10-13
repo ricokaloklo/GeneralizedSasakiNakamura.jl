@@ -291,7 +291,7 @@ end
 # Richardson derivative, no Teukolsky bridge. `direction_tolerance`,
 # `bridge_tolerance` and `teukolsky_solver` are accepted so that the same
 # `excitation_options` serve `qnm_excitation_factor`; they are not used here.
-function _qnm_gsn_excitation_factor(result::LeaverResult;
+function _qnm_richardson_excitation_factor(result::LeaverResult;
         h=nothing,
         incidence_tolerance=1.0e-8,
         step_tolerance=1.0e-7,
@@ -532,7 +532,7 @@ backend throughout the stencil. The MST centre must also pass the incidence
 gate. The bridge tests normalization consistency, not agreement of
 independent ODE solvers.
 """
-function qnm_excitation_factor(result::LeaverResult;
+function _qnm_richardson_full_excitation_factor(result::LeaverResult;
         h=nothing,
         incidence_tolerance=1.0e-8,
         direction_tolerance=1.0e-7,
