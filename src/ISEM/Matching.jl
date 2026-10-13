@@ -297,11 +297,18 @@ function _eval_condition(target, coefficient1, basis1, coefficient2, basis2)
     return max(value_condition, derivative_condition)
 end
 
-function _needs_bridge(target, coefficient1, basis1, coefficient2, basis2)
+function _needs_bridge(target, coefficient1, basis1, coefficient2, basis2;
+    tolerance=nothing)
     PHYSICAL_BRIDGE || return false
     condition = _eval_condition(
         target, coefficient1, basis1, coefficient2, basis2)
-    return condition > log(BRIDGE_CONDITION_LIMIT)
+    log_limit = log(BRIDGE_CONDITION_LIMIT)
+    if tolerance !== nothing
+        # This chooses an already-supported matched-state bridge for the
+        # low-frequency UP route; it does not relax the MST sum certificate.
+        log_limit = min(log_limit, log(tolerance) - log(eps(Float64)))
+    end
+    return condition > log_limit
 end
 
 # When the matched combination loses more than BRIDGE_CONDITION_LIMIT to
@@ -320,8 +327,9 @@ function _build_bridge(
     coefficient2,
     basis2,
 )
-    _needs_bridge(target, coefficient1, basis1, coefficient2, basis2) ||
-        return nothing
+    _needs_bridge(target, coefficient1, basis1, coefficient2, basis2;
+        tolerance=(branch == :UP && ctrl.small_frequency_expansion ?
+            ctrl.tolerance : nothing)) || return nothing
     abs(target_x - match_x) > 100eps(Float64) || return nothing
     kind = branch == :IN ? :horizon_in : :infinity_out
     try
