@@ -1457,6 +1457,17 @@ function _physical_mano_suzuki_takasugi_out_state(route::Route, x; radius=nothin
     )
 end
 
+# The MST outgoing state at x, or nothing when its sum certificate is rejected there;
+# the caller then evaluates the route's series bases.
+function _certified_mano_suzuki_takasugi_out_state(route::Route, x; radius=nothing)
+    try
+        return _physical_mano_suzuki_takasugi_out_state(route, x; radius)
+    catch err
+        err isa ManoSuzukiTakasugiCertificateError || rethrow()
+        return nothing
+    end
+end
+
 function _mano_suzuki_takasugi_combined_in_state(route::Route, x; radius=nothing)
     if x <= route.mst_plan.seed_x
         return mano_suzuki_takasugi_pin_state(route.coefficients, route.mst_plan, x;
@@ -1537,7 +1548,8 @@ function evaluate_route(route::Route, x)
             route.reflection * basis_value(_required_basis(route.infinity_out, "infinity_out"), x)
     end
     if _mano_suzuki_takasugi_evaluation_region(route, x)
-        return _physical_mano_suzuki_takasugi_out_state(route, x).X
+        state = _certified_mano_suzuki_takasugi_out_state(route, x)
+        state === nothing || return state.X
     end
     if x <= route.match_x
         route.bridge !== nothing && _bridge_covers(route.bridge, x) &&
@@ -1605,7 +1617,8 @@ function route_state(route::Route, x; radius=nothing)
         )
     end
     if _mano_suzuki_takasugi_evaluation_region(route, x)
-        return _physical_mano_suzuki_takasugi_out_state(route, x; radius)
+        state = _certified_mano_suzuki_takasugi_out_state(route, x; radius)
+        state === nothing || return state
     end
     if x <= route.match_x
         if route.bridge !== nothing && _bridge_covers(route.bridge, x)
