@@ -1524,6 +1524,123 @@ end
 
 # Root at abs(a) = 1: solve a near-extremal kappa ladder, classify the family,
 # and return the ZDM endpoint or the exact-extremal damped root.
+# Damped extremal roots from moderate spins. A damped frequency is analytic in
+# x = 1 - a^2 at a = 1, so roots at |a| = 0.9 ... 0.99 (one continuation to 0.9,
+# then polishes seeded by the polynomial predictor) extrapolate to x = 0 well
+# enough to seed the exact-extremal recurrence. None of these spins needs the
+# deep continued fractions of the near-extremal kappa ladder. Returns `nothing`
+# (and the caller runs the ladder) unless every source root is accepted, the
+# exact root lies within 1e-4 of the extrapolation, and Re(2 omega - m a) is
+# clearly positive (zero-damping families approach m/2 like sqrt(x), so their
+# extrapolation in x does not land on a damped root).
+function _extremal_moderate_spin_result(mode::QNMMode, a::T;
+        angular_order::Int, sheet_id::Symbol, cf_tolerance,
+        cf_minimum_iterations::Int, cf_maximum_iterations::Int,
+        root_tolerance, stability_tolerance, maximum_root_iterations::Int,
+        trust_radius, automatic_precision_fallback::Bool,
+        fallback_precision_bits::Int) where {T<:AbstractFloat}
+    spins = T[copysign(T(s), a) for s in (0.9, 0.94, 0.96, 0.98, 0.99)]
+    xs = T[one(T) - spin^2 for spin in spins]
+    roots = Complex{T}[]
+    rows = NamedTuple[]
+    selected_inversion = :auto
+    for (index, spin) in pairs(spins)
+        source_guess = isempty(roots) ? nothing :
+            _polynomial_predictor(xs[1:length(roots)], roots, xs[index])
+        result = _qnm_frequency_labeled(
+            mode, spin;
+            guess=source_guess,
+            convention=:overtone,
+            inversion_index=selected_inversion,
+            angular_order,
+            sheet_id=Symbol(sheet_id, :_extremal_moderate_, index),
+            cf_tolerance,
+            cf_minimum_iterations,
+            cf_maximum_iterations,
+            root_tolerance,
+            stability_tolerance,
+            maximum_root_iterations,
+            trust_radius,
+            automatic_precision_fallback,
+            fallback_precision_bits,
+        )
+        result.status == :accepted || return nothing
+        omega = _complex_of_type(T, result.omega)
+        push!(roots, omega)
+        push!(rows, (
+            a=spin, one_minus_a_squared=xs[index], omega,
+            root_residual=T(result.root_residual),
+            cf_error=T(result.cf_error),
+            cf_iterations=result.cf_iterations,
+            precision_bits=result.precision_bits,
+            inversion_index=result.inversion_index,
+            status=result.status,
+            stop_reason=result.stop_reason,
+        ))
+        if selected_inversion === :auto && result.inversion_index isa Integer
+            selected_inversion = result.inversion_index
+        end
+    end
+    seed = _polynomial_predictor(xs, roots, zero(T))
+    lower = _polynomial_predictor(xs[2:end], roots[2:end], zero(T))
+    exact = extremal_qnm_root(mode, seed;
+        angular_order=angular_order + 8,
+        sheet_id=Symbol(sheet_id, :_exact_extremal_root))
+    angular = exact.angular
+    angular_usable = angular !== nothing && angular.status in (
+        :continued, :predictor_corrected, :spherical_anchor,
+        :high_precision_refined)
+    detuning = real(2 * exact.omega - T(mode.m) * sign(a))
+    (exact.status == :accepted && angular_usable &&
+        exact.seed_shift <= T(1e-4) * max(one(T), abs(exact.omega)) &&
+        detuning > T(0.02) && abs(real(exact.omega)) > T(1e-6)) ||
+        return nothing
+    contract = _schwarzschild_label_contract(mode, :overtone)
+    return LeaverResult(
+        mode, :overtone, mode.n, selected_inversion, a, exact.omega,
+        angular.angular_A, angular.lambda, angular.mixing,
+        complex(T(NaN), T(NaN)),
+        maximum(row.cf_error for row in rows),
+        maximum(row.cf_iterations for row in rows), exact.residual,
+        T(angular.residual), _precision_bits(T),
+        :accepted, :accepted_exact_extremal_root,
+        (
+            source_rows=rows,
+            extrapolation_coordinate=:one_minus_a_squared,
+            maximum_source_precision_bits=
+                maximum(row.precision_bits for row in rows),
+            quartic_limit=seed,
+            cubic_limit=lower,
+            limit_drift=abs(seed - lower) / max(one(T), abs(seed)),
+            all_sources_accepted=true,
+            family_classification=:DM,
+            extremal_seed_source=:moderate_spin_extrapolation,
+            input_type=string(typeof(a)),
+            working_type=string(T),
+            label_convention=contract.label_convention,
+            branch_label=contract.branch_label,
+            endpoint_kind=contract.endpoint_kind,
+            extremal_endpoint=true,
+            endpoint_method=:exact_extremal_recurrence,
+            spectrum_object=:discrete_damped_pole,
+            simple_pole=true,
+            radial_observables=:exact_extremal_gsn_scattering_basis,
+            gsn_amplitude_limit_implemented=true,
+            exact_extremal_depth=exact.depth,
+            exact_extremal_depth_drift=exact.depth_drift,
+            exact_extremal_depth_rows=exact.depth_rows,
+            exact_extremal_seed_shift=exact.seed_shift,
+            exact_extremal_detuning=detuning,
+            angular_route=angular.metadata.route,
+            angular_sheet=angular.sheet_id,
+            angular_order=angular_order + 8,
+            root_equation=:richartz_extremal_recurrence,
+            family=:DM,
+            claim_boundary=:exact_extremal_frequency_root,
+        ),
+    )
+end
+
 function _extremal_damped_limit_result(mode::QNMMode, a::T;
         guess,
         convention::Symbol, inversion_index,
@@ -1536,6 +1653,14 @@ function _extremal_damped_limit_result(mode::QNMMode, a::T;
     tabulated = _tabulated_extremal_root(mode, a; guess, convention,
         inversion_index, angular_order, sheet_id)
     tabulated === nothing || return tabulated
+    if guess === nothing && convention == :overtone && inversion_index === :auto
+        fast = _extremal_moderate_spin_result(mode, a; angular_order,
+            sheet_id, cf_tolerance, cf_minimum_iterations,
+            cf_maximum_iterations, root_tolerance, stability_tolerance,
+            maximum_root_iterations, trust_radius,
+            automatic_precision_fallback, fallback_precision_bits)
+        fast === nothing || return fast
+    end
     kappas = T[T(0.04), T(0.02), T(0.01), T(0.005), T(0.0025)]
     spins = T[copysign(sqrt(one(T) - kappa^2), a)
         for kappa in kappas]
