@@ -156,7 +156,7 @@ end
 # Taylor shift of a polynomial (times x^pole_order) to the point `center`,
 # written into `work` starting at `start`; returns the number of coefficients.
 function _shift_poly!(
-    work::Vector{<:Complex},
+    work::Vector{<:Number},
     start::Integer,
     source,
     pole_order::Integer,
@@ -183,7 +183,7 @@ end
 # Condition number of the Taylor shift: sum of absolute contributions over the
 # magnitude of each shifted coefficient.
 function _shift_condition(
-    work::Vector{<:Complex},
+    work::Vector{<:Number},
     start::Integer,
     source,
     pole_order::Integer,
@@ -211,9 +211,9 @@ end
 # Series division of the shifted numerator by the shifted denominator; returns
 # the largest cancellation ratio met in the recurrence.
 function _shift_series!(
-    out::Vector{<:Complex},
+    out::Vector{<:Number},
     out_len::Integer,
-    work::Vector{<:Complex},
+    work::Vector{<:Number},
     p_start::Integer,
     p_len::Integer,
     q_start::Integer,
@@ -240,9 +240,9 @@ function _shift_series!(
 end
 
 function _shift_rational!(
-    out::Vector{<:Complex},
+    out::Vector{<:Number},
     out_len::Integer,
-    work::Vector{<:Complex},
+    work::Vector{<:Number},
     rational::RationalCoefficients,
     pole_order::Integer,
     center,
@@ -261,12 +261,91 @@ function _shift_rational!(
     return max(p_condition, q_condition, recurrence_condition)
 end
 
-# Shift in binary64, falling back to 128-bit BigFloat when eps * condition
-# exceeds `eps_limit`; returns the estimated relative error.
+# Complex double-double number (about 106 bits) for the ill-conditioned shifts:
+# each part is an unevaluated sum high + low of binary64 values.
+struct _DoubleDoubleComplex <: Number
+    re_high::Float64
+    re_low::Float64
+    im_high::Float64
+    im_low::Float64
+end
+
+const _DDC = _DoubleDoubleComplex
+const _DD_EPS = 2.0^-104
+
+@inline function _two_sum(a::Float64, b::Float64)
+    s = a + b
+    v = s - a
+    return s, (a - (s - v)) + (b - v)
+end
+@inline function _quick_two_sum(a::Float64, b::Float64)
+    s = a + b
+    return s, b - (s - a)
+end
+@inline function _dd_add(ah, al, bh, bl)
+    s, e = _two_sum(ah, bh)
+    return _quick_two_sum(s, e + al + bl)
+end
+@inline function _dd_mul(ah, al, bh, bl)
+    p = ah * bh
+    e = fma(ah, bh, -p)
+    return _quick_two_sum(p, e + ah * bl + al * bh)
+end
+@inline function _dd_div(ah, al, bh, bl)
+    q1 = ah / bh
+    ph, pl = _dd_mul(q1, 0.0, bh, bl)
+    rh, rl = _dd_add(ah, al, -ph, -pl)
+    q2 = rh / bh
+    ph, pl = _dd_mul(q2, 0.0, bh, bl)
+    rh, rl = _dd_add(rh, rl, -ph, -pl)
+    return _dd_add(q1, 0.0, q2, rh / bh)
+end
+
+_DDC(z::Complex) = _DDC(Float64(real(z)), 0.0, Float64(imag(z)), 0.0)
+_DDC(x::Real) = _DDC(Float64(x), 0.0, 0.0, 0.0)
+Base.convert(::Type{_DDC}, z::Number) = _DDC(complex(z))
+Base.convert(::Type{_DDC}, z::_DDC) = z
+Base.promote_rule(::Type{_DDC}, ::Type{<:Number}) = _DDC
+Base.ComplexF64(z::_DDC) = complex(z.re_high + z.re_low, z.im_high + z.im_low)
+Base.convert(::Type{ComplexF64}, z::_DDC) = ComplexF64(z)
+Base.real(z::_DDC) = z.re_high
+Base.imag(z::_DDC) = z.im_high
+Base.zero(::Type{_DDC}) = _DDC(0.0, 0.0, 0.0, 0.0)
+Base.iszero(z::_DDC) = iszero(z.re_high) && iszero(z.im_high)
+Base.abs(z::_DDC) = hypot(z.re_high, z.im_high)
+Base.:+(a::_DDC, b::_DDC) = _DDC(_dd_add(a.re_high, a.re_low, b.re_high, b.re_low)...,
+    _dd_add(a.im_high, a.im_low, b.im_high, b.im_low)...)
+Base.:-(a::_DDC) = _DDC(-a.re_high, -a.re_low, -a.im_high, -a.im_low)
+Base.:-(a::_DDC, b::_DDC) = a + (-b)
+function Base.:*(a::_DDC, b::_DDC)
+    rh, rl = _dd_mul(a.re_high, a.re_low, b.re_high, b.re_low)
+    sh, sl = _dd_mul(a.im_high, a.im_low, b.im_high, b.im_low)
+    th, tl = _dd_mul(a.re_high, a.re_low, b.im_high, b.im_low)
+    uh, ul = _dd_mul(a.im_high, a.im_low, b.re_high, b.re_low)
+    return _DDC(_dd_add(rh, rl, -sh, -sl)..., _dd_add(th, tl, uh, ul)...)
+end
+function Base.inv(b::_DDC)
+    nh, nl = _dd_add(_dd_mul(b.re_high, b.re_low, b.re_high, b.re_low)...,
+        _dd_mul(b.im_high, b.im_low, b.im_high, b.im_low)...)
+    return _DDC(_dd_div(b.re_high, b.re_low, nh, nl)...,
+        _dd_div(-b.im_high, -b.im_low, nh, nl)...)
+end
+
+# Shift in binary64, falling back to double-double and then to 128-bit BigFloat
+# when eps * condition exceeds `eps_limit`; returns the estimated relative error.
 function _accurate_shift_rational!(out, terms, work, rational, pole_order, center, eps_limit)
     condition = _shift_rational!(out, terms, work, rational, pole_order, center)
     error = eps(Float64) * condition
     error <= eps_limit && return error
+    dd_out = Vector{_DDC}(undef, terms)
+    dd_work = Vector{_DDC}(undef, length(work))
+    condition = _shift_rational!(dd_out, terms, dd_work,
+        rational, pole_order, _DDC(complex(center)))
+    error = _DD_EPS * condition + eps(Float64)
+    if error <= eps_limit
+        copyto!(out, 1, dd_out, 1, terms)
+        return error
+    end
     # Only the polynomial shift and series division need extra precision.
     # The returned local coefficients and propagated solution remain binary64.
     return setprecision(BigFloat, 128) do
