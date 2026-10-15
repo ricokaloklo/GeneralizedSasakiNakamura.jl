@@ -1,5 +1,7 @@
 # Ordinary roots of the default continuation on the spin grid a = 1 - u^2, u uniform in
-# [0.01, 1] (60 nodes, u descending), for s = -2..2, l <= 4, n <= 3, read from
+# [0.01, 1] (60 nodes, u descending), for s = -2..2, |s| <= l <= 15 and n <= nmax(l) (10 for
+# l <= 5, decreasing to 2 at l = 15); roots above a = 0.9 polished in 84-bit arithmetic, and
+# stagnated near-extremal damped nodes filled from the expansion in 1 - a^2. Read from
 # data/spin_root_table.bin: Int32 mode count, then per mode Int8 (s, l, m, n), 60 complex
 # Float64 roots and 60 Int8 Leaver inversion indices (NaN and -1 where the default path
 # did not accept the root), little endian. Used only as continuation seeds by

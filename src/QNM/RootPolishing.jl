@@ -1422,19 +1422,43 @@ function _two_end_spin_seed(mode::QNMMode, spin::Float64)
         predictor=:packaged_table_kappa_anchored_march)
 end
 
-# Ordinary DM root for _SPIN_TABLE_MAXIMUM_SPIN < a < 1 from the packaged near-extremal
-# expansion omega = c_0 + c_1 x + ... + c_8 x^8 in x = 1 - a^2 (KappaSquaredRootTable.jl). The
-# c_k are solved order by order from the Teukolsky equation at a = 1. The series misses only
-# the exponentially small term exp(-2 pi Re(2 omega - a m) / sqrt(x)), so it is used for
-# x <= x_max, where that term is below 1e-16; root_residual carries the larger of that term
-# and the first omitted power. Here the series is more accurate than a Float64 Leaver solve,
-# whose continued fraction cancels terms of size 1/sqrt(x). Returns nothing for any other
-# mode or spin.
-function _kappa_squared_table_root(mode::QNMMode, a::Float64)
-    mode.branch == :positive_real && _SPIN_TABLE_MAXIMUM_SPIN < a < 1 ||
-        return nothing
+# Ordinary DM root for 0.999 < a < 1 from the near-extremal expansion
+# omega = c_0 + c_1 x + ... + c_8 x^8 in x = 1 - a^2. The c_k are solved order by order from the
+# Teukolsky equation at a = 1, computed on first use (0.03-0.3 s, then cached) from the
+# packaged exact-extremal damped root; no coefficient is stored.
+# The series misses only the exponentially small term exp(-2 pi Re(2 omega - a m) / sqrt(x)), so
+# it is used for x <= x_max, where that term is below 1e-16; root_residual carries the larger of
+# that term and the first omitted power. Here the series is more accurate than a Float64 Leaver
+# solve, whose continued fraction cancels terms of size 1/sqrt(x). Computed coefficients must
+# reproduce the packaged spin-table root nearest below a = 0.999 to 1e-8, which ties the a = 1
+# root to the same overtone label. Returns nothing for any other mode or spin.
+const _NEAR_EXTREMAL_EXPANSION_MINIMUM_SPIN = 0.999
+
+function _near_extremal_expansion_data(mode::QNMMode)
     key = (mode.s, mode.l, mode.m, mode.n)
-    entry = get(_KAPPA_SQUARED_ROOT_TABLE, key, nothing)
+    extremal = get(_EXTREMAL_ROOT_TABLE, key, nothing)
+    (extremal === nothing || extremal[1] != :DM) && return nothing
+    spin = get(_SPIN_ROOT_TABLE, key, nothing)
+    spin === nothing && return nothing
+    roots, inversions = spin
+    node = findlast(u -> one(u) - u^2 <= _NEAR_EXTREMAL_EXPANSION_MINIMUM_SPIN, _SPIN_TABLE_U)
+    node === nothing && return nothing
+    (isfinite(roots[node]) && inversions[node] >= 0) || return nothing
+    coefficients = _cached_near_extremal_coefficients(mode, extremal[2])
+    coefficients === nothing && return nothing
+    xmax = (2pi * max(real(2 * coefficients[1] - mode.m), 0.0) / 36.8)^2
+    unode = _SPIN_TABLE_U[node]
+    xnode = (unode^2) * (2 - unode^2)
+    xnode <= xmax || return nothing
+    abs(evalpoly(xnode, coefficients) - roots[node]) <=
+        1.0e-8 * abs(roots[node]) || return nothing
+    return (inversions[node], coefficients, xmax)
+end
+
+function _kappa_squared_table_root(mode::QNMMode, a::Float64)
+    mode.branch == :positive_real &&
+        _NEAR_EXTREMAL_EXPANSION_MINIMUM_SPIN < a < 1 || return nothing
+    entry = _near_extremal_expansion_data(mode)
     entry === nothing && return nothing
     inversion, coefficients, xmax = entry
     x = (1 - a) * (1 + a)

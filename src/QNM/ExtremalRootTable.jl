@@ -455,3 +455,21 @@ const _EXTREMAL_ROOT_TABLE = Dict{NTuple{4,Int},Tuple{Symbol,ComplexF64,Float64,
     (2, 4, 4, 2) => (:ZDM, complex(_hex_float(0x4000000000000000), _hex_float(0x0000000000000000)), _hex_float(0x7ff8000000000000), 0),
     (2, 4, 4, 3) => (:ZDM, complex(_hex_float(0x4000000000000000), _hex_float(0x0000000000000000)), _hex_float(0x7ff8000000000000), 0),
 )
+
+# Damped exact-extremal roots of the extended spin table (s = -2..2, |s| <= l <= 15, n up to 10
+# at l <= 5 and 2 at l = 15), from the moderate-spin route of `_extremal_moderate_spin_result`
+# and polished with 84-bit arithmetic where that polish was accepted. Read from
+# data/extremal_root_table.bin: Int32 count, then per entry Int8 (s, l, m, n), Float64 re, im,
+# cf_error and Int32 cf_iterations, little endian. Entries already listed above are kept.
+const _EXTREMAL_ROOT_TABLE_FILE = joinpath(@__DIR__, "data", "extremal_root_table.bin")
+include_dependency(_EXTREMAL_ROOT_TABLE_FILE)
+open(_EXTREMAL_ROOT_TABLE_FILE) do io
+    count = ltoh(read(io, Int32))
+    for _ in 1:count
+        key = Tuple(Int.(read!(io, Vector{Int8}(undef, 4))))
+        parts = ltoh.(read!(io, Vector{Float64}(undef, 3)))
+        iterations = Int(ltoh(read(io, Int32)))
+        haskey(_EXTREMAL_ROOT_TABLE, key) && continue
+        _EXTREMAL_ROOT_TABLE[key] = (:DM, complex(parts[1], parts[2]), parts[3], iterations)
+    end
+end
