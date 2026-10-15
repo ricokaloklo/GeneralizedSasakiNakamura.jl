@@ -90,7 +90,7 @@ Superradiance-threshold solutions with $\omega = m a / (2 r_+)$ are built with a
 The GSN-ISEM on-the-fly solve and evaluation speed:
 
 <p align="center">
-  <img width="60%" alt="GSN-ISEM on-the-fly solve and evaluation" src="docs/src/isem_realtime_demo_30s.gif">
+  <img width="80%" alt="GSN-ISEM on-the-fly solve and evaluation" src="docs/src/isem_realtime_demo_30s.gif">
 </p>
 
 *Change from v0.9.0:* in v0.10.0, `method = "ISEM"` solves the GSN equation directly. The v0.9.0 ISEM matched series solutions of the Teukolsky equation; it has been replaced, together with its `rhom`, `TSinInf`/`TSoutInf`/`TSinHor`/`TSoutHor` controls and its negative `xm` coordinate.
