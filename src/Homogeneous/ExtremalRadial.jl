@@ -14,7 +14,7 @@ export is_exact_extremal_spin, extremal_horizon_detuning
 export extremal_teukolsky_horizon_coefficients
 export extremal_teukolsky_horizon_state
 export extremal_gsn_horizon_state, extremal_horizon_normalization
-export solve_extremal_gsn
+export solve_extremal_gsn, extremal_complex_path_amplitudes
 
 const _NORMALIZATION_PRECISION_BITS = 384
 const _NORMALIZATION_SERIES_ORDER = 48
@@ -544,6 +544,88 @@ function solve_extremal_gsn(
         infinity_state=infinity_state,
         method=method,
     )
+end
+
+# Tortoise coordinate at a = +1 continued along a path off the real axis (the branch of log(r - 1)
+# that is continuous from r > 1); it reduces to Coordinates.rstar_from_r on the real axis.
+_complex_extremal_rstar(r) = r - log(oftype(real(r), 4)) + 2 * log(r - 1) - 2 / (r - 1)
+
+# Taylor patches of y'' = A(r) y' + B(r) y along the straight segments through `nodes`. The step is
+# `frac` times the distance to the nearest singular point (r = 1, r = +-i), capped at `zmax` over the
+# local wavenumber `wavenumber(r)`, so it depends only on the path and nearby frequencies share one
+# patch grid. The last step of each segment ends exactly on the next node.
+function _complex_path_propagate(A, B, nodes, state; order, frac, zmax, wavenumber)
+    y = SVector(state[1], state[2])
+    patches = 0
+    tail = 0.0
+    for j in 1:(length(nodes) - 1)
+        r = nodes[j]
+        rend = nodes[j + 1]
+        while true
+            distance = min(abs(r - 1), abs(r - im), abs(r + im))
+            reach = min(frac * distance, zmax / wavenumber(r))
+            dr = rend - r
+            final = abs(dr) <= reach
+            step = final ? dr : dr / abs(dr) * reach
+            coefficients = _ode_series_coefficients(A, B, r, y, order)
+            tail = max(tail, Float64(_patch_tail(coefficients, step)))
+            y = SVector(_evaluate_polynomial(coefficients, step)...)
+            patches += 1
+            patches <= 50000 ||
+                error("extremal complex-path propagation exceeded 50000 patches")
+            final && break
+            r += step
+        end
+    end
+    return y, patches, tail
+end
+
+"""
+    extremal_complex_path_amplitudes(s, m, a, omega, lambda; kwargs...)
+
+Incidence and reflection amplitudes of the exact-extremal (`a = +1`) GSN IN solution (unit
+transmission) for complex `omega`, from a path in the complex `r` plane. On the real axis the
+horizon IN branch `exp(alpha/h) h^beta`, `alpha = i(2 omega - m)`, is the dominant branch for
+`Re(alpha) > 0` and fixes no admixture of the outgoing branch, while at large real `r` the
+outgoing infinity branch outgrows the ingoing one by `exp(2 |Im omega| r*)`. The path therefore
+starts at `h = h0 exp(i(arg alpha - pi))`, where the IN branch is recessive and fixed by its
+asymptotic series; passes `1 + 0.3 exp(i theta/2)` (theta the starting argument), the side reached
+by continuity from real frequencies; reaches `r = rmid`; and leaves along `arg(r - rmid) = -arg omega`,
+where the two infinity branches have equal size. Returns `(incidence, reflection, patches, tail,
+endpoint)`, with `tail` the largest relative truncation estimate of the Taylor patches.
+"""
+function extremal_complex_path_amplitudes(s::Int, m::Int, a, omega, lambda;
+        h0=0.02, rmid=2.0, rout=60.0, frac=0.1, zmax=1.5,
+        horizon_order::Int=_NORMALIZATION_SERIES_ORDER, infinity_order::Int=12,
+        series_order::Int=_SERIES_ORDER)
+    _checked_extremal_sign(a) > 0 || throw(ArgumentError(
+        "the complex-path amplitudes are implemented for a = +1"))
+    _require_nonsynchronous(a, m, omega)
+    a = one(real(omega))
+    alpha = im * (2omega - m)
+    theta = angle(alpha) - oftype(real(alpha), pi)
+    theta <= -oftype(theta, pi) && (theta += 2 * oftype(theta, pi))
+    rin = 1 + h0 * cis(theta)
+    rturn = 1 + oftype(real(alpha), 0.3) * cis(theta / 2)
+    rmidc = complex(oftype(real(alpha), rmid))
+    rend = rmidc + (rout - rmid) * cis(-angle(omega))
+    normalization = extremal_horizon_normalization(
+        s, m, a, omega, lambda, :ingoing; order=horizon_order)
+    horizon = extremal_gsn_horizon_state(
+        s, m, a, omega, lambda, rin, :ingoing; order=horizon_order, normalization)
+    q(r) = Kerr.Delta(a, r) / (r^2 + a^2)
+    dq(r) = ((2r - 2) * (r^2 + a^2) - 2r * Kerr.Delta(a, r)) / (r^2 + a^2)^2
+    A = r -> Potentials.sF(s, m, a, omega, lambda, r) / q(r) - dq(r) / q(r)
+    B = r -> Potentials.sU(s, m, a, omega, lambda, r) / q(r)^2
+    y, patches, tail = _complex_path_propagate(A, B, [rin, rturn, rmidc, rend],
+        SVector(horizon[1], horizon[2] / q(rin));
+        order=series_order, frac, zmax,
+        wavenumber=r -> abs(omega) + abs(alpha) / abs(r - 1)^2)
+    state = SVector(y[1], q(rend) * y[2])
+    amplitudes = _infinity_decomposition(s, m, a, omega, lambda, state, rend,
+        _complex_extremal_rstar(rend), infinity_order)
+    return (incidence=amplitudes.ingoing, reflection=amplitudes.outgoing,
+        patches=patches, tail=tail, endpoint=rend)
 end
 
 end

@@ -6,7 +6,7 @@ function _gsn_amplitude_data(result::LeaverResult, omega;
         inputs = pair.inputs
         incidence, reflection = pair.incidence, pair.reflection
         lambda, method, normalization = pair.lambda, pair.method, pair.normalization
-        backend, drift = :direct_real_axis_wronskian, pair.wronskian_drift
+        backend, drift = pair.backend, pair.wronskian_drift
     else
         inputs = _radial_evaluation_inputs(result, omega)
         solution = radial_solver(
@@ -46,7 +46,7 @@ function _amplitude_pair(result::LeaverResult, omega;
     gsn = gsn_data === nothing ?
         _gsn_amplitude_data(result, omega; radial_solver=gsn_solver) : gsn_data
     a, w, lambda = gsn.evaluation_a, gsn.evaluation_omega, gsn.lambda
-    if gsn.incidence_backend == :direct_real_axis_wronskian
+    if gsn.incidence_backend in (:direct_real_axis_wronskian, :extremal_complex_path)
         transmission = ConversionFactors.Btrans(mode.s, mode.m, a, w, lambda)
         incidence = ConversionFactors.Binc(mode.s, mode.m, a, w, lambda) /
             transmission * gsn.incidence
@@ -312,6 +312,9 @@ function _qnm_richardson_excitation_factor(result::LeaverResult;
         _finite_high_damping_diagnostic_candidate(result, validation)
     any_conditioned_candidate = conditioned_candidate ||
         near_extremal_candidate || high_damping_diagnostic
+    # The exact-extremal complex-path amplitudes carry a Float64 floor near 1e-8 of the
+    # reflection; a wider fourth-order stencil keeps the difference quotient above it.
+    complex_path = validation.metadata.incidence_backend == :extremal_complex_path
     if validation.status != :accepted && !any_conditioned_candidate
         nan_complex = complex(T(NaN), T(NaN))
         return (
@@ -339,11 +342,13 @@ function _qnm_richardson_excitation_factor(result::LeaverResult;
     base_h = h === nothing ?
         normalization_pole !== nothing ? T(0.02)*surface_gravity :
         conditioned_candidate ? T(3.2e-3) :
+        complex_path ? T(3.0e-3) * max(one(T), abs(result.omega)) :
         T(1.0e-4) * max(one(T), abs(result.omega)) : T(h)
     base_h > zero(T) || throw(ArgumentError("h must be positive."))
     step_factors = h === nothing && high_damping_diagnostic ? T[one(T)] :
         h === nothing ?
         conditioned_candidate ? T[one(T), T(0.5), T(2), T(0.25), T(4)] :
+        complex_path ? T[one(T), T(0.5), T(2)] :
         T[one(T), T(2), T(0.5), T(4), T(0.25)] : T[one(T)]
     attempts = NamedTuple[]
     selected = nothing
@@ -351,8 +356,10 @@ function _qnm_richardson_excitation_factor(result::LeaverResult;
     sample_cache = Dict{C,Any}()
     sample_requests = Ref(0)
     validation_wronskian_drift = T(validation.metadata.wronskian_drift)
-    stencils = [(factor=factor, five_point=conditioned_candidate) for factor in step_factors]
-    if h === nothing && !any_conditioned_candidate && normalization_pole === nothing
+    stencils = [(factor=factor, five_point=conditioned_candidate || complex_path)
+        for factor in step_factors]
+    if h === nothing && !any_conditioned_candidate && !complex_path &&
+            normalization_pole === nothing
         # A wider fourth-order stencil reduces cancellation when the small
         # central differences reach the radial evaluator's roundoff floor.
         push!(stencils, (factor=T(8), five_point=true))

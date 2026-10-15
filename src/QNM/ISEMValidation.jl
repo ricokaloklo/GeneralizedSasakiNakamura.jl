@@ -147,11 +147,55 @@ function _extremal_qnm_radial_solver(s, l, m, a, omega, boundary)
     )
 end
 
+# At a = +1 with complex omega the default solvers integrate along the real r axis, where the
+# horizon IN branch is the dominant one for Re(i(2 omega - m)) > 0 and the outgoing infinity
+# branch outgrows the ingoing one; the amplitudes come instead from the complex-path solve of
+# ExtremalRadial.extremal_complex_path_amplitudes. A caller-supplied radial solver is kept.
+_use_extremal_complex_path(inputs, radial_solver) =
+    inputs.a == one(inputs.a) && !isreal(inputs.omega) &&
+    (radial_solver === GSN_radial || radial_solver === _extremal_qnm_radial_solver)
+
+function _extremal_complex_path_incidence(result::LeaverResult, inputs)
+    mode = result.mode
+    lambda = _swsh_eigenvalue(mode.s, mode.l, mode.m, inputs.a * inputs.omega)
+    path = ExtremalRadial.extremal_complex_path_amplitudes(
+        mode.s, mode.m, inputs.a, inputs.omega, lambda)
+    method = "ExtremalComplexPath"
+    solution = (
+        method=method,
+        normalization_convention=UNIT_GSN_TRANS,
+        mode=(lambda=lambda,),
+        numerical_GSN_solution=(propagation_score=path.tail,
+            horizon_path_kind=:complex_recessive_horizon_start,
+            horizon_coordinate_steps=path.patches),
+        incidence_amplitude=path.incidence,
+        reflection_amplitude=path.reflection,
+        transmission_amplitude=one(path.incidence),
+    )
+    return (
+        incidence=path.incidence,
+        reflection=path.reflection,
+        transmission=one(path.incidence),
+        lambda=lambda,
+        method=method,
+        normalization=UNIT_GSN_TRANS,
+        solution_in=solution,
+        solution_up=nothing,
+        incidence_values=(path.incidence,),
+        evaluation_points=(),
+        wronskian_drift=zero(real(path.incidence)),
+        inputs=inputs,
+        backend=:extremal_complex_path,
+    )
+end
+
 # Incidence amplitude from the IN/UP Wronskian, averaged over `evaluation_points`
 # in r*; their spread is returned as `wronskian_drift`.
 function _wronskian_incidence(result::LeaverResult, omega=result.omega;
         radial_solver=GSN_radial, evaluation_points=(0.0, 1.0))
     inputs = _radial_evaluation_inputs(result, omega)
+    _use_extremal_complex_path(inputs, radial_solver) &&
+        return _extremal_complex_path_incidence(result, inputs)
     mode = result.mode
     Xin = radial_solver(
         mode.s, mode.l, mode.m, inputs.a, inputs.omega, IN)
@@ -189,6 +233,7 @@ function _wronskian_incidence(result::LeaverResult, omega=result.omega;
         evaluation_points=evaluation_points,
         wronskian_drift=wronskian_drift,
         inputs=inputs,
+        backend=:direct_real_axis_wronskian,
     )
 end
 
@@ -386,7 +431,7 @@ function validate_qnm_with_isem(result::LeaverResult;
                 :public_default_GSN_radial_IN_UP_wronskian :
                 :public_default_GSN_radial_IN,
             incidence_backend=use_wronskian ?
-                :direct_real_axis_wronskian : :direct_asymptotic_amplitude,
+                pair.backend : :direct_asymptotic_amplitude,
             wronskian_evaluation_points=use_wronskian ?
                 pair.evaluation_points : (),
             wronskian_incidence_values=use_wronskian ?
