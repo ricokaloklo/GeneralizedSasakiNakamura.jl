@@ -20,8 +20,6 @@ The paper describing both the GSN formalism and the implementation can be found 
 - [Inhomogeneous solvers](#inhomogeneous-solvers)
   - [Point-particle sources and single-mode solutions](#point-particle-sources-and-single-mode-solutions)
   - [Total fluxes](#total-fluxes)
-  - [Convolution quadrature and accuracy controls](#convolution-quadrature-and-accuracy-controls)
-  - [Parallel execution and cache sharing](#parallel-execution-and-cache-sharing)
 - [How to cite](#how-to-cite)
 - [License](#license)
 
@@ -408,16 +406,6 @@ TeukolskyPointParticleFlux(
 This high-eccentricity generic run averaged about `3.667 ms` per computed mode.
 
 </details>
-
-### Convolution quadrature and accuracy controls
-
-Each mode amplitude is a convolution integral of the radial solution over the orbit. At large radial index $n$ the integrand oscillates rapidly, so uniform trapezoidal sampling needs dense grids. For modes with large $n$, eccentric and generic summations can instead use adaptive Levin quadrature in the radial direction, which bisects the radial interval until the mode amplitude converges or a depth limit is reached; generic two-dimensional convolutions pair it with a fixed Clenshaw–Curtis rule in the polar direction. This choice concerns the convolution quadrature only; the radial solutions themselves come from the solver methods above.
-
-The switch is automatic by default and can be forced with `tail_levin`. Users set the target accuracy with `tol`: single modes refine their grids until the mode converges to that target, up to the grid caps `Nmax` and `Kmax`, and a summation stops once `minimum_consecutive` consecutive shells fall below the target (5 for circular equatorial orbits, 2 otherwise). These are convergence controls, not strict global error bounds for every parameter. See the [API reference](docs/src/APIs.md) for the keywords.
-
-### Parallel execution and cache sharing
-
-For large-scale parallel computations, point-particle mode and flux calls are thread-safe on the default route. Calls on one orbit can share a read-only trajectory and sampling geometry through a submission (`with_pointparticle_submission`), while every mode keeps its own private workspace; caches are not shared across orbits, and admitted work is drained before a submission releases its caches. See [Parallel Calls](docs/src/APIs.md#parallel-calls) and [Point-particle submissions](docs/src/APIs.md#point-particle-submissions) for usage.
 
 ## How to cite
 If you have used this code in your research that leads to a publication, please cite the following article:
