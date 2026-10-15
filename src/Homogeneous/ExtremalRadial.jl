@@ -580,6 +580,86 @@ function _complex_path_propagate(A, B, nodes, state; order, frac, zmax, wavenumb
     return y, patches, tail
 end
 
+# Taylor coefficients about r0 of y'' = A y' + B y together with its frequency derivative
+# z'' = A z' + B z + dA y' + dB y, from (y, y', z, z') at r0.
+function _variational_series_coefficients(A, B, dA, dB, r0, state, order)
+    As = taylor_expand(A, r0; order=order)
+    Bs = taylor_expand(B, r0; order=order)
+    dAs = taylor_expand(dA, r0; order=order)
+    dBs = taylor_expand(dB, r0; order=order)
+    T = promote_type(typeof(state[1]), typeof(state[3]))
+    y = zeros(T, order + 1)
+    z = zeros(T, order + 1)
+    y[1], y[2], z[1], z[2] = state[1], state[2], state[3], state[4]
+    for n in 0:(order - 2)
+        ty = zero(T)
+        tz = zero(T)
+        for k in 0:n
+            a = getcoeff(As, k)
+            b = getcoeff(Bs, k)
+            yp = (n - k + 1) * y[n - k + 2]
+            ty += a * yp + b * y[n - k + 1]
+            tz += a * (n - k + 1) * z[n - k + 2] + b * z[n - k + 1] +
+                getcoeff(dAs, k) * yp + getcoeff(dBs, k) * y[n - k + 1]
+        end
+        y[n + 3] = ty / ((n + 2) * (n + 1))
+        z[n + 3] = tz / ((n + 2) * (n + 1))
+    end
+    return y, z
+end
+
+# Five-point central difference of an analytic function of omega.
+_omega_derivative(f, omega, h) =
+    (8 * (f(omega + h) - f(omega - h)) - (f(omega + 2h) - f(omega - 2h))) / (12h)
+
+function _complex_path_propagate_variational(A, B, dA, dB, nodes, state;
+        order, frac, zmax, wavenumber)
+    y = SVector(state[1], state[2], state[3], state[4])
+    patches = 0
+    tail = 0.0
+    for j in 1:(length(nodes) - 1)
+        r = nodes[j]
+        rend = nodes[j + 1]
+        while true
+            distance = min(abs(r - 1), abs(r - im), abs(r + im))
+            reach = min(frac * distance, zmax / wavenumber(r))
+            dr = rend - r
+            final = abs(dr) <= reach
+            step = final ? dr : dr / abs(dr) * reach
+            cy, cz = _variational_series_coefficients(A, B, dA, dB, r, y, order)
+            tail = max(tail, Float64(_patch_tail(cy, step)))
+            vy, dy = _evaluate_polynomial(cy, step)
+            vz, dz = _evaluate_polynomial(cz, step)
+            y = SVector(vy, dy, vz, dz)
+            patches += 1
+            patches <= 50000 ||
+                error("extremal complex-path propagation exceeded 50000 patches")
+            final && break
+            r += step
+        end
+    end
+    return y, patches, tail
+end
+
+# End point rmid + L exp(i phi) of the outer leg with Im(omega r*) = 0, where the two infinity
+# branches exp(+-i omega r*) have equal size and the amplitude decomposition is well conditioned;
+# phi starts at -arg(omega) and is corrected by secant steps for the log(r - 1) part of r*.
+function _balanced_infinity_endpoint(omega, rmid, L)
+    g(phi) = imag(omega * _complex_extremal_rstar(rmid + L * cis(phi)))
+    phi0 = -angle(omega)
+    phi1 = phi0 + oftype(phi0, 0.01)
+    g0, g1 = g(phi0), g(phi1)
+    for _ in 1:30
+        g1 == g0 && break
+        phi2 = phi1 - g1 * (phi1 - phi0) / (g1 - g0)
+        phi0, g0 = phi1, g1
+        phi1 = phi2
+        g1 = g(phi1)
+        abs(g1) <= 1e-10 * max(one(g1), abs(omega) * L) && break
+    end
+    return rmid + L * cis(phi1)
+end
+
 """
     extremal_complex_path_amplitudes(s, m, a, omega, lambda; kwargs...)
 
@@ -597,35 +677,69 @@ endpoint)`, with `tail` the largest relative truncation estimate of the Taylor p
 function extremal_complex_path_amplitudes(s::Int, m::Int, a, omega, lambda;
         h0=0.02, rmid=2.0, rout=60.0, frac=0.1, zmax=1.5,
         horizon_order::Int=_NORMALIZATION_SERIES_ORDER, infinity_order::Int=12,
-        series_order::Int=_SERIES_ORDER)
+        series_order::Int=_SERIES_ORDER, dlambda=nothing, path_omega=omega)
     _checked_extremal_sign(a) > 0 || throw(ArgumentError(
         "the complex-path amplitudes are implemented for a = +1"))
     _require_nonsynchronous(a, m, omega)
     a = one(real(omega))
     alpha = im * (2omega - m)
-    theta = angle(alpha) - oftype(real(alpha), pi)
+    path_alpha = im * (2path_omega - m)
+    theta = angle(path_alpha) - oftype(real(alpha), pi)
     theta <= -oftype(theta, pi) && (theta += 2 * oftype(theta, pi))
     rin = 1 + h0 * cis(theta)
     rturn = 1 + oftype(real(alpha), 0.3) * cis(theta / 2)
     rmidc = complex(oftype(real(alpha), rmid))
-    rend = rmidc + (rout - rmid) * cis(-angle(omega))
-    normalization = extremal_horizon_normalization(
-        s, m, a, omega, lambda, :ingoing; order=horizon_order)
-    horizon = extremal_gsn_horizon_state(
-        s, m, a, omega, lambda, rin, :ingoing; order=horizon_order, normalization)
+    rend = _balanced_infinity_endpoint(path_omega, rmidc, rout - rmid)
     q(r) = Kerr.Delta(a, r) / (r^2 + a^2)
     dq(r) = ((2r - 2) * (r^2 + a^2) - 2r * Kerr.Delta(a, r)) / (r^2 + a^2)^2
-    A = r -> Potentials.sF(s, m, a, omega, lambda, r) / q(r) - dq(r) / q(r)
-    B = r -> Potentials.sU(s, m, a, omega, lambda, r) / q(r)^2
-    y, patches, tail = _complex_path_propagate(A, B, [rin, rturn, rmidc, rend],
-        SVector(horizon[1], horizon[2] / q(rin));
-        order=series_order, frac, zmax,
-        wavenumber=r -> abs(omega) + abs(alpha) / abs(r - 1)^2)
-    state = SVector(y[1], q(rend) * y[2])
-    amplitudes = _infinity_decomposition(s, m, a, omega, lambda, state, rend,
-        _complex_extremal_rstar(rend), infinity_order)
-    return (incidence=amplitudes.ingoing, reflection=amplitudes.outgoing,
-        patches=patches, tail=tail, endpoint=rend)
+    # everything below as a function of omega on the fixed path, with lambda carried to
+    # first order along omega
+    lam(w) = dlambda === nothing ? lambda : lambda + (w - omega) * dlambda
+    function start(w)
+        normalization = extremal_horizon_normalization(
+            s, m, a, w, lam(w), :ingoing; order=horizon_order)
+        horizon = extremal_gsn_horizon_state(
+            s, m, a, w, lam(w), rin, :ingoing; order=horizon_order, normalization)
+        return SVector(horizon[1], horizon[2] / q(rin))
+    end
+    Aw(w, r) = Potentials.sF(s, m, a, w, lam(w), r) / q(r) - dq(r) / q(r)
+    Bw(w, r) = Potentials.sU(s, m, a, w, lam(w), r) / q(r)^2
+    A = r -> Aw(omega, r)
+    B = r -> Bw(omega, r)
+    nodes = [rin, rturn, rmidc, rend]
+    wavenumber = r -> abs(omega) + abs(alpha) / abs(r - 1)^2
+    rs = _complex_extremal_rstar(rend)
+    basis(w) = (inn = _infinity_pair(s, m, a, w, lam(w), rend, rs, infinity_order, :ingoing);
+        out = _infinity_pair(s, m, a, w, lam(w), rend, rs, infinity_order, :outgoing);
+        SMatrix{2,2}(inn[1], inn[2], out[1], out[2]))
+    initial = start(omega)
+    if dlambda === nothing
+        y, patches, tail = _complex_path_propagate(A, B, nodes, initial;
+            order=series_order, frac, zmax, wavenumber)
+        state = SVector(y[1], q(rend) * y[2])
+        coefficients = basis(omega) \ state
+        return (incidence=coefficients[1], reflection=coefficients[2],
+            patches=patches, tail=tail, endpoint=rend, state=state, initial=initial)
+    end
+    # frequency derivative of the IN solution on the same path (variational equation)
+    hw = oftype(real(omega), 1.0e-3) * max(one(real(omega)), abs(omega))
+    dinitial = _omega_derivative(start, omega, hw)
+    dA = r -> _omega_derivative(w -> Aw(w, r), omega, hw)
+    dB = r -> _omega_derivative(w -> Bw(w, r), omega, hw)
+    y, patches, tail = _complex_path_propagate_variational(A, B, dA, dB, nodes,
+        SVector(initial[1], initial[2], dinitial[1], dinitial[2]);
+        order=series_order, frac, zmax, wavenumber)
+    qend = q(rend)
+    state = SVector(y[1], qend * y[2])
+    dstate = SVector(y[3], qend * y[4])
+    M = basis(omega)
+    coefficients = M \ state
+    dM = _omega_derivative(basis, omega, hw)
+    dcoefficients = M \ (dstate - dM * coefficients)
+    return (incidence=coefficients[1], reflection=coefficients[2],
+        dincidence=dcoefficients[1], dreflection=dcoefficients[2],
+        patches=patches, tail=tail, endpoint=rend, state=state, dstate=dstate,
+        initial=initial, dinitial=dinitial)
 end
 
 end

@@ -155,11 +155,22 @@ _use_extremal_complex_path(inputs, radial_solver) =
     inputs.a == one(inputs.a) && !isreal(inputs.omega) &&
     (radial_solver === GSN_radial || radial_solver === _extremal_qnm_radial_solver)
 
-function _extremal_complex_path_incidence(result::LeaverResult, inputs)
+# With `derivative`, the frequency derivatives of the amplitudes come from the variational
+# equation along the same path (one solve instead of a finite-difference stencil of solves).
+function _extremal_complex_path_incidence(result::LeaverResult, inputs;
+        derivative::Bool=false)
     mode = result.mode
-    lambda = _swsh_eigenvalue(mode.s, mode.l, mode.m, inputs.a * inputs.omega)
+    eigenvalue(w) = _swsh_eigenvalue(mode.s, mode.l, mode.m, inputs.a * w)
+    omega = inputs.omega
+    lambda = eigenvalue(omega)
+    dlambda = nothing
+    if derivative
+        h = 1.0e-3 * max(1.0, abs(omega))
+        dlambda = (8 * (eigenvalue(omega + h) - eigenvalue(omega - h)) -
+            (eigenvalue(omega + 2h) - eigenvalue(omega - 2h))) / (12h)
+    end
     path = ExtremalRadial.extremal_complex_path_amplitudes(
-        mode.s, mode.m, inputs.a, inputs.omega, lambda)
+        mode.s, mode.m, inputs.a, omega, lambda; dlambda)
     method = "ExtremalComplexPath"
     solution = (
         method=method,
@@ -186,16 +197,19 @@ function _extremal_complex_path_incidence(result::LeaverResult, inputs)
         wronskian_drift=zero(real(path.incidence)),
         inputs=inputs,
         backend=:extremal_complex_path,
+        dincidence=derivative ? path.dincidence : missing,
+        propagation_tail=path.tail,
     )
 end
 
 # Incidence amplitude from the IN/UP Wronskian, averaged over `evaluation_points`
 # in r*; their spread is returned as `wronskian_drift`.
 function _wronskian_incidence(result::LeaverResult, omega=result.omega;
-        radial_solver=GSN_radial, evaluation_points=(0.0, 1.0))
+        radial_solver=GSN_radial, evaluation_points=(0.0, 1.0),
+        derivative::Bool=false)
     inputs = _radial_evaluation_inputs(result, omega)
     _use_extremal_complex_path(inputs, radial_solver) &&
-        return _extremal_complex_path_incidence(result, inputs)
+        return _extremal_complex_path_incidence(result, inputs; derivative)
     mode = result.mode
     Xin = radial_solver(
         mode.s, mode.l, mode.m, inputs.a, inputs.omega, IN)
@@ -391,7 +405,7 @@ function validate_qnm_with_isem(result::LeaverResult;
         :leaver_root_not_accepted, (leaver_status=result.status,))
     use_wronskian = _use_wronskian_incidence(result)
     if use_wronskian
-        pair = _wronskian_incidence(result; radial_solver)
+        pair = _wronskian_incidence(result; radial_solver, derivative=true)
         inputs = pair.inputs
         solution = pair.solution_in
         incidence = pair.incidence
@@ -438,6 +452,8 @@ function validate_qnm_with_isem(result::LeaverResult;
                 pair.incidence_values : (),
             wronskian_drift=use_wronskian ?
                 pair.wronskian_drift : zero(scaled_incidence),
+            incidence_derivative=use_wronskian &&
+                pair.backend == :extremal_complex_path ? pair.dincidence : missing,
             evaluation_policy=inputs.policy,
             frequency_projection_drift=inputs.projection_drift,
             source_precision_bits=inputs.source_precision_bits,

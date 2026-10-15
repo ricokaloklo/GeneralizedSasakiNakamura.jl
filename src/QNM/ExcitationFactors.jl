@@ -287,6 +287,58 @@ function _condition_near_extremal_validation(
         inferred_root_shift_tolerance)
 end
 
+# Exact-extremal complex-path excitation factor: alpha = dAin/domega from the variational
+# solve made during validation, so no finite-difference stencil is needed. `step_drift` carries
+# the root offset |Ain/alpha| relative to max(1, |omega|), which bounds how far the validated
+# frequency is from the zero of Ain on this path.
+function _complex_path_excitation_factor(result::LeaverResult, validation, step_tolerance)
+    T = typeof(step_tolerance)
+    alpha = validation.metadata.incidence_derivative
+    evaluation_omega = validation.metadata.evaluation_omega
+    reflection = validation.reflection
+    B_gsn = reflection / (2 * evaluation_omega * alpha)
+    drift = T(abs(validation.incidence / alpha) / max(one(T), abs(evaluation_omega)))
+    finite = isfinite(alpha) && isfinite(reflection) && isfinite(B_gsn)
+    accepted = finite && drift <= step_tolerance
+    return (
+        omega=result.omega,
+        alpha=alpha,
+        reflection=reflection,
+        B_gsn=B_gsn,
+        step_drift=drift,
+        status=accepted ? :accepted : :failed,
+        stop_reason=!finite ? :nonfinite_gsn_excitation :
+            accepted ? :accepted : :richardson_step_gate,
+        metadata=(
+            validation=validation,
+            base_step=zero(T),
+            selected_base_step=zero(T),
+            step_policy=:variational_frequency_derivative,
+            step_attempts=NamedTuple[],
+            radial_sample_requests=0,
+            radial_unique_samples=0,
+            radial_sample_reuses=0,
+            steps=T[],
+            stencil=NamedTuple[],
+            gsn_real=(value=alpha, first=alpha, second=alpha, drift=drift),
+            derivative_direction=:variational,
+            normalization_pole=nothing,
+            derivative_stencil=:variational_equation,
+            convention_gsn=:Aout_over_2omega_alpha,
+            step_tolerance=step_tolerance,
+            incidence_backend=validation.metadata.incidence_backend,
+            maximum_wronskian_drift=T(validation.metadata.wronskian_drift),
+            wronskian_tolerance=T(validation.metadata.wronskian_tolerance),
+            evaluation_policy=validation.metadata.evaluation_policy,
+            frequency_projection_drift=
+                validation.metadata.frequency_projection_drift,
+            evaluation_a=validation.metadata.evaluation_a,
+            evaluation_omega=evaluation_omega,
+            high_damping_diagnostic=false,
+        ),
+    )
+end
+
 # GSN-only excitation factor used by the compact `qnm` result: real-direction
 # Richardson derivative, no Teukolsky bridge. `direction_tolerance`,
 # `bridge_tolerance` and `teukolsky_solver` are accepted so that the same
@@ -328,6 +380,12 @@ function _qnm_richardson_excitation_factor(result::LeaverResult;
             metadata=(validation=validation, stencil=NamedTuple[],
                 derivative_direction=:real_frequency),
         )
+    end
+
+    if complex_path && h === nothing && validation.status == :accepted &&
+            hasproperty(validation.metadata, :incidence_derivative) &&
+            !ismissing(validation.metadata.incidence_derivative)
+        return _complex_path_excitation_factor(result, validation, T(step_tolerance))
     end
 
     normalization_pole = nothing
