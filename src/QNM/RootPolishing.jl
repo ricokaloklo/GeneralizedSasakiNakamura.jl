@@ -1422,6 +1422,67 @@ function _two_end_spin_seed(mode::QNMMode, spin::Float64)
         predictor=:packaged_table_kappa_anchored_march)
 end
 
+# Ordinary DM root for _SPIN_TABLE_MAXIMUM_SPIN < a < 1 from the packaged near-extremal
+# expansion omega = c_0 + c_1 x + ... + c_8 x^8 in x = 1 - a^2 (KappaSquaredRootTable.jl). The
+# c_k are solved order by order from the Teukolsky equation at a = 1. The series misses only
+# the exponentially small term exp(-2 pi Re(2 omega - a m) / sqrt(x)), so it is used for
+# x <= x_max, where that term is below 1e-16; root_residual carries the larger of that term
+# and the first omitted power. Here the series is more accurate than a Float64 Leaver solve,
+# whose continued fraction cancels terms of size 1/sqrt(x). Returns nothing for any other
+# mode or spin.
+function _kappa_squared_table_root(mode::QNMMode, a::Float64)
+    mode.branch == :positive_real && _SPIN_TABLE_MAXIMUM_SPIN < a < 1 ||
+        return nothing
+    key = (mode.s, mode.l, mode.m, mode.n)
+    entry = get(_KAPPA_SQUARED_ROOT_TABLE, key, nothing)
+    entry === nothing && return nothing
+    inversion, coefficients, xmax = entry
+    x = (1 - a) * (1 + a)
+    x <= xmax || return nothing
+    omega = evalpoly(x, coefficients)
+    detuning = real(2 * coefficients[1] - mode.m)
+    bound = max(abs(coefficients[end]) * x^length(coefficients),
+        exp(-2pi * detuning / sqrt(x))) / abs(omega)
+    angular_order = 32
+    angular = angular_branch(mode, a, omega; truncation_order=angular_order,
+        sheet_id=:qnm_kappa_squared_table)
+    angular.status in (:continued, :predictor_corrected, :spherical_anchor,
+        :high_precision_refined) || return nothing
+    contract = _schwarzschild_label_contract(mode, :overtone)
+    return LeaverResult(
+        mode, :overtone, mode.n, inversion, a, omega,
+        angular.angular_A, angular.lambda, angular.mixing,
+        complex(NaN, NaN), NaN, 0, bound, Float64(angular.residual), 53,
+        :accepted, :accepted_near_extremal_expansion,
+        (
+            input_type=string(typeof(a)),
+            working_type="Float64",
+            guess_source=:packaged_kappa_squared_table,
+            convention=:overtone,
+            overtone_index=mode.n,
+            inversion_index=inversion,
+            label_convention=contract.label_convention,
+            branch_label=contract.branch_label,
+            endpoint_kind=contract.endpoint_kind,
+            near_as_role=contract.near_as_role,
+            schwarzschild_sequence_index=contract.schwarzschild_sequence_index,
+            schwarzschild_multiplicity=contract.schwarzschild_multiplicity,
+            sequence_segment=0,
+            family=:DM,
+            angular_route=angular.metadata.route,
+            angular_sheet=angular.sheet_id,
+            angular_order,
+            root_drift=0.0,
+            root_equation=:near_extremal_expansion_in_x,
+            acceptance_basis=:near_extremal_expansion_validity,
+            kappa_squared=x,
+            expansion_validity_x_max=xmax,
+            relative_frequency_bound=bound,
+            claim_boundary=:near_extremal_expansion_root,
+        ),
+    )
+end
+
 # Root for 0.9995 < |a| < 1 with a two-end anchored seed. A Float64 solve from the seed
 # is tried first; when it is not kept, the default solve is returned if it agrees with the
 # seed, and otherwise the seeded solve is repeated with the automatic BigFloat fallback,
@@ -2109,7 +2170,16 @@ function qnm_frequency(mode::QNMMode, a; segment=0, kwargs...)
     internal_n = _overtone_internal_index(mode, a, convention)
     internal_mode = internal_n == mode.n ? mode :
         QNMMode(mode.s, mode.l, mode.m, internal_n, mode.branch)
-    result = if selected_segment === 0
+    table_root = selected_segment === 0 && a isa Float64 &&
+        all(k -> k === :convention, keys(kwargs)) &&
+        _qnm_convention(get(kwargs, :convention, :overtone)) == :overtone ?
+        _kappa_squared_table_root(a < 0 ? QNMMode(internal_mode.s,
+            internal_mode.l, -internal_mode.m, internal_mode.n,
+            internal_mode.branch) : internal_mode, abs(a)) : nothing
+    result = if table_root !== nothing
+        a < 0 ? _spin_reflected_result(internal_mode, a, table_root;
+            angular_order=32, sheet_id=:qnm_kappa_squared_table) : table_root
+    elseif selected_segment === 0
         spin_seed = get(kwargs, :guess, nothing) === nothing ?
             _tabulated_spin_seed(a isa Real && a < 0 ?
                 QNMMode(internal_mode.s, internal_mode.l, -internal_mode.m,
