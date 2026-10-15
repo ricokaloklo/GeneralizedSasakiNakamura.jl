@@ -306,7 +306,7 @@ julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.0, 1.0; tol=1e-8)
 TeukolskyPointParticleFlux(
     orbital_parameters(a = 0.9, p = 6.0, e = 0.0, x = 1.0),
     orbit_type = circular,
-    infinity_energy_flux = 0.0005658659548571374,
+    infinity_energy_flux = 0.0005658659548571375,
     infinity_angular_momentum_flux = 0.008825776472648025,
     infinity_carter_constant_flux = 0.0,
     horizon_energy_flux = -4.177363290666302e-6,
@@ -317,11 +317,11 @@ TeukolskyPointParticleFlux(
     convolution_integral = (strategy = "no convolution integral is needed",),
     tolerance = 1.0e-8,
     truncation_floor = (infinity = 1.0e-16, horizon = 1.0e-16),
-    cost = 4.862436056137085 seconds,
+    cost = 0.3374300003051758 seconds,
 )
 ```
 
-With `e = 0` and `x = 1` the call dispatches to the circular equatorial summation, which needs no convolution integral. In this example the warm run averaged about `1.79 ms` per computed mode.
+With `e = 0` and `x = 1` the call dispatches to the circular equatorial summation, which needs no convolution integral. In this example the warm run averaged about `0.89 ms` per computed mode.
 
 </details>
 
@@ -333,23 +333,23 @@ julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.0, 0.5; tol=1e-8)
 TeukolskyPointParticleFlux(
     orbital_parameters(a = 0.9, p = 6.0, e = 0.0, x = 0.5),
     orbit_type = inclined,
-    infinity_energy_flux = 0.0006637621566020537,
-    infinity_angular_momentum_flux = 0.0060183149433979816,
-    infinity_carter_constant_flux = 0.04294455189603733,
-    horizon_energy_flux = -3.086574922405811e-6,
-    horizon_angular_momentum_flux = -0.00010495330048599925,
-    horizon_carter_constant_flux = 8.87115447318205e-5,
+    infinity_energy_flux = 0.0006637621566020543,
+    infinity_angular_momentum_flux = 0.0060183149433979885,
+    infinity_carter_constant_flux = 0.04294455189603736,
+    horizon_energy_flux = -3.086574922405825e-6,
+    horizon_angular_momentum_flux = -0.00010495330048599916,
+    horizon_carter_constant_flux = 8.871154473181861e-5,
     total_modes = 11466,
     k_reached_inf = 15,
     k_reached_hor = 13,
     convolution_integral = (strategy = "ISEM adaptive trapezoidal for all modes",),
     tolerance = 1.0e-8,
     truncation_floor = (infinity = 1.0e-16, horizon = 1.0e-16),
-    cost = 11.08058786392212 seconds,
+    cost = 10.32890009880066 seconds,
 )
 ```
 
-With `e = 0` and `|x| < 1` the call dispatches to the inclined (spherical-orbit) summation. In this example the warm run averaged about `0.66 ms` per computed mode.
+With `e = 0` and `|x| < 1` the call dispatches to the inclined (spherical-orbit) summation. In this example the warm run averaged about `0.90 ms` per computed mode.
 
 </details>
 
@@ -361,22 +361,22 @@ julia> flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.7, 1.0; tol=1e-8)
 TeukolskyPointParticleFlux(
     orbital_parameters(a = 0.9, p = 6.0, e = 0.7, x = 1.0),
     orbit_type = eccentric,
-    infinity_energy_flux = 0.0007457787885708409,
-    infinity_angular_momentum_flux = 0.0067595177009140955,
+    infinity_energy_flux = 0.0007457787885708398,
+    infinity_angular_momentum_flux = 0.006759517700914085,
     infinity_carter_constant_flux = 0.0,
-    horizon_energy_flux = -8.777498432552509e-6,
-    horizon_angular_momentum_flux = -7.36178666101981e-5,
+    horizon_energy_flux = -8.777498432552538e-6,
+    horizon_angular_momentum_flux = -7.361786661019827e-5,
     horizon_carter_constant_flux = 0.0,
     total_modes = 45204,
     n_reached = (infinity = 124, horizon = 58),
     convolution_integral = (strategy = "ISEM adaptive trapezoidal for all computed n; tail ISEM adaptive Levin enabled but not triggered", tail_levin_nmin = 50, tail_levin_local_n = 16, tail_levin_max_depth = 8),
     tolerance = 1.0e-8,
     truncation_floor = (infinity = 1.0e-16, horizon = 1.0e-16),
-    cost = 30.387449026107788 seconds,
+    cost = 26.141580820083618 seconds,
 )
 ```
 
-This warm high-eccentricity equatorial run averaged about `0.97 ms` per computed mode.
+This warm high-eccentricity equatorial run averaged about `0.58 ms` per computed mode.
 
 </details>
 
@@ -403,7 +403,7 @@ TeukolskyPointParticleFlux(
 )
 ```
 
-This high-eccentricity generic run averaged about `3.667 ms` per computed mode.
+This high-eccentricity generic run averaged about `0.99 ms` per computed mode.
 
 </details>
 
