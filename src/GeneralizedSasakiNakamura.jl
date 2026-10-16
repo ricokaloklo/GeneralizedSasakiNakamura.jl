@@ -1831,8 +1831,12 @@ trajectory and sampling geometry, while every admitted mode keeps its own privat
 On normal return, error or cancellation, all admitted modes and registered tasks are drained before the internal
 caches are released; returned results remain valid.
 """
+_pointparticle_float(a, p, e, x) = (Float64(a), Float64(p), Float64(e), Float64(x))
+
 function with_pointparticle_submission(f::Function,a,p,e,x;Nmax::Int=2^14,Kmax::Int=2^12,
         stop_requested=nothing,lifecycle_observer=nothing)
+    # The point-particle routes run in Float64; any real input (e.g. an integer or BigFloat 0) is converted.
+    a, p, e, x = _pointparticle_float(a, p, e, x)
     ModeSummation.with_public_submission(f,a,p,e,x;Nmax,Kmax,stop_requested,lifecycle_observer)
 end
 export with_pointparticle_submission
@@ -1889,6 +1893,8 @@ Carter-constant fluxes at infinity and at the horizon, or `nothing` (with a
 warning) when `(a, p, e, x)` is not a bound orbit.
 """
 function Teukolsky_pointparticle_flux(a, p, e, x; submission=nothing, tol = 1e-8, lmax = 30, nmax = 500, kmax = 20, minimum_consecutive = nothing, N = 64, N0 = N, K = 16, K0 = K, Nmax = (submission === nothing ? 2^14 : submission.Nmax), Kmax = (submission === nothing ? 2^12 : submission.Kmax), sample_tol = 1e-3, record::Bool = false, record_path = nothing, fast = true, truncation_floor = 1e-16, mode_abs_floor = truncation_floor, zero_low_flux = false, threaded_sampling = false, neg_branch_scale = 0.1, generic_beta = ModeSummation.DEFAULT_GENERIC_BETA, generic_deep = ModeSummation.DEFAULT_GENERIC_DEEP, tail_levin = nothing, tail_levin_infinity = nothing, tail_levin_horizon = nothing, levin_nmin = 50, levin_mode_abs_floor = mode_abs_floor, levin_local_n::Int = ConvolutionIntegrals.DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, levin_max_depth::Int = 8, info::Bool = false, stop_requested=nothing, lifecycle_observer=nothing)
+    # The point-particle routes run in Float64; any real input (e.g. an integer or BigFloat 0) is converted.
+    a, p, e, x = _pointparticle_float(a, p, e, x)
     if !_teukolsky_flux_bound_orbit(a, p, e, x)
         @warn "The specified parameters do not correspond to a bound orbit." a p e x
         return nothing
@@ -1972,6 +1978,8 @@ Return a `TeukolskyPointParticleMode` holding the mode information, the Teukolsk
 the trajectory, the Y solution, the spin-weighted spheroidal harmonic and the method settings used.
 """
 function Teukolsky_pointparticle_mode(s::Int, l::Int, m::Int, n::Int, k::Int, a, p, e, x; method="auto", submission=nothing, N::Int=-1, K::Int=-1, Nmax::Int = (submission === nothing ? 2^12 : submission.Nmax), Kmax::Int = (submission === nothing ? 2^9 : submission.Kmax), tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, truncation_floor::Float64 = 1e-16, mode_abs_floor::Float64 = truncation_floor, zero_low_flux::Bool = false, threaded_sampling::Bool = false, levin_max_depth::Int = 8, levin_adaptive::Bool = true, stop_requested=nothing, lifecycle_observer=nothing)
+    # The point-particle routes run in Float64; any real input (e.g. an integer or BigFloat 0) is converted.
+    a, p, e, x = _pointparticle_float(a, p, e, x)
     method = lowercase(String(method))
     if method == "auto"
         method = "isem_trapezoidal"
