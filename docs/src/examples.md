@@ -349,7 +349,7 @@ function f_terms(a, ω, S2)
 end
 ```
 
-One can reproduce Figure 4(a) of our paper by
+One can reproduce Figure 5(a) of the paper by
 
 
 ```julia
@@ -605,7 +605,7 @@ function Wnn_integrals(l, a, omega; rsout = 10000)
 end
 ```
 
-One can reproduce Figure 4(b) of our paper by
+One can reproduce Figure 5(b) of the paper by
 
 
 ```julia
@@ -787,7 +787,7 @@ println()
     
 
 
-One can reproduce the $\ell=2$ curve in our Figure 6(a) by
+One can reproduce the $\ell=2$ curve in Figure 7(a) by
 
 
 ```julia
@@ -819,7 +819,7 @@ One can also reproduce the $\ell=2$ curve of the energy spectrum
 
 $\left(\frac{d \mathcal{E}}{d\omega}\right)_\ell^\infty=8\omega^2\mu^2\left(\left|\frac{X_{\ell 0\omega}^\infty}{c_0}\right|^2+\left|\frac{X_{\ell 0-\omega}^\infty}{c_0}\right|^2\right)$
 
-in our Figure 6(b) by
+in Figure 7(b) by
 
 
 ```julia
@@ -898,7 +898,7 @@ end
 ```
 
 
-One can reproduce the $\ell=2$ waveform in our Figure 8 by
+One can reproduce the $\ell=2$ waveform in Figure 9 by
 
 
 ```julia
