@@ -39,7 +39,10 @@ end
 function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
         teukolsky_solver=Teukolsky_radial, incidence_tolerance=1e-8,
         step_tolerance=1e-7, wronskian_tolerance=1e-8,
-        direction_tolerance=nothing, bridge_tolerance=nothing, match_radius=nothing)
+        direction_tolerance=nothing, bridge_tolerance=nothing, match_radius=nothing,
+        horizon_tortoise=:auto)
+    horizon_tortoise in (:auto, :toggle) ||
+        throw(ArgumentError("horizon_tortoise must be :auto or :toggle"))
     target = min(Float64(step_tolerance), 1e-8)
     all(t -> isfinite(t) && t > 0,
         (incidence_tolerance, target, wronskian_tolerance)) ||
@@ -53,6 +56,8 @@ function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
     p=wf-root.mode.m*af/(2*(1+kappa))
     complex_horizon=!extreme && abs(af)>.9 && abs(real(p))>.1 &&
         abs(imag(wf))/kappa>.5
+    # :toggle tries the other horizon path, for the selection retry below.
+    horizon_tortoise === :toggle && (complex_horizon = !extreme && !complex_horizon)
     # Spin-field endpoint conversion is ill-conditioned at extremality.
     # Only the small boundary calculation uses higher precision, not the IVP.
     bits = extreme && root.mode.s != 0 ? 128 : 53
@@ -75,7 +80,7 @@ function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
         extremal_scale=24.0, extremal_radius=0.2, extremal_order=40,
         extremal_precision=bits,horizon_tortoise=complex_horizon,potential_series=coarse_series)
     fine = _qnm_variational_excitation(root; tol=1e-13, horizon_scale=0.8,
-        horizon_order=40, infinity_order=60, infinity_radius=25.0, match_radius=match,
+        horizon_order=80, infinity_order=60, infinity_radius=25.0, match_radius=match,
         horizon_ray=extreme, extremal_scale=32.0, extremal_radius=0.15,
         extremal_order=64, extremal_precision=bits,horizon_tortoise=complex_horizon,potential_series=series)
     drift(x,y) = abs(x-y)/max(abs(x), abs(y), floatmin(Float64))
@@ -159,16 +164,21 @@ end
 function _qnm_selected_excitation(root, options; detailed=false)
     legacy = _without_excitation_backend(options)
     if _qnm_use_variational(root, options)
-        attempt(match_radius) = try
-            _qnm_checked_variational(root; legacy..., match_radius)
+        attempt((match_radius, horizon_tortoise)) = try
+            _qnm_checked_variational(root; legacy..., match_radius, horizon_tortoise)
         catch err
             err isa InterruptException && rethrow()
             get(options,:backend,:auto) === :variational && rethrow()
             nothing
         end
         candidate = nothing
-        for radius in _qnm_variational_match_radii(Float64(root.a))
-            trial = attempt(radius)
+        radii = _qnm_variational_match_radii(Float64(root.a))
+        # Last, the other horizon path: the complex tortoise contour for strongly damped
+        # modes with |Im p| >> kappa near a = 0.9, and the real one where the contour fails.
+        trials = abs(root.a) == 1 ? ((radii[1], :auto),) :
+            ((map(r -> (r, :auto), radii))..., (radii[1], :toggle))
+        for trial_options in trials
+            trial = attempt(trial_options)
             (candidate === nothing || (trial !== nothing && trial.status === :accepted)) &&
                 (candidate = trial)
             candidate !== nothing && candidate.status === :accepted && break
