@@ -44,12 +44,16 @@ B^{{\rm GSN}}_{\ell m\omega_q}
 {2\omega_q\alpha^{{\rm GSN}}_{\ell m\omega_q}}.
 ```
 
-The derivative is obtained from Richardson-extrapolated frequency stencils.
-The incidence zero and derivative convergence are checked before acceptance.
-Wronskian checks apply only to routes that compute a Wronskian.
-Richardson convergence does not measure systematic radial-amplitude error;
-passing these checks does not guarantee a total `1e-8` error in the derivative
-or excitation factor.
+For `s = -2, …, 2`, `|s| ≤ l ≤ 15` and `n ≤ 10` the derivative comes from a
+single radial solve: the GSN equation is integrated together with its frequency
+derivative (forward-mode dual numbers) along a complex contour on which the
+ingoing and outgoing solutions at infinity stay balanced. The solve is done at
+two resolutions. It is accepted when both agree to `1e-8`, the incidence
+amplitude vanishes to `1e-8` relative to the reflection amplitude, and the
+Wronskian is constant to `1e-8`. Otherwise, and for all other modes, the
+derivative is Richardson-extrapolated from frequency stencils. A result whose
+checks do not reach `1e-8` is returned as a `QNMEstimate` that records the
+limiting check.
 
 ## Root-only interface
 
@@ -61,6 +65,24 @@ mirror_root = qnm_frequency(0.68, -2, 2, 2, 0, mirror)
 
 sequence = qnm_sequence([0.0, 0.3, 0.68], -2, 2, 2, 0)   # (spins, s, l, m, n)
 ```
+
+### Packaged roots
+
+For `s = -2, …, 2`, `|s| ≤ l ≤ 15` and `n ≤ nmax(l)` the package ships the
+roots on 60 spins `a = 1 - u²` (`u` from `1` to `0.01`) and at `a = 1`:
+
+| `l` | 0–5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
+| :-- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `nmax(l)` | 10 | 9 | 8 | 8 | 7 | 6 | 5 | 4 | 4 | 3 | 2 |
+
+They are starting points only: the returned root is polished with the Leaver
+continued fraction at the requested spin. For `0.999 < a < 1` a damped mode is
+instead evaluated from the near-extremal expansion
+`ω = c₀ + c₁x + … + c₈x⁸` in `x = 1 - a²`. Its coefficients are solved order
+by order from the Teukolsky equation at `a = 1`, starting from the packaged
+`a = 1` root, on first use of the mode (tens of milliseconds) and then cached.
+The expansion is used where the term it omits, of order
+`exp(-2π Re(2ω - m)/√x)`, is below `1e-16`.
 
 Both functions take the same numbers as [`qnm`](@ref) (`qnm_sequence` takes a list of
 spins in place of `a`) and the keywords
@@ -90,6 +112,12 @@ damping, so from `8₁` on its labels are one higher. For all other `(s, l, m)`
 the two columns are identical. A third convention, `:leaver`, is only an index
 of the continued-fraction inversion: it does not label a mode by itself and
 requires an explicit `guess` (see below).
+
+At `a = 0` the pair has merged into `-2i`. Both `:complete_spectrum` `n = 8` and
+`n = 9` return that frequency, as `:overtone` `n = 8` does, and
+`:complete_spectrum` `n ≥ 10` is the overtone `n - 1`. There `qnm` returns a
+`QNMFailure`: the incidence amplitude has no simple zero at `-2i`, so the
+excitation factor is not defined.
 
 The default `convention=:overtone` treats `n` as a physical overtone label. The
 labels follow the Python [`qnm`](https://github.com/duetosymmetry/qnm) package
@@ -225,10 +253,6 @@ leaver_root = qnm_frequency(
 )
 ```
 
-`convention=:complete_spectrum` numbers the complete spectrum consecutively in
-the algebraically special neighborhood (the pair as 8 and 9, then `n ≥ 10`),
-as in Forteza & Mourier.
-
 ## Detailed radial solutions
 
 The compact call avoids constructing callable radial functions. Request the
@@ -245,8 +269,6 @@ detailed.R(r)
 ```
 
 `X` uses the tortoise coordinate $r_*$; `Y` and `R` use Boyer-Lindquist $r$.
-The detailed normalization check compares GSN and Teukolsky conventions;
-passing it is not an independent accuracy bound for either solution.
 
 `detailed.teukolsky.excitation_factor` uses the convention
 
@@ -258,27 +280,25 @@ B^{\mathrm{T}}_{\ell m\omega_q}
 ```
 
 A reference defined with `2 omega` instead of `2 i omega` must therefore be
-divided by `i` before comparison. This phase convention is distinct from a
-radial normalization error.
+divided by `i` before comparison.
 
 ## Result types
 
-- `QNMResult`: all required root, radial, normalization, and derivative gates
-  pass.
-- `QNMEstimate`: finite diagnostic result whose limiting gate remains recorded.
-- `QNMFailure`: the first failed stage and reason are returned without
-  promoting nonfinite amplitudes.
-- `QNMEndpointResult`: an exact extremal branch endpoint that is not treated as
-  an ordinary isolated simple pole.
+- `QNMResult`: the root, radial, normalization and derivative checks all pass.
+- `QNMEstimate`: a finite result with one check short of its target; the check
+  is named in `limiting_gate`.
+- `QNMFailure`: the stage that failed and the reason.
+- `QNMEndpointResult`: an exact-extremal endpoint (`a = ±1`, `ω = m a/2`),
+  which is not a simple pole.
 
-At the Schwarzschild algebraically-special frequency and at a synchronous
-extremal accumulation endpoint, the ordinary simple-zero excitation formula
-is not applied.
+At the Schwarzschild algebraically special frequency and at the synchronous
+exact-extremal endpoint the excitation factor is not defined.
 
 ## Exact extremal spin
 
-For `a = 1` or `a = -1` (exact equality) each mode is first followed to the
-near-extremal spins `a = sqrt(1 - κ²)`, `κ = 0.04, …, 0.0025`. A branch whose
+For `a = 1` or `a = -1` (exact equality) a mode in the packaged table starts
+from its tabulated `a = 1` root, which must be reproduced by the recurrence
+below to `1e-10`. Any other mode is first followed to the near-extremal spins `a = sqrt(1 - κ²)`, `κ = 0.04, …, 0.0025`. A branch whose
 distance from `m a/2` halves with `κ` is a zero-damping branch and returns the
 synchronous endpoint `ω = m a/2` as a `QNMEndpointResult`. Every other branch is
 a damped mode: its frequency is the root of the exact-extremal radial

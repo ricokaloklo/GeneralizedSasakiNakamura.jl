@@ -55,7 +55,7 @@ and its amplitudes. The compact result contains:
 | `lambda` | radial Teukolsky separation constant |
 | `incidence_amplitude` | GSN incoming amplitude |
 | `reflection_amplitude` | GSN reflected amplitude |
-| `incidence_derivative` | Richardson-extrapolated $dA_{\rm in}/d\omega$ |
+| `incidence_derivative` | $dA_{\rm in}/d\omega$ at the root |
 | `excitation_factor` | GSN excitation factor |
 | `status`, `stop_reason` | combined root, radial, and derivative status |
 

@@ -171,22 +171,22 @@ mirror_mode = qnm(0.68, -2, 2, 2, 0, mirror)
 ```text
 QuasiNormalMode(
     parameters = (a = 0.68, s = -2, l = 2, m = 2, n = 0)
-    omega = 0.52397510429008387 - 0.081512623631199529im
-    lambda = 1.6550030612535804 + 0.36026776076186157im
-    incidence_amplitude = -2.7105108183450338e-13 - 2.6237426978389081e-13im
-    reflection_amplitude = -0.80073261705163268 + 0.029136276806015594im
-    incidence_derivative = -2.1438079331183544 + 6.7875557754655729im
-    excitation_factor = 0.019833940788207563 + 0.10427056859796389im
+    omega = 0.52397510429008398 - 0.081512623631199516im
+    lambda = 1.6550030612535795 + 0.36026776076186151im
+    incidence_amplitude = -2.9652484956329296e-15 + 1.0066747053005698e-14im
+    reflection_amplitude = -0.80073261705109955 + 0.029136276807086189im
+    incidence_derivative = -2.143807932934116 + 6.7875557748638862im
+    excitation_factor = 0.01983394079017144 + 0.10427056860707475im
     formalism = GSN)
 
 QuasiNormalMode(
     parameters = (a = 0.68, s = -2, l = 2, m = 2, n = 0)
-    omega = -0.31116285768546026 - 0.088754663319965468im
-    lambda = 5.4219094861401063 + 0.40958044727148396im
-    incidence_amplitude = 1.0863202903062678e-16 + 1.9786037254804651e-14im
-    reflection_amplitude = -1.2675830722584842 + 0.57434916613843456im
-    incidence_derivative = 9.1832313898895048 - 11.99041112156098im
-    excitation_factor = 0.13913753384431687 + 0.030226487428830294im
+    omega = -0.31116285768546015 - 0.088754663319965579im
+    lambda = 5.4219094861401045 + 0.40958044727148446im
+    incidence_amplitude = -5.1821813248855796e-15 + 4.7107003677217079e-15im
+    reflection_amplitude = -1.2675830722586212 + 0.57434916613852249im
+    incidence_derivative = 9.1832313896816231 - 11.990411121525646im
+    excitation_factor = 0.13913753384546915 + 0.030226487430463019im
     formalism = GSN)
 ```
 
@@ -201,11 +201,11 @@ Rin, Rup = Teukolsky_radial(-2, 2, 2, 0.68, ordinary_mode.omega)
 ```julia
 julia> Rup
 TeukolskyRadialFunction(
-    mode = Mode(s = -2, l = 2, m = 2, a = 0.68, omega = 0.5239751042900839 - 0.08151262363119953im, lambda = 1.6550030612535804 + 0.36026776076186157im),
+    mode = Mode(s = -2, l = 2, m = 2, a = 0.68, omega = 0.523975104290084 - 0.08151262363119952im, lambda = 1.6550030612535795 + 0.3602677607618615im),
     boundary_condition = UP,
     transmission_amplitude = 1.0 + 0.0im,
-    incidence_amplitude = 1.607773988395004e-15 - 1.0117545585358508e-15im,
-    reflection_amplitude = 1.101161565720038 + 2.1300599921594596im,
+    incidence_amplitude = -1.6277792171253123e-15 + 2.3406653193234936e-16im,
+    reflection_amplitude = 1.101161565720053 + 2.1300599921594445im,
     normalization_convention = UNIT_TEUKOLSKY_TRANS
 )
 ```
@@ -231,7 +231,7 @@ root = qnm_frequency(0.68, -2, 2, 2, 0)                    # (a, s, l, m, n)
 roots = qnm_sequence([0.0, 0.3, 0.68], -2, 2, 2, 0)        # (spins, s, l, m, n)
 ```
 
-Overtone labels (`convention`): the default `:overtone` follows the Python [`qnm`](https://github.com/duetosymmetry/qnm) package (Stein 2019) and the Cook–Zalutskiy catalogue. For $s = -2$, $\ell = 2$, $|m| = 2$ co-rotating modes the Schwarzschild root $-2i$ splits into a pair $8_0$, $8_1$; `:overtone` calls $8_0$ $n = 8$, skips $8_1$, and keeps the Schwarzschild numbers above it, while `:complete_spectrum` (Forteza & Mourier) counts $8_1$ as $n = 9$, so its labels from there on are one higher. Elsewhere the two agree.
+Overtone labels (`convention`): the default `:overtone` follows the Python [`qnm`](https://github.com/duetosymmetry/qnm) package (Stein 2019) and the Cook–Zalutskiy catalogue. For $s = -2$, $\ell = 2$, $|m| = 2$ co-rotating modes the Schwarzschild root $-2i$ splits into a pair $8_0$, $8_1$; `:overtone` calls $8_0$ $n = 8$, skips $8_1$, and keeps the Schwarzschild numbers above it, while `:complete_spectrum` (Forteza & Mourier) counts $8_1$ as $n = 9$, so its labels from there on are one higher. At $a = 0$ the pair is $-2i$ in both conventions. Elsewhere the two agree.
 
 Segments (`segment`): a few sequences (e.g. $\ell = 2$, $m = 0$, $9 \le n \le 26$) end on the negative imaginary axis at finite spin and reappear at larger spin (Cook's $n_0$ and $n_1$). `segment = 0` (default) is the piece connected to $a = 0$, `segment = 1` the reappearing piece, `segment = :auto` whichever exists at $a$; for example `qnm(0.5, -2, 2, 0, 10; segment=1)`. See the [QNM documentation](docs/src/QNM.md) for the label table and the segment details.
 
