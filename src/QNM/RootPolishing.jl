@@ -7,8 +7,7 @@ const _SCHWARZSCHILD_SEEDS = Dict{NTuple{3,Int},ComplexF64}(
     (-2, 2, 5) => 0.16929940309302113 - 1.19560805413578164im,
     (-2, 2, 6) => 0.13325234024514371 - 1.44791062616211419im,
     (-2, 2, 7) => 0.09282233367019177 - 1.70384117220627562im,
-    # The conventional n=8 algebraically-special endpoint requires separate
-    # sheet-aware handling. These are the next regular Schwarzschild roots.
+    # n = 8 is the algebraically special frequency -2i, returned exactly. These are the next roots.
     (-2, 2, 9) => 0.063263505125603553 - 2.3026447651585391im,
     (-2, 2, 10) => 0.07655346288598433 - 2.5608266173815060im,
     (-2, 3, 0) => 0.59944328843749000 - 0.09270304794494700im,
@@ -19,8 +18,6 @@ const _SCHWARZSCHILD_SEEDS = Dict{NTuple{3,Int},ComplexF64}(
     (-2, 4, 2) => 0.77270953260670861 - 0.47990817512116291im,
 )
 
-const _SCHWARZSCHILD_L2_N8_UNCONVENTIONAL =
-    -0.0153245047607925 - 1.99841184185869im
 const _KERR_L2_M2_NEAR_AS_ANCHOR_SPIN = 0.05
 const _KERR_L2_M2_MANO_SUZUKI_TAKASUGI_SWITCH_SPIN = 0.015
 const _KERR_L2_M2_NEAR_AS_ANCHORS = Dict{Symbol,ComplexF64}(
@@ -88,7 +85,10 @@ function _schwarzschild_label_contract(mode::QNMMode, convention::Symbol, a=0;
     corotating = a * mode.m * (mode.branch == :positive_real ? 1 : -1) > 0
     complete = convention == :complete_spectrum || (kerr_overtone && corotating)
     counter_n8 = kerr_overtone && !corotating && mode.n == 8
-    standard_as = convention == :overtone && l2m2 && mode.n == 8 && iszero(a)
+    # At a = 0 the spectrum does not depend on m, and s = +2 shares it, so every
+    # |s| = 2, l = 2 overtone 8 is the algebraically special frequency -2i.
+    standard_as = convention != :leaver && abs(mode.s) == 2 && mode.l == 2 &&
+        mode.n == 8 && iszero(a) && !(complete && l2m2)
     complete_unconventional = complete && l2m2 &&
         mode.n == 8
     complete_as = complete && l2m2 && mode.n == 9
@@ -167,45 +167,6 @@ function _algebraically_special_endpoint_result(mode::QNMMode, a::T;
             gsn_amplitude_limit_implemented=false,
             claim_boundary=
                 :exact_frequency_and_pole_skipping_endpoint_not_simple_gsn_residue,
-        ),
-    )
-end
-
-function _unconventional_endpoint_result(mode::QNMMode, a::T;
-        angular_order::Int, sheet_id::Symbol,
-        requested_inversion_index,
-        convention::Symbol=:complete_spectrum) where {T<:AbstractFloat}
-    omega = _complex_of_type(T, _SCHWARZSCHILD_L2_N8_UNCONVENTIONAL)
-    angular = angular_branch(mode, a, omega;
-        truncation_order=angular_order, sheet_id)
-    nan_complex = complex(T(NaN), T(NaN))
-    contract = _schwarzschild_label_contract(mode, convention)
-    return LeaverResult(
-        mode, convention, mode.n, missing, a, omega,
-        angular.angular_A, angular.lambda, angular.mixing,
-        nan_complex, T(NaN), 0, zero(T), T(angular.residual),
-        _precision_bits(T), :accepted, :frozen_unconventional_endpoint,
-        (
-            input_type=string(typeof(a)),
-            working_type=string(T),
-            guess_source=:complete_spectrum_unconventional_endpoint,
-            label_convention=contract.label_convention,
-            branch_label=contract.branch_label,
-            endpoint_kind=contract.endpoint_kind,
-            schwarzschild_sequence_index=8,
-            schwarzschild_multiplicity=1,
-            endpoint_frequency=omega,
-            root_equation=:unconventional_sheet_gsn_incidence,
-            radial_cf_applicable=false,
-            requested_inversion_index,
-            inversion_index=missing,
-            angular_route=angular.metadata.route,
-            angular_sheet=angular.sheet_id,
-            angular_order=angular.truncation_order,
-            root_drift=zero(T),
-            family=:schwarzschild_unconventional,
-            source_reference=:chen_et_al_complete_qnm_spectrum_2025,
-            claim_boundary=:frequency_endpoint_with_separate_mst_validation,
         ),
     )
 end
@@ -2595,16 +2556,13 @@ function _qnm_frequency_labeled(mode::QNMMode, a; guess=nothing,
         throw(ArgumentError(
             "convention=:leaver requires an explicit guess because a " *
             "continued-fraction inversion index does not uniquely label a root."))
+    # At a = 0 both co-rotating branches 8_0 and 8_1 end at the algebraically special frequency -2i,
+    # so convention=:complete_spectrum n = 8 and n = 9 return the same endpoint as convention=:overtone n = 8.
     if label_contract.algebraically_special_pair && iszero(aT)
-        return near_as_role == :unconventional ?
-            _unconventional_endpoint_result(
-                mode, aT; angular_order, sheet_id,
-                requested_inversion_index=inversion_index,
-                convention=selected_convention) :
-            _algebraically_special_endpoint_result(
-                mode, aT; angular_order, sheet_id,
-                requested_inversion_index=inversion_index,
-                convention=selected_convention)
+        return _algebraically_special_endpoint_result(
+            mode, aT; angular_order, sheet_id,
+            requested_inversion_index=inversion_index,
+            convention=selected_convention)
     end
     selected_coordinate = _resolve_continuation_coordinate(
         continuation_coordinate, aT, mode)

@@ -1462,7 +1462,7 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         threaded_sampling ? GridSampling.y_sample_p2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_p2_isem(Ysol, KG_samp)
     end
     SHsamp = threaded_sampling ? GridSampling.swsh_sample_threaded(SH, KG_samp) : GridSampling.swsh_sample(SH, KG_samp)
-    lambda = (Ysamp["params"]).lambda
+    lambda = Float64((Ysamp["params"]).lambda)   # some SpinWeightedSpheroidalHarmonics versions return an Int at a = 0
     integral = s == -2 ? _generic_m2_integral_cached!(cache, KG_master, Ysamp, SHsamp, ω, m, n, k, N, K) : _generic_p2_integral_cached!(cache, KG_master, Ysamp, SHsamp, ω, lambda, m, n, k, N, K)
     hf = s == 2 ? horizon_factor(ω, a, m) : 0.0
     energy = s == -2 ? abs2(integral) / (4.0pi * ω^2) : hf * abs2(integral)
@@ -1493,7 +1493,7 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
                 GridSampling.refine_generic_y_sample(Ysol, Ysamp, next_sample)
         end
         next_SHsamp = threaded_sampling ? GridSampling.refine_generic_swsh_sample_threaded(SH, SHsamp, next_sample) : GridSampling.refine_generic_swsh_sample(SH, SHsamp, next_sample)
-        lambda = (next_Ysamp["params"]).lambda
+        lambda = Float64((next_Ysamp["params"]).lambda)
         integral2 = if K2 == K && N2 == 2N
             # Old nodes retain half their weight; evaluate only the inserted radial nodes.
             0.5 * integral + (s == -2 ?

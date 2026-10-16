@@ -26,10 +26,20 @@ end
 _without_excitation_backend(options) =
     (; (k => v for (k,v) in pairs(options) if k !== :backend)...)
 
+# Matching radii, in the order tried. The infinity-side solutions are propagated inward,
+# and for strongly damped modes their error grows with the length of that path (at a = 0,
+# n = 10 the excitation factor moves by 1e-8 between r = 2.6 and 3 and by 3e-3 at r = 4.5),
+# so below a = 0.99 the match is first made at r_+ + 0.6. From a = 0.99 r = 3 passes the
+# checks more often and is tried first. The exact-extremal contour uses r = 3 only.
+function _qnm_variational_match_radii(a)
+    near = 1 + sqrt(1 - min(a^2, 1)) + 0.6
+    return abs(a) == 1 ? (3.0,) : abs(a) >= 0.99 ? (3.0, near) : (near, 3.0)
+end
+
 function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
         teukolsky_solver=Teukolsky_radial, incidence_tolerance=1e-8,
         step_tolerance=1e-7, wronskian_tolerance=1e-8,
-        direction_tolerance=nothing, bridge_tolerance=nothing)
+        direction_tolerance=nothing, bridge_tolerance=nothing, match_radius=nothing)
     target = min(Float64(step_tolerance), 1e-8)
     all(t -> isfinite(t) && t > 0,
         (incidence_tolerance, target, wronskian_tolerance)) ||
@@ -59,12 +69,13 @@ function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
     # but the tangent propagation accumulates error with path length, which limited
     # strongly damped overtones; the asymptotic order makes up for the shorter radius
     # (the radius never drops below (order + 8)/|omega|).
+    match = match_radius === nothing ? first(_qnm_variational_match_radii(af)) : match_radius
     coarse = _qnm_variational_excitation(root; tol=1e-12, horizon_scale=0.4,
-        horizon_order=24, infinity_order=60, infinity_radius=25.0, horizon_ray=extreme,
+        horizon_order=40, infinity_order=60, infinity_radius=25.0, match_radius=match, horizon_ray=extreme,
         extremal_scale=24.0, extremal_radius=0.2, extremal_order=40,
         extremal_precision=bits,horizon_tortoise=complex_horizon,potential_series=coarse_series)
     fine = _qnm_variational_excitation(root; tol=1e-13, horizon_scale=0.8,
-        horizon_order=40, infinity_order=60, infinity_radius=25.0,
+        horizon_order=40, infinity_order=60, infinity_radius=25.0, match_radius=match,
         horizon_ray=extreme, extremal_scale=32.0, extremal_radius=0.15,
         extremal_order=64, extremal_precision=bits,horizon_tortoise=complex_horizon,potential_series=series)
     drift(x,y) = abs(x-y)/max(abs(x), abs(y), floatmin(Float64))
@@ -148,12 +159,19 @@ end
 function _qnm_selected_excitation(root, options; detailed=false)
     legacy = _without_excitation_backend(options)
     if _qnm_use_variational(root, options)
-        candidate = try
-            _qnm_checked_variational(root; legacy...)
+        attempt(match_radius) = try
+            _qnm_checked_variational(root; legacy..., match_radius)
         catch err
             err isa InterruptException && rethrow()
             get(options,:backend,:auto) === :variational && rethrow()
             nothing
+        end
+        candidate = nothing
+        for radius in _qnm_variational_match_radii(Float64(root.a))
+            trial = attempt(radius)
+            (candidate === nothing || (trial !== nothing && trial.status === :accepted)) &&
+                (candidate = trial)
+            candidate !== nothing && candidate.status === :accepted && break
         end
         if candidate !== nothing && candidate.status === :accepted
             return detailed ? _qnm_variational_teukolsky(root,candidate;legacy...) : candidate
