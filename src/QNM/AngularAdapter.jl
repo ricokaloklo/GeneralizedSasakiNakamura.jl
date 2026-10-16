@@ -48,7 +48,7 @@ end
 """
     angular_A_to_lambda(angular_A, c, m)
 
-Convert the angular separation constant `A` (Leaver convention, `c = a*omega`) to the eigenvalue `lambda = A + c^2 - 2 m c`.
+Convert the angular eigenvalue `A` (Leaver's convention, `c = a*omega`) to the separation constant of the radial Teukolsky equation, `lambda = A + c^2 - 2 m c`.
 """
 @inline angular_A_to_lambda(angular_A, c, m::Int) =
     angular_A + c^2 - 2m * c

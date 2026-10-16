@@ -213,13 +213,19 @@ _qnm_gsn_excitation_factor(root::LeaverResult;kwargs...) =
     qnm_excitation_factor(root::LeaverResult; backend=:auto, kwargs...)
 
 Compute the excitation factor of a root returned by [`qnm_frequency`](@ref)
-and return an `ExcitationFactorResult`, in both the GSN and the Teukolsky
-normalization. For `s = -2, …, 2`, `l ≤ 15` and `n ≤ 10` the frequency
-derivative comes from a single radial solve that also integrates the derivative
-with respect to `ω`; when its accuracy checks fail, and for all other modes, it
-is Richardson-extrapolated from frequency stencils. Force either method with
-`backend=:variational` or `backend=:richardson`; explicit stencil options
-(`h`, `direction_tolerance`) and custom radial solvers always use the stencils.
+in both the GSN and the Teukolsky normalization and return an
+`ExcitationFactorResult`. For `s = -2, …, 2`, `|s| ≤ l ≤ 15`, `n ≤ 10` and a
+damped root with nonzero real part, the amplitudes and the frequency derivative
+come from integrating the GSN equation together with its derivative with
+respect to `ω` at the root frequency only, at two resolutions; the Teukolsky
+values follow from the analytic conversion. This result is used when the two
+resolutions agree to `1e-8` and the incidence and Wronskian checks pass.
+Otherwise, and for all other modes, the derivative is Richardson-extrapolated
+from central differences along real and imaginary frequency.
+`backend=:richardson`, an explicit stencil `h`, a `direction_tolerance` or a
+custom `radial_solver` or `teukolsky_solver` always use the differences.
+`backend=:variational` uses the integration without falling back and raises an
+`ArgumentError` outside its scope or together with those options.
 """
 qnm_excitation_factor(root::LeaverResult;kwargs...) =
     _qnm_selected_excitation(root,(;kwargs...);detailed=true)

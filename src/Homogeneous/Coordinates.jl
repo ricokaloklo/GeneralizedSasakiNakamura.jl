@@ -105,6 +105,12 @@ end
     rstar_from_r(a, r)
 
 Convert a Boyer-Lindquist coordinate `r` to the corresponding tortoise coordinate `rstar`.
+With $M = 1$ and $r_\pm = 1 \pm \sqrt{1 - a^2}$,
+```math
+r_* = r + \frac{2r_+}{r_+-r_-}\ln\frac{r-r_+}{2} - \frac{2r_-}{r_+-r_-}\ln\frac{r-r_-}{2}
+```
+for $|a| < 1$, and $r_* = r + 2\ln(r-1) - 2/(r-1) - \ln 4$ for $|a| = 1$.
+It requires $|a| \le 1$ and $r \ge r_+$; at $r = r_+$ it returns `-Inf`.
 """
 function rstar_from_r(a, r)
     _is_exact_extremal_spin(a) && return _rstar_from_exact_extremal_rp(r - 1)

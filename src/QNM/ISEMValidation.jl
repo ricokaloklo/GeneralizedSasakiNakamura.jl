@@ -385,14 +385,19 @@ function _polish_extremal_damped_root_with_gsn(result::LeaverResult;
 end
 
 """
-    validate_qnm_with_isem(result::LeaverResult; kwargs...)
+    validate_qnm_with_isem(result::LeaverResult; incidence_tolerance=1e-8,
+        wronskian_tolerance=1e-8, radial_solver=GSN_radial)
 
-Validate an accepted or estimated Leaver root with the independent public call
-`GSN_radial(s,l,m,a,omega,IN)` (default `method="auto"`, which uses ISEM).
-At exact extremality, and for conditioned roots with `abs(a) >= 0.9999` and
-`n >= 4`, the incidence amplitude comes from the IN/UP Wronskian instead. The
-scaled gate is `abs(Ain)/max(abs(Aout),abs(Atrans),1) <= incidence_tolerance`;
-this result never feeds back into the Leaver root finder.
+Check that the GSN incidence amplitude vanishes at an accepted or estimated
+root and return an [`ISEMValidationResult`](@ref). The amplitudes come from
+`GSN_radial(s, l, m, a, omega, IN)` (default `method = "auto"`, which uses
+ISEM). At `a = ±1` with complex `omega`, and for roots with status
+`:estimated` at `abs(a) >= 0.9999` and `n >= 4`, the incidence amplitude comes
+from the Wronskian of the `IN` and `UP` solutions instead, and that Wronskian
+must be constant to `wronskian_tolerance`. The check passes when
+`abs(Ain)/max(abs(Aref), abs(Atrans), 1) <= incidence_tolerance`. The root
+itself is not changed. A root that is neither accepted nor estimated gives a
+failed result with `selected_method = :not_run`.
 """
 function validate_qnm_with_isem(result::LeaverResult;
         incidence_tolerance=1.0e-8,

@@ -414,34 +414,41 @@ incidence and reflection amplitudes, the frequency derivative of the incidence
 amplitude and the GSN excitation factor. The optional sixth positional argument
 is `ordinary` (default) or `mirror`.
 
-For `s = -2, …, 2`, `l ≤ 15` and `n ≤ 10` the frequency derivative comes from a
-single radial solve that also integrates the derivative with respect to `ω`;
-when its accuracy checks fail, and for all other modes, it is
-Richardson-extrapolated from frequency stencils. Set
-`excitation_options=(backend=:richardson,)` to always use the stencils.
+For `s = -2, …, 2`, `|s| ≤ l ≤ 15`, `n ≤ 10` and a damped root with nonzero
+real part, the amplitudes and the frequency derivative come from integrating the
+GSN equation together with its derivative with respect to `ω` at the root
+frequency only, at two resolutions. This result is used when the two agree to
+`1e-8` and the incidence and Wronskian checks pass. Otherwise, and for all
+other modes, the derivative is Richardson-extrapolated from central differences
+in frequency (at `a = ±1` with the exact-extremal amplitudes described on the
+QNM manual page). Set `excitation_options=(backend=:richardson,)` to always use
+the differences.
 
 Set `detailed=true` to also compute the excitation factor in the Teukolsky
 normalization and the callable radial solutions `X`, `Y` and `R`.
 
-`X(rstar)` evaluates the GSN solution, while `Y(r)` and `R(r)` use the
-Boyer-Lindquist radius. `X` and `R` use the `IN` QNM basis. The direct public
-`Y_radial` transformation supports the matching `IN` branch for `s=-2`; for
-`s=2` it returns the supported `UP` branch, and for other spins `Y` is
-`missing`. The exact boundary and coordinate conventions are recorded in
-`branch.solutions`.
+`X(rstar)` evaluates the GSN solution at the tortoise coordinate, while
+`Y(r)` and `R(r)` use the Boyer-Lindquist radius. `X` and `R` are the `IN`
+solutions with unit GSN and unit Teukolsky transmission amplitude. `Y` is the
+`IN` solution for `s = -2`, the `UP` solution for `s = 2`, and `missing` for
+other `s`. The boundary conditions and coordinates of `X`, `Y` and `R` are also
+recorded in the field `solutions` of a `detailed=true` result.
 
 For `mirror`, the root is the exact reflection `-conj(ω)` of the ordinary
-`(s, l, -m, n)` root at the same spin, with the angular data recomputed; with
-`mirror_guess` it is polished on the negative-real branch from that guess. The
-amplitudes and the frequency derivative are evaluated at the mirror root.
+`(s, l, -m, n)` root at the same spin, with the angular data recomputed. If that
+ordinary root is not accepted (and did not stop at the negative imaginary
+axis), the mirror root is polished on the negative-real branch starting from
+the reflection; with `mirror_guess` it is polished on the negative-real branch
+from that guess. The amplitudes and the frequency derivative are evaluated at
+the mirror root.
 
 `convention` (`:overtone`, `:complete_spectrum` or `:leaver`), `inversion_index`
 and `segment` (`0`, `1` or `:auto`) have the meaning described in
 [`qnm_frequency`](@ref); `segment` selects the segment of a sequence that ends
-on the negative imaginary axis, and the mirror of segment `k` is seeded from
-the ordinary segment `k`. `primary_guess` and `mirror_guess` are optional
-explicit frequency guesses for the `ordinary` and `mirror` roots
-(`convention=:leaver` requires one).
+on the negative imaginary axis, and the mirror root of segment `k` is the
+reflection of segment `k` of the ordinary `(s, l, -m, n)` sequence.
+`primary_guess` and `mirror_guess` are optional explicit frequency guesses for
+the `ordinary` and `mirror` roots (`convention=:leaver` requires one).
 
 Use [`qnm_pair`](@ref) only when both branches are required in one result.
 `root_options` and `excitation_options` are optional NamedTuples forwarded to
@@ -493,11 +500,13 @@ end
 """
     qnm_pair(a, s, l, m, n; kwargs...)
 
-Compute and return both complete QNM branches as a `QNMPairResult` with fields
-`ordinary` and `mirror`. Keywords are those of [`qnm`](@ref). Without
-`mirror_guess`, the mirror root is the reflection `-conj(ω)` of the ordinary
-`(s, l, -m, n)` root at the same spin. Prefer [`qnm`](@ref) when only
-one branch is needed so the other branch is not evaluated.
+Compute both branches of one mode and return a `QNMPairResult` with fields
+`ordinary` and `mirror`, each a result of [`qnm`](@ref). Keywords are those of
+[`qnm`](@ref), and the mirror root follows the same rule: without
+`mirror_guess` it is the reflection `-conj(ω)` of the ordinary `(s, l, -m, n)`
+root at the same spin, polished from that reflection only when that ordinary
+root is not accepted. Prefer [`qnm`](@ref) when only one branch is needed so
+the other branch is not evaluated.
 """
 function qnm_pair(a, s::Integer, l::Integer, m::Integer, n::Integer;
         convention=:overtone,

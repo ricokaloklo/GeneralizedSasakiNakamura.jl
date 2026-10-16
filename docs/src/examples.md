@@ -4,17 +4,32 @@
 Pages = ["examples.md"]
 ```
 
-The plots use `Plots` and `LaTeXStrings`, and Example 4 also uses
-`SpinWeightedSpheroidalHarmonics`, `DifferentialEquations`, `Statistics`,
-`CubicSplines` and `QuadGK`; add them to your environment with `Pkg.add` first.
+Each example links its notebook in
+[`examples/`](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/tree/main/examples).
+Add the packages the examples use (Example 4 also uses the standard library
+`Statistics`):
+
+```julia
+using Pkg
+Pkg.add(["Plots", "LaTeXStrings", "SpinWeightedSpheroidalHarmonics",
+    "DifferentialEquations", "CubicSplines", "QuadGK"])
+```
 
 ## Example 1: ISEM radial functions
 
-The public ISEM route constructs the GSN function $X$ directly. The
-Teukolsky function $R$ and the auxiliary function $Y$ used by the point-particle
-convolutions are numerical wrappers
-around that route. The $Y$ wrapper is available for `s = -2, IN` and
-`s = +2, UP`.
+Notebook: [examples/GSN-function.ipynb](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/GSN-function.ipynb)
+
+ISEM (iterative series expansion matching) solves the generalized
+Sasaki-Nakamura (GSN) equation for the GSN function $X$ directly.
+`Teukolsky_radial` converts that solution into the Teukolsky function $R$, and
+`Y_radial` into $Y$, the auxiliary function used by the point-particle
+convolutions: $Y \propto e^{-i\phi(r)}R/r^2$ for $s=-2$ with `IN` and
+$Y \propto e^{i\phi(r)}\Delta^2R/r^2$ for $s=+2$ with `UP` (the only two cases),
+where $d\phi/dr = K/\Delta$, $K = (r^2+a^2)\omega - am$ and
+$\Delta = r^2 - 2r + a^2$. `method = "ISEM"` never falls back to another
+solver. With the default `"auto"`, `GSN_radial` and `Teukolsky_radial` try ISEM
+first and, if ISEM fails and no `xm` was given, fall back to the ODE methods
+with a warning; `Y_radial` never falls back.
 
 ```julia
 using GeneralizedSasakiNakamura
@@ -47,149 +62,192 @@ Y_values = getindex.(y_state, 1)
 
 pX = plot(rstar_grid, [real.(X_values) imag.(X_values)];
     label = ["real" "imag"], xlabel = L"r_*/M", ylabel = L"X(r_*)",
-    title = "Direct GSN solution")
+    title = "GSN function X")
 pR = plot(r_grid, [real.(R_values) imag.(R_values)];
     label = ["real" "imag"], xlabel = L"r/M", ylabel = L"R(r)",
-    title = "Teukolsky wrapper")
+    title = "Teukolsky function R")
 pY = plot(r_grid, [real.(Y_values) imag.(Y_values)];
     label = ["real" "imag"], xlabel = L"r/M", ylabel = L"Y(r)",
-    title = "Source-adapted wrapper")
+    title = "Auxiliary function Y")
 
 plot(pX, pR, pY; layout = (3, 1), size = (900, 960))
 ```
 
-The full X state evaluates $X$ and $dX/dr_*$ together:
+`X(rstar)` evaluates $X$ at the tortoise coordinate $r_*$; `R(r)` and `Y(r)`
+take the Boyer-Lindquist radius $r$. The fields
+`X.GSN_solution`, `R.Teukolsky_solution` and `Y.Y_solution` used above return
+tuples that start with the value and its derivative in the same coordinate, so
+$dX/dr_*$ comes with no extra work:
 
 ```julia
 plot(rstar_grid, [real.(dXdrstar_values) imag.(dXdrstar_values)];
     label = ["real" "imag"], xlabel = L"r_*/M", ylabel = L"dX/dr_*",
-    title = "Derivative from the same ISEM series evaluation")
+    title = "dX/dr_*, returned together with X")
 ```
 
-## Example 2: QNM quick start
+## Example 2: Kerr quasinormal modes
 
-The compact call computes the directly validated GSN quantities for one branch:
+Notebook: [examples/qnm-interface.ipynb](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/qnm-interface.ipynb)
+
+`qnm(a, s, l, m, n)` computes one QNM (units $G=c=M=1$): its frequency, GSN
+amplitudes and excitation factor. It returns the `ordinary` mode
+($\operatorname{Re}\omega > 0$); `qnm(a, s, l, m, n, mirror)` returns the
+`mirror` mode ($\operatorname{Re}\omega < 0$).
 
 ```julia
-ordinary_mode = qnm(0.68, -2, 2, 2, 0)
-mirror_mode = qnm(0.68, -2, 2, 2, 0, mirror)
+using GeneralizedSasakiNakamura
 
-ordinary_mode.omega
-ordinary_mode.lambda
-ordinary_mode.incidence_amplitude
-ordinary_mode.reflection_amplitude
-ordinary_mode.incidence_derivative
-ordinary_mode.excitation_factor
+ordinary_mode = qnm(0.68, -2, 2, 2, 0)
 ```
 
-The default result does not construct radial functions. Request them only when
-needed; `X` uses $r_*$, while `Y` and `R` use $r$:
+```text
+QuasiNormalMode(
+    parameters = (a = 0.68, s = -2, l = 2, m = 2, n = 0)
+    omega = 0.52397510429008398 - 0.081512623631199516im
+    lambda = 1.6550030612535795 + 0.36026776076186151im
+    incidence_amplitude = -2.9652484956329296e-15 + 1.0066747053005698e-14im
+    reflection_amplitude = -0.80073261705109955 + 0.029136276807086189im
+    incidence_derivative = -2.143807932934116 + 6.7875557748638862im
+    excitation_factor = 0.01983394079017144 + 0.10427056860707475im
+    formalism = GSN)
+```
+
+This `QNMResult` (displayed as `QuasiNormalMode`) passed every accuracy check.
+Otherwise `qnm` returns a `QNMEstimate` or a `QNMFailure`; a zero-damping
+mode at $a = \pm 1$ gives a `QNMEndpointResult` without amplitudes. Check
+`.status` before using the values. The fields are
+
+```julia
+ordinary_mode.omega                  # QNM frequency ω
+ordinary_mode.lambda                 # separation constant λ of the radial Teukolsky equation
+ordinary_mode.incidence_amplitude    # A^{GSN,inc}, which vanishes at a QNM
+ordinary_mode.reflection_amplitude   # A^{GSN,ref}
+ordinary_mode.incidence_derivative   # α = dA^{GSN,inc}/dω at the QNM frequency
+ordinary_mode.excitation_factor      # A^{GSN,ref}/(2ωα)
+```
+
+where $A^{{\rm GSN},{\rm inc}}$ and $A^{{\rm GSN},{\rm ref}}$ are the incidence
+and reflection amplitudes of the `IN` GSN solution with unit transmission
+amplitude.
+
+With `detailed=true`, `qnm` also returns the radial solutions at the QNM
+frequency: `X` and `R` are the `IN` solutions with unit GSN and unit Teukolsky
+transmission amplitude, and `Y` is the `IN` solution for $s=-2$ (the `UP`
+solution for $s=+2$, `missing` otherwise). `X` takes $r_*$, while `Y` and `R`
+take $r$:
 
 ```julia
 detailed = qnm(0.68, -2, 2, 2, 0; detailed=true)
 r = 10.0
 rstar = rstar_from_r(0.68, r)
 
-detailed.X(rstar)
-detailed.Y(r)
-detailed.R(r)
+(X = detailed.X(rstar), Y = detailed.Y(r), R = detailed.R(r))
 ```
 
-When only the frequency is needed, `qnm_frequency` and `qnm_sequence` take the
-same numbers:
+```text
+(X = -1.0392692738424993 - 1.6891143363807735im, Y = 0.6028384381375009 + 0.14047607467470857im, R = 992.3634889462411 - 381.00316036321533im)
+```
+
+For the frequency alone, `qnm_frequency(a, s, l, m, n)` returns a `LeaverResult`
+(frequency in `.omega`), and `qnm_sequence(spins, s, l, m, n)` follows the mode
+along a list of spins, returning one `LeaverResult` per spin up to and
+including the first root that is not accepted:
 
 ```julia
 root = qnm_frequency(0.68, -2, 2, 2, 0)
 roots = qnm_sequence([0.0, 0.3, 0.68], -2, 2, 2, 0)
 
-qnm_frequency(0.68, -2, 2, 2, 9; convention=:complete_spectrum)   # Cook's 8₁
-qnm_frequency(0.5, -2, 2, 0, 10; segment=1)                       # Cook's 10₁
+(root.omega, [r.omega for r in roots])
 ```
 
-See [Quasinormal modes](@ref) for the excitation-factor convention, the overtone
-label conventions and the segments.
+```text
+(0.523975104290084 - 0.08151262363119952im, ComplexF64[0.3736716844180418 - 0.08896231568893566im, 0.41952668176385144 - 0.08772927189431194im, 0.523975104290084 - 0.08151262363119957im])
+```
 
-## Example 3: Plotting reflectivity of black holes (in GSN formalism)
+Two keywords matter for some high overtones (full rules in
+[Quasinormal modes](@ref)). For $s=-2$, $\ell=2$, $|m|=2$ co-rotating modes ($am>0$ for
+`ordinary`, $am<0$ for `mirror`), the Schwarzschild root $-2i$ splits at
+$a\neq0$ into Cook & Zalutskiy's $8_0$ (less damped) and $8_1$: the default
+`convention = :overtone` returns $8_0$ for `n = 8` and has no label for $8_1$,
+which `convention = :complete_spectrum` returns for `n = 9`. The $s=-2$,
+$\ell=2$, $m=0$, `n = 10` sequence ends on the negative imaginary axis near
+$a\approx0.39$ and reappears at larger spin ($10_1$). Beyond its end the
+default `segment = 0` fails, and `segment = 1` returns the reappearing piece:
+
+```julia
+(n8 = qnm_frequency(0.68, -2, 2, 2, 8).omega,
+ n8_1 = qnm_frequency(0.68, -2, 2, 2, 9; convention=:complete_spectrum).omega)
+
+(segment0 = qnm_frequency(0.5, -2, 2, 0, 10).stop_reason,
+ segment1 = qnm_frequency(0.5, -2, 2, 0, 10; segment=1).omega)
+```
+
+```text
+(n8 = 0.410769950743262 - 1.5086151268999994im, n8_1 = 0.4091276402272317 - 1.712771299136728im)
+(segment0 = :negative_imaginary_axis_endpoint, segment1 = 0.05104369416307723 - 2.5823555488023113im)
+```
+
+## Example 3: Ratio of reflected to incident GSN amplitudes
+
+Notebook: [examples/plot-reflectivity.ipynb](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/plot-reflectivity.ipynb)
+
+For each frequency we solve for the `IN` GSN function. At infinity
+$X^{\rm in} \to A^{{\rm GSN},{\rm inc}} e^{-i\omega r_*} + A^{{\rm GSN},{\rm ref}} e^{+i\omega r_*}$,
+and we plot $|A^{{\rm GSN},{\rm ref}}/A^{{\rm GSN},{\rm inc}}|$
+(`reflection_amplitude/incidence_amplitude`). This ratio depends on how the
+GSN function is defined and is not the energy reflectivity of the black hole.
+At $a = 0$ the curves for $s$ and $-s$ coincide, so only $s = -2, -1, 0$ are
+computed. At $a = 0.7$ they differ: the ratio rises above 1 at low frequency
+for $s = 1, 2$ and stays below 1 for $s = -1, -2$. This does not mark
+superradiance, which occurs for every $s$ at $\omega < m\Omega_H \approx 0.41$.
+
 ```julia
 using GeneralizedSasakiNakamura
 using Plots, LaTeXStrings
 
-sarr = [-2, -1, 0, 1, 2];
-l=2;m=2;a=0.0;
-reflectivity_from_inf_nonrotating = Dict()
-omegas = collect(0.01:0.01:2.0);
-
-for s in sarr
-    reflectivity_from_inf_nonrotating[s] = []
-    for omg in omegas
-        Xin = GSN_radial(s, l, m, a, omg, IN; method = "ISEM")
-        append!(reflectivity_from_inf_nonrotating[s], Xin.reflection_amplitude/Xin.incidence_amplitude)
-    end
+function reflectivity_curve(s, l, m, a, omegas)
+    return [begin
+        Xin = GSN_radial(s, l, m, a, omega, IN; method = "ISEM")
+        Xin.reflection_amplitude / Xin.incidence_amplitude
+    end for omega in omegas]
 end
+
+l = 2
+m = 2
+omegas = collect(range(0.02, 2.0; length = 100))
 ```
+
 ```julia
-plot(omegas, abs.(reflectivity_from_inf_nonrotating[-2]), linewidth=2, color=theme_palette(:auto)[1], label=L"s = \pm 2")
-plot!(omegas, abs.(reflectivity_from_inf_nonrotating[-1]), linewidth=2, color=theme_palette(:auto)[2], label=L"s = \pm 1")
-plot!(omegas, abs.(reflectivity_from_inf_nonrotating[0]), linewidth=2, color=theme_palette(:auto)[3], label=L"s = 0")
-plot!(
-    legendfontsize=14,
-    xguidefontsize=14,
-    yguidefontsize=14,
-    xtickfontsize=14,
-    ytickfontsize=14,
-    foreground_color_legend=nothing,
-    background_color_legend=nothing,
-    legend=:bottomright,
-    formatter=:latex,
-    xlabel=L"M\omega",
-    ylabel=L"| \hat{B}^{\mathrm{ref}}_{\mathrm{SN}}/\hat{B}^{\mathrm{inc}}_{\mathrm{SN}} |",
-    left_margin = 2Plots.mm,
-    right_margin = 3Plots.mm,
-)
-title!(L"a/M = 0")
+nonrotating = Dict(s => reflectivity_curve(s, l, m, 0.0, omegas) for s in (-2, -1, 0))
+
+plot(omegas, abs.(nonrotating[-2]); linewidth = 2, label = L"s = \pm 2")
+plot!(omegas, abs.(nonrotating[-1]); linewidth = 2, label = L"s = \pm 1")
+plot!(omegas, abs.(nonrotating[0]); linewidth = 2, label = L"s = 0")
+plot!(; xlabel = L"M\omega", ylabel = L"|A^{\mathrm{GSN,ref}}/A^{\mathrm{GSN,inc}}|",
+    title = L"a/M=0", legend = :bottomright)
 ```
 ![reflectivity-aOverM_0.png](reflectivity-aOverM_0.png)
 ```julia
-sarr = [-2, -1, 0, 1, 2];
-l=2;m=2;a=0.7;
-reflectivity_from_inf_rotating = Dict()
-omegas = collect(0.01:0.01:2.0);
+rotating = Dict(s => reflectivity_curve(s, l, m, 0.7, omegas) for s in -2:2)
 
-for s in sarr
-    reflectivity_from_inf_rotating[s] = []
-    for omg in omegas
-        Xin = GSN_radial(s, l, m, a, omg, IN; method = "ISEM")
-        append!(reflectivity_from_inf_rotating[s], Xin.reflection_amplitude/Xin.incidence_amplitude)
-    end
+plot(omegas, abs.(rotating[-2]); linewidth = 2, label = L"s = -2")
+for s in -1:2
+    plot!(omegas, abs.(rotating[s]); linewidth = 2, label = latexstring("s = $s"))
 end
-```
-```julia
-plot(omegas, abs.(reflectivity_from_inf_rotating[-2]), linewidth=2, color=theme_palette(:auto)[1], label=L"s = -2")
-plot!(omegas, abs.(reflectivity_from_inf_rotating[-1]), linewidth=2, color=theme_palette(:auto)[2], label=L"s = -1")
-plot!(omegas, abs.(reflectivity_from_inf_rotating[0]), linewidth=2, color=theme_palette(:auto)[3], label=L"s = 0")
-plot!(omegas, abs.(reflectivity_from_inf_rotating[1]), linewidth=2, color=theme_palette(:auto)[4], label=L"s = 1")
-plot!(omegas, abs.(reflectivity_from_inf_rotating[2]), linewidth=2, color=theme_palette(:auto)[5], label=L"s = 2")
-plot!(
-    legendfontsize=14,
-    xguidefontsize=14,
-    yguidefontsize=14,
-    xtickfontsize=14,
-    ytickfontsize=14,
-    foreground_color_legend=nothing,
-    background_color_legend=nothing,
-    legend=:bottomright,
-    formatter=:latex,
-    xlabel=L"M\omega",
-    ylabel=L"| \hat{B}^{\mathrm{ref}}_{\mathrm{SN}}/\hat{B}^{\mathrm{inc}}_{\mathrm{SN}} |",
-    left_margin = 2Plots.mm,
-    right_margin = 3Plots.mm,
-)
-title!(L"a/M = 0.7")
+plot!(; xlabel = L"M\omega", ylabel = L"|A^{\mathrm{GSN,ref}}/A^{\mathrm{GSN,inc}}|",
+    title = L"a/M=0.7", legend = :bottomright)
 ```
 ![reflectivity-aOverM_0p7.png](reflectivity-aOverM_0p7.png)
 
-## Example 4: Calculating the gravitational waveform induced by a particle falling radially into a Kerr black hole
-Here, we show an example of our code implementation in calculating the gravitational waveform induced by a particle falling radially into a Kerr black hole along its spin axis (i.e. $\theta=0$ or $z$-axis). The particle has zero initial velocity at infinity, which we refer to as the rest limit in [Yin, Lo & Chen, arXiv:2511.08673](https://arxiv.org/abs/2511.08673); the figure numbers below refer to that paper. It also means the orbital energy per mass is $\mathcal{E}=1$.
+## Example 4: Waveform of a particle falling radially into a Kerr black hole
+
+Notebook: [examples/radialinfall-infinity.ipynb](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/radialinfall-infinity.ipynb)
+
+This example follows Yin, Lo & Chen, Phys. Rev. D 113, 124007 (2026), [arXiv:2511.08673](https://arxiv.org/abs/2511.08673); figure numbers refer to the arXiv version. A particle starts from rest at infinity (the paper's rest limit, orbital energy per unit mass $\mathcal{E}=1$) and falls along the spin axis ($\theta=0$) of a Kerr black hole; we compute the gravitational waveform.
+
+The package's point-particle functions (`Teukolsky_pointparticle_mode`, `GSN_pointparticle_mode`, `Teukolsky_pointparticle_flux`) take bound orbits specified by $(a, p, e, x)$. This plunge is not one, so we build the source and the convolution integral by hand and use the package for the homogeneous GSN solution (`GSN_radial`) and `r_from_rstar`.
+
+Notation ($G=c=M=1$): $\Delta=r^2-2r+a^2$, $\Sigma=r^2+a^2\cos^2\theta$, $\rho=-1/(r-ia\cos\theta)$, $S={}_{-2}S_{\ell 0}^{a\omega}(\theta)$ is the spin-weighted spheroidal harmonic, and $\mathscr{L}_n^\dagger=\partial_\theta+a\omega\sin\theta+n\cot\theta$ (for $m=0$). $\mu$ is the mass of the particle, and $(u,\theta,\varphi)$ are the retarded time $u=t-r_*$ and the angles of the observer. $X^\infty_{\ell m\omega}$ is the coefficient of $e^{i\omega r_*}$ as $r_*\to\infty$ of the $s=-2$ GSN function sourced by the particle, per unit $\mu$; the Teukolsky amplitude there is $-4\omega^2/c_0$ times $X^\infty_{\ell m\omega}$, where $c_0=\lambda(\lambda+2)-12i\omega-12a\omega(a\omega-m)$ and $\lambda$ is the separation constant of the radial Teukolsky equation. $\xi(r)$ and $\mathscr{A}$ are defined in the paper for general orbits.
 
 
 ```julia
@@ -230,15 +288,13 @@ $u^r=-\sqrt{\frac{2r}{r^2+a^2}},$
 
 $\mathcal{N}=u^t+\frac{\Sigma}{\Delta}u^r=\frac{r^2+a^2}{\Delta}\left(1-\sqrt{\frac{2r}{r^2+a^2}}\right).$
 
-One can see that $\mathcal{N}(r\to r_+)$ is non-vanishing but hard to compute directly because both the denominator and the term in the bracket are zero in the limit. We also need its first- and second-order derivatives with respect to $r$. So we expand them into series of $x=r-r_+$ when $r_*\to-\infty$, namely
+Both $\Delta$ and the bracket vanish at $r_+$, but with $q=\sqrt{2r/(r^2+a^2)}$ one has $\Delta=(r^2+a^2)(1-q^2)$, so $\mathcal{N}=1/(1+q)$, which is regular, with $\mathcal{N}(r_+)=1/2$. `N_expansions` below returns $\mathcal{N}$, $\mathcal{N}'$ and $\mathcal{N}''$ from this closed form, except near the horizon, $x=r-r_+<3\times10^{-3}$, where it uses their series in $x$ up to $x^5$ (relative accuracy $10^{-12}$):
 
 $\mathcal{N}(r\to r_+)=n^0_0+n^0_1x+n^0_2x^2+\dots,$
 
 $\mathcal{N}'(r\to r_+)=n^1_0+n^1_1x+n^1_2x^2+\dots,$
 
 $\mathcal{N}''(r\to r_+)=n^2_0+n^2_1x+n^2_2x^2+\dots.$
-
-If $x<3\times10^{-3}$, we can reach the $10^{-12}$ relative tolerance by truncating at $n_5^{0,1,2}$.
 
 
 ```julia
@@ -313,7 +369,7 @@ ${w_{nn}^{(1)}} = w_{nn}^{(0)}\left(\frac{\mathcal{N}'}{\mathcal{N}}-\frac{U'}{U
 
 ${w_{nn}^{(1)}}' = {w_{nn}^{(0)}}'(\frac{\mathcal{N}'}{\mathcal{N}}-\frac{U'}{U})+{w_{nn}^{(0)}}\left[\frac{\mathcal{N}''}{\mathcal{N}}-\left(\frac{\mathcal{N}'}{\mathcal{N}}\right)^2-\frac{U''}{U}+\left(\frac{U'}{U}\right)^2\right]+{w_{nn}^{(0)}}''.$
 
-Numerically, we give $f_{0,1,2}$ as functions of $r$
+`f_terms` gives $f_{0,1,2}$ as functions of $r$:
 
 
 ```julia
@@ -349,7 +405,7 @@ function f_terms(a, ω, S2)
 end
 ```
 
-One can reproduce Figure 5(a) of the paper by
+The code below reproduces Figure 5(a). Since $f_{0,1,2}$ are proportional to $S''(0)$ (`S2`), it sets `S2 = 1` to show their dependence on $r$.
 
 
 ```julia
@@ -370,6 +426,7 @@ r_to_minus_three = [5*r^(-3.0) for r in r_benchmark]
 f_terms_rest = plot(r_values,
     f0_values,
     xlabel = L"r/M",
+    ylabel = L"|f_i(r)|",
     label = L"f_0",
     legendfont = font(12,"Computer Modern"),
     legendfontsize=14,
@@ -493,11 +550,11 @@ plot!(r_benchmark,
 
 ![f_terms_scaling.png](f_terms_scaling.png)
 
-The phase term 
+For the phase $\chi$, `t_of_rs` integrates
 
-$t(r_*)=\int_{r_*^{\rm in}}^{r_*}\frac{d t}{d r} \frac{d r}{d \tilde{r}_*} d \tilde{r}_*=\int_{r_*^{\rm in}}^{r_*}\frac{u^t}{u^r} \frac{\Delta}{r^2+a^2} d \tilde{r}_* = \int_{r_*^{\rm in}}^{r_*}\frac{1}{u^r} d \tilde{r}_*$ 
+$\frac{dt}{dr_*}=\frac{dt}{dr}\frac{dr}{dr_*}=\frac{u^t}{u^r}\frac{\Delta}{r^2+a^2}=\frac{1}{u^r}$
 
-can be solved numerically from some initial value $t(r_*^{\rm in})= - r_*^{\rm in}$ outwards to make sure $v(r_*^{\rm in})=t(r_*^{\rm in})+r_*^{\rm in}=0$.
+outwards from $r_*^0=\min(-100,\,50\log_{10}(1-a))$, starting from $t(r_*^0)=-r_*^0$ so that $v=t+r_*$ vanishes there.
 
 
 ```julia
@@ -544,7 +601,7 @@ plot(rs_values,
 
 ![v_of_rs.png](v_of_rs.png)
 
-We precompute the integrals in $\mathcal{W}_{nn}$ as ODE solving problems. The truncation of the integral $r_*^{\rm max}\to\infty$ can be set to some large numbers to make sure the convergence and precision.
+We precompute the integrals in $\mathcal{W}_{nn}$ by solving ODEs. Their upper limit $r_*^{\rm max}$ stands in for infinity; `Wnn_integrals` sets it to $3\max(r_*^{\rm out},\,100\pi/|\omega|)$, with $r_*^{\rm out}$ its keyword `rsout`.
 
 
 ```julia
@@ -605,7 +662,7 @@ function Wnn_integrals(l, a, omega; rsout = 10000)
 end
 ```
 
-One can reproduce Figure 5(b) of the paper by
+The code below reproduces Figure 5(b):
 
 
 ```julia
@@ -653,13 +710,11 @@ plot!(rs_values,
 
 ![mathcalW.png](mathcalW.png)
 
-Then we do Green's function convolution integral defined by
+The Green's-function convolution gives
 
-$\frac{X_{\ell 0\omega}^\infty}{c_0}=\frac{1}{2i\omega B_{\rm SN}^{\rm inc}}\int_{r_*^{\rm in}}^{r_*^{\rm out}}\frac{\Delta X_{\ell 0 \omega}^{\rm in}(r_*)\mathcal{W}_{nn}(r_*)}{r^2(r^2+a^2)^{3/2}}e^{-i\omega r_*}d r_*,$
+$\frac{X_{\ell 0\omega}^\infty}{c_0}=\frac{1}{2i\omega A^{{\rm GSN},{\rm inc}}_{\ell 0\omega}}\int_{r_*^{\rm in}}^{r_*^{\rm out}}\frac{\Delta X_{\ell 0 \omega}^{\rm in}(r_*)\mathcal{W}_{nn}(r_*)}{r^2(r^2+a^2)^{3/2}}e^{-i\omega r_*}d r_*,$
 
-where $r_*^{\rm in}\to -\infty$ and $r_*^{\rm out}\to +\infty$. According to our numerical experiment, $r_*^{\rm in}={\rm min}\left(-50,50\lg(1-a)\right)$ and $r_*^{\rm out}={\rm max}\left(5000, \frac{50\pi}{|\omega|}\right)$ are sufficient for us to achieve $10^{-8}$ relative error.
-
-To avoid integrating too far away, we define a new function "baseline" to find the baseline of the oscillatory integral and iterate the process by doubling the $r_*^{\rm out}$ until we find the baseline.
+where $X^{\rm in}_{\ell 0\omega}$ is the `IN` GSN solution with unit transmission amplitude and $A^{{\rm GSN},{\rm inc}}_{\ell 0\omega}$ its incidence amplitude (`X.incidence_amplitude`). In place of $r_*^{\rm in}\to-\infty$ and $r_*^{\rm out}\to+\infty$, `SN_convolution` integrates from $r_*^{\rm in}=\min(-50,\,50\log_{10}(1-a))$ to $r_*^{\rm out}=\max(5000,\,50\pi/|\omega|)$, which kept the truncation error below $10^{-8}$ (relative) in our tests. The running integral still oscillates at $r_*^{\rm out}$, so `baseline` returns, for its real and imaginary parts, the midpoint between the mean of the maxima and the mean of the minima over $0.9\,r_*^{\rm out}\le r_*\le r_*^{\rm out}$. When it finds no maximum or no minimum there, `SN_convolution` doubles $r_*^{\rm out}$ and tries again. The ODE tolerances (`1e-8`) and this baseline estimate limit the accuracy of the result.
 
 
 ```julia
@@ -715,14 +770,14 @@ end
 
 
 ```julia
-function SN_convolution(l, omega, a; rsout = 5000, rsin = - 50)
+function SN_convolution(l, a, omega; rsout = 5000, rsin = - 50)
     s = -2
     m = 0
     rsin = min(rsin, 50*log10(1-a))
     rsout = max(50 * pi / abs(omega), rsout)
     # ISEM constructs X itself; rsin and rsout are convolution bounds.
     X = GSN_radial(s, l, m, a, omega, IN; method = "ISEM")
-    Binc = X.incidence_amplitude
+    Ainc = X.incidence_amplitude
     W = Wnn_integrals(l, a, omega; rsout = rsout)
     function integrand!(du, u, p, rs)
         r = r_from_rstar(a, rs)
@@ -732,13 +787,13 @@ function SN_convolution(l, omega, a; rsout = 5000, rsin = - 50)
     prob = ODEProblem(integrand!, u0, (rsin, rsout))
     sol = solve(prob, abstol=1e-8, reltol=1e-8)
     function soln(rs)
-        return sol(rs)[1] / (2im*omega*Binc)
+        return sol(rs)[1] / (2im*omega*Ainc)
     end
     Δr = 0.1*rsout
     result = baseline(soln, rsout-Δr, rsout)
 
     if isnan(result)
-        return SN_convolution(l, omega, a; rsout = 2 * rsout, rsin = rsin)
+        return SN_convolution(l, a, omega; rsout = 2 * rsout, rsin = rsin)
     else
         return result
     end
@@ -746,30 +801,32 @@ end
 ```
 
 
-```julia
-@time SN_convolution(2, 1e-3, 0.9)
-```
-
-     11.004745 seconds (44.25 M allocations: 1.943 GiB, 9.33% gc time, 66.80% compilation time: <1% of which was recompilation)
-
-
-
-    1.384211107451771 - 0.9020032118235283im
-
-
+The `@time` figures below include compilation and depend on the machine.
 
 ```julia
-@time SN_convolution(2, 0.5, 0.9)
+@time SN_convolution(2, 0.9, 1e-3)
 ```
 
-      0.745898 seconds (5.46 M allocations: 244.566 MiB, 1.75% compilation time)
+     20.812912 seconds (117.12 M allocations: 5.018 GiB, 10.21% gc time, 79.77% compilation time)
 
 
 
-    -0.011973774895345117 + 0.035421356682873745im
+    1.3842122849138252 - 0.9019957350133953im
 
 
-We compute the amplitude spectrum $\left|\frac{X_{\ell 0\omega}^\infty}{c_0}\right|$ as a function of $\omega$ with $\ell=2$ and $a=0.9$ as an example. The code will run for about 3 minutes on an Apple m2 air.
+
+```julia
+@time SN_convolution(2, 0.9, 0.5)
+```
+
+      2.625547 seconds (6.70 M allocations: 312.711 MiB, 9.05% gc time, 68.27% compilation time)
+
+
+
+    -0.011973158964720967 + 0.03542150181900223im
+
+
+The amplitude spectrum $\left|\frac{X_{\ell 0\omega}^\infty}{c_0}\right|$ for $\ell=2$ and $a=0.9$ (the loop takes a few minutes):
 
 
 ```julia
@@ -779,15 +836,15 @@ omega_values_3 = range(0.001, 0.01, 6)
 omega_values_4 = range(0.01, 1.2, 95)
 # Alternative, nonuniform FFT can be used
 omega_values = union(omega_values_1, omega_values_2, omega_values_3, omega_values_4)
-@time AmpX_values_2_rest = [SN_convolution(2, omega, 0.9) for omega in omega_values]
+@time AmpX_values_2_rest = [SN_convolution(2, 0.9, omega) for omega in omega_values]
 println()
 ```
 
-    174.357890 seconds (1.21 G allocations: 53.720 GiB, 9.52% gc time, 0.01% compilation time)
+    147.008245 seconds (1.10 G allocations: 48.436 GiB, 14.79% gc time, 2.02% compilation time)
     
 
 
-One can reproduce the $\ell=2$ curve in Figure 7(a) by
+The $\ell=2$ curve of Figure 7(a):
 
 
 ```julia
@@ -795,6 +852,7 @@ N = Int64(length(omega_values)/2)
 Amp_head_on_rest = plot(omega_values[N+1:2N],
     abs.(AmpX_values_2_rest[N+1:2N]),
     xlabel = L"M\omega",
+    ylabel = L"|X^\infty_{\ell 0\omega}/c_0|",
     label = L"\ell=2",
     legendfont = font(12,"Computer Modern"),
     yscale =:log10,
@@ -815,11 +873,11 @@ Amp_head_on_rest = plot(omega_values[N+1:2N],
 
 ![Xinf_omega_ell2.png](Xinf_omega_ell2.png)
 
-One can also reproduce the $\ell=2$ curve of the energy spectrum
+The $\ell=2$ curve of the energy spectrum
 
 $\left(\frac{d \mathcal{E}}{d\omega}\right)_\ell^\infty=8\omega^2\mu^2\left(\left|\frac{X_{\ell 0\omega}^\infty}{c_0}\right|^2+\left|\frac{X_{\ell 0-\omega}^\infty}{c_0}\right|^2\right)$
 
-in Figure 7(b) by
+in Figure 7(b):
 
 
 ```julia
@@ -851,25 +909,19 @@ Spectrum_head_on_rest = plot(omega_values[N+1:2N],
 
 ![dEdomega_ell2.png](dEdomega_ell2.png)
 
-To facilitate a smoother inverse Fourier transform, we use "CubicSpline" to interpolate the off-grid $\omega$ points to compute
+To make the inverse Fourier transform smoother, we interpolate between the sampled frequencies with `CubicSpline` and compute
 
-$h_+-ih_\times =\sum_\ell \int_{-\infty}^\infty \tilde{h}_\ell(\omega)e^{-i\omega u} d\omega$,
+$h_+-ih_\times =\sum_\ell \int_{-\infty}^\infty \tilde{h}_\ell(\omega)e^{-i\omega u} d\omega,$
 
 where
 
-$\tilde{h}(\omega)=\frac{8\mu}{r}\frac{X_{\ell 0\omega}^\infty}{c_0}{}_{-2}S_{\ell 0}^{a\omega}(\theta,\varphi)$.
+$\tilde{h}_\ell(\omega)=\frac{8\mu}{r}\frac{X_{\ell 0\omega}^\infty}{c_0}{}_{-2}S_{\ell 0}^{a\omega}(\theta,\varphi).$
 
-Here we still use $\ell=2$ as an example.
+We again take $\ell=2$. Since $|X^\infty_{\ell 0\omega}/c_0|\sim|\omega|^{(\ell-3)/3}$ diverges for $\ell=2$ as $\omega\to0$, the spectrum is sampled only for $|\omega|\geq\omega_{\rm min}=10^{-3}$, and the part of the integral with $|\omega|<\omega_{\rm min}$ is added analytically. There $\tilde{h}_2(\omega)\approx\tilde{h}_2(\pm\omega_{\rm min})\,|\omega/\omega_{\rm min}|^{-1/3}$ and, for $|u|\ll1/\omega_{\rm min}$, $e^{-i\omega u}\approx1$, so
 
-Since we have
+$\int_{-\omega_{\rm min}}^{\omega_{\rm min}}\tilde{h}_2(\omega)e^{-i\omega u}\,d\omega\approx\frac{3}{2}\,\omega_{\rm min}\left[\tilde{h}_2(\omega_{\rm min})+\tilde{h}_2(-\omega_{\rm min})\right].$
 
-$\left|\frac{X_{\ell 0\omega}}{c_0}\right|\sim \omega^{(\ell -3)/3}$
-
-which is divergent for $\ell=2$ in the zero frequency limit. We can fix the error of $\ell=2$ originating from truncating $|\omega_{\rm min}|=10^{-3}$ analytically by
-
-$\int_{0}^{\omega_{\rm min}}\omega^{-1/3}d\omega=\frac{3}{2}\omega_{\rm min}^{2/3}$.
-
-One can check this analytical fix by removing it from the following inverse FT function and plot the waveform. When it is removed, the waveform does not return to zero (which could be mistaken for a memory effect) when $u>0$.
+In `hu` below, `amp(ω)` interpolates $\frac{X^\infty_{\ell 0\omega}}{c_0}{}_{-2}S_{\ell 0}^{a\omega}(\theta,\varphi)$, so $r\tilde{h}_\ell/\mu$ is `8 * amp(ω)` and the correction is `8 * (amp(1e-3) + amp(-1e-3)) * 1e-3 * 3/2`. Without it, the waveform does not return to zero for $u>0$, which could be mistaken for a memory effect.
 
 
 ```julia
@@ -886,9 +938,9 @@ function hu(omega, amplitude, a, l, θ, ϕ)
         h1 = quadgk(ω -> amp(ω) * exp(-1im * ω * u) * 8, 1e-3, omega[end])[1]
         h2 = quadgk(ω -> amp(ω) * exp(-1im * ω * u) * 8, omega[1], -1e-3)[1]
         h = h1 + h2
-        ### fix error
+        ### add the integral over |ω| < 1e-3, where amp(ω) ∝ |ω|^(-1/3)
         if l == 2
-            h += (amp(1e-3) + amp(-1e-3)) * (1e-3)^(2/3) * 3/2
+            h += 8 * (amp(1e-3) + amp(-1e-3)) * 1e-3 * 3/2
         end
         ###
         return h
@@ -898,7 +950,7 @@ end
 ```
 
 
-One can reproduce the $\ell=2$ waveform in Figure 9 by
+The $\ell=2$ waveform of Figure 9:
 
 
 ```julia
@@ -907,6 +959,7 @@ h2 = hu(omega_values, AmpX_values_2_rest, 0.9, 2, 0.5pi, 0.0)
 h2_values = [h2(u) for u in u_values]
 Waveform_head_on_rest_2 = plot(u_values,
     real.(h2_values),
+    xlabel = L"u/M",
     ylabel = L"rh/\mu",
     label = L"\ \ h_{\!\!\! +},\ell=2",
     legendfontsize=14,

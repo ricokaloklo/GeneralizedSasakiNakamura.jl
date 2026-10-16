@@ -2120,15 +2120,22 @@ end
 
 Return the QNM frequency of the mode `(s, l, m, n)` at spin `a` as a
 `LeaverResult` (root only, no amplitudes). `branch` is `ordinary` (default) or
-`mirror`; a mirror root without `guess` is seeded from `-conj` of its ordinary
-`(a, -m)` partner, as in [`qnm`](@ref). The `QNMMode` form is also accepted;
-there a mirror (`:negative_real`) mode needs an explicit `guess`.
+`mirror`. Without `guess`, the mirror root is the reflection `-conj(ω)` of the
+ordinary `(s, l, -m, n)` root at the same spin, with the angular data
+recomputed and the status of that ordinary root. Only when that ordinary root
+is not accepted (and did not stop at the negative imaginary axis) is the mirror
+root polished on the negative-real branch, starting from the reflection. With
+`guess`, the mirror root is polished from `guess`. The `QNMMode` form is also
+accepted; there a mirror (`:negative_real`) mode needs an explicit `guess`.
 
-Solve the coupled angular/radial Leaver equations in `M=1` units. Without an
-explicit guess, the labeled Schwarzschild mode is continued in spin. The final
-root is independently re-polished with a higher angular truncation and deeper
-continued fraction. Failed scientific gates return `status=:failed` and an
-explicit `stop_reason`.
+The root solves the coupled angular and radial Leaver equations in `M=1` units.
+Without an explicit guess it starts from the packaged root table or, for a mode
+or spin the table lacks, from the labeled Schwarzschild root continued in spin;
+the final root is re-polished with a higher angular truncation as a check. For
+some damped modes at `0.999 < |a| < 1` the root is instead evaluated from a
+near-extremal expansion, and at `|a| = 1` it is solved with an exact-extremal
+recurrence (see the QNM manual page). `status` is `:accepted`, `:estimated` or
+`:failed`, with the reason in `stop_reason`.
 
 With the default `convention=:overtone`, overtone labels follow the Python
 `qnm` package and Cook & Zalutskiy: overtone `n` is the Kerr continuation of

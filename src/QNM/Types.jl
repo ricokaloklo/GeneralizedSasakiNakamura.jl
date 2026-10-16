@@ -4,9 +4,9 @@
 Label one QNM, accepted by [`qnm_frequency`](@ref) and [`qnm_sequence`](@ref)
 as an alternative to the plain `(s, l, m, n, branch)` arguments. In this form
 `branch=:negative_real` requires an explicit `guess`, from which the root is
-polished on the negative-real branch. The plain-argument form with `mirror`
-instead returns the reflection `-conj(ω)` of the ordinary `(s, l, -m, n)` root
-at the same spin.
+polished on the negative-real branch. The plain-argument form with `mirror` and
+no `guess` instead uses the reflection `-conj(ω)` of the ordinary
+`(s, l, -m, n)` root at the same spin, as described in [`qnm_frequency`](@ref).
 """
 struct QNMMode
     s::Int
@@ -62,12 +62,24 @@ end
 """
     QNMEstimate
 
-Result of [`qnm`](@ref) when all observables are finite but one accuracy check
-did not reach its target. The check is named in `limiting_gate`, and
-`achieved_relative_precision` gives the precision it did reach (an estimate,
-not a bound). Typical cases are a frequency derivative that did not converge to
-`1e-8`, or a strongly damped mode whose incidence amplitude does not vanish to
-`1e-8` at the root. The values are usable as estimates.
+Result of [`qnm`](@ref) when the root is accepted or estimated and all
+observables are finite, but one target is missed. `limiting_gate` names the
+case:
+
+- `:richardson_step_gate`: the incidence check passed, but the Richardson step
+  drift of the frequency derivative exceeds its target (`1e-7` by default);
+- `:conditioned_root_gate`: the incidence and Wronskian checks passed, but the
+  root itself has status `:estimated`;
+- `:scaled_incidence_gate` (or `:richardson_step_and_scaled_incidence_gates`
+  when the step drift also exceeds its target): in the compact call, a
+  near-extremal root passes only the relaxed incidence check on the implied
+  root shift, `|A_inc/α|/max(1, |ω|) ≤ 1e-8`;
+- `:scaled_incidence_gate`: in the compact call, a mode with `Im ω < -0.5` has
+  a finite incidence amplitude that does not vanish to `1e-8` at the root.
+
+`achieved_relative_precision` is the step drift that was reached and
+`target_relative_precision` its target; both are indicators, not error bounds.
+The values are usable as estimates.
 """
 struct QNMEstimate{D}
     data::D
@@ -76,9 +88,17 @@ end
 """
     QNMFailure
 
-Result of [`qnm`](@ref) when the root, the radial evaluation or the excitation
-factor fails. `stage` and `stop_reason` say which step failed and why; no
-amplitudes are returned.
+Result of [`qnm`](@ref) when a step fails; `stage` names the step and
+`stop_reason` the reason. The stages are `:root` (the root search failed),
+`:pole_skipping_endpoint` (the frequency `-2i` at `a = 0`, where the excitation
+factor is not defined), `:radial_evaluation` (an error was thrown while
+computing the amplitudes; its text is in `error_message`), `:ISEM_validation`
+(the incidence amplitude did not vanish to `1e-8`, or the Wronskian check
+failed) and `:excitation_factor`. It carries only the fields its stage reached:
+failures at the `:root`, `:pole_skipping_endpoint` and `:radial_evaluation`
+stages have no amplitude fields. With `stage = :root` a finite `omega` is a
+diagnostic value of the failed root search, not a QNM frequency; at every other
+stage `omega` is the root that was found.
 """
 struct QNMFailure{D}
     data::D
@@ -91,7 +111,7 @@ Result of [`qnm`](@ref) for a zero-damping mode (ZDM) at exact extremality,
 `a = ±1`. These co-rotating families end at the synchronous frequency
 `ω = m a/2`, which is a branch point of the Green function rather than a simple
 pole, so the amplitude fields are `missing`. Damped modes (DM) at `a = ±1`
-return a `QNMResult` or `QNMEstimate`.
+return a `QNMResult` or `QNMEstimate`, or a `QNMFailure` when a check fails.
 """
 struct QNMEndpointResult{D}
     data::D
@@ -100,7 +120,13 @@ end
 """
     QNMPairResult
 
-Compact public wrapper returned by [`qnm_pair`](@ref).
+Result of [`qnm_pair`](@ref): both branches of one mode. `ordinary` and
+`mirror` each hold a `QNMResult`, `QNMEstimate`, `QNMFailure` or
+`QNMEndpointResult`. `status` is `:failed` if either branch failed, otherwise
+`:estimated` if either is an estimate, otherwise `:accepted`; `stop_reason` is
+`:accepted` or the reason of the first branch that is not accepted, prefixed
+with `ordinary_` or `mirror_`. `a`, `s`, `l`, `m` and `n` repeat the inputs,
+and `metadata` records how the mirror root was obtained.
 """
 struct QNMPairResult{D}
     data::D
@@ -276,9 +302,17 @@ end
 """
     LeaverResult
 
-Leaver continued-fraction root for one QNM: frequency, angular separation constant and eigenvalue, residuals and status.
-`status` is `:accepted`, `:estimated` or `:failed`, with the reason in `stop_reason`; `overtone_index` is `missing`
-for `convention=:leaver`, and `provenance` records the seed, continuation path and gate values.
+QNM frequency of one mode, returned by [`qnm_frequency`](@ref) and
+[`qnm_sequence`](@ref) without amplitudes. `omega` is the frequency
+(`ComplexF64`, or `Complex{BigFloat}` when the root needed extended precision,
+see `precision_bits`), `angular_A` the angular eigenvalue in Leaver's
+convention and `lambda` the separation constant of the radial Teukolsky
+equation; `cf_value`, `cf_error`, `root_residual` and `angular_residual` are
+residuals. `status` is `:accepted`, `:estimated` or `:failed`, with the reason
+in `stop_reason`; a failed result can hold a finite `omega`, which is then a
+diagnostic value of the root search, not a QNM frequency. `overtone_index` is
+`missing` for `convention=:leaver`, and `provenance` records the seed, the
+continuation path and the values of the checks.
 """
 struct LeaverResult{T,C,A,M,P}
     mode::QNMMode
@@ -304,7 +338,27 @@ end
 """
     ISEMValidationResult
 
-Independent ISEM check of a QNM frequency: radial incidence, reflection and transmission amplitudes and the scaled incidence residual.
+Check that the GSN incidence amplitude vanishes at a QNM frequency. `incidence`,
+`reflection` and `transmission` are the amplitudes of the `IN` solution at
+`omega`, `absolute_incidence` is `abs(incidence)` and `scaled_incidence` is
+`abs(incidence)/max(1, abs(reflection), abs(transmission))`. `selected_method`
+names the radial method that produced the amplitudes (`:not_run` when the root
+was neither accepted nor estimated). `status` is `:accepted` when
+`scaled_incidence` is at most the incidence tolerance (`1e-8` by default) and,
+where a Wronskian is used, the Wronskian is constant to its tolerance;
+otherwise it is `:failed`, with the reason in `stop_reason`. For some
+ill-conditioned roots the incidence check is made instead on the implied root
+shift `abs(incidence/α)/max(1, abs(omega))`, with `α` the frequency derivative
+of the incidence amplitude, recorded in `metadata`, which also holds the
+tolerances and the evaluation details.
+
+[`validate_qnm_with_isem`](@ref) builds it from a `GSN_radial` solution. The
+`validation` field of a [`qnm`](@ref) result holds the check made by the route
+that computed the excitation factor. When that is the direct route, used by
+default for `s = -2, …, 2`, `|s| ≤ l ≤ 15`, `n ≤ 10` and a damped root with
+nonzero real part (`selected_method = :variational`), the amplitudes come from
+the same integration that gives the frequency derivative, and `transmission`
+is 1.
 """
 struct ISEMValidationResult{O,C,T,M}
     omega::O
@@ -322,7 +376,29 @@ end
 """
     ExcitationFactorResult
 
-QNM excitation factor with the amplitudes it is built from and their error estimates.
+Excitation factor of one QNM in the GSN and the Teukolsky normalization,
+returned by [`qnm_excitation_factor`](@ref) and held in the `excitation` field
+of a `qnm(...; detailed=true)` result. Fields:
+
+- `omega`: the QNM frequency;
+- `alpha`, `alpha_teukolsky`: the frequency derivative of the incidence
+  amplitude at `omega`, with unit GSN and unit Teukolsky transmission
+  amplitude;
+- `reflection`, `reflection_teukolsky`: the reflection amplitude in the same
+  two normalizations;
+- `B_gsn = reflection/(2 omega alpha)` and
+  `B_teukolsky = reflection_teukolsky/(2i omega alpha_teukolsky)`: the
+  excitation factors;
+- `step_drift`: the relative change between the two resolutions of the direct
+  route, or between the Richardson steps;
+- `direction_drift`: the mismatch between the derivatives along real and
+  imaginary frequency (`NaN` when the derivative is not taken by differences);
+- `bridge_residual`: the relative mismatch between the Teukolsky values and
+  those converted from the GSN values;
+- `status` (`:accepted` or `:failed`), `stop_reason` and `metadata`, which
+  holds the incidence check in `metadata.validation` and the tolerances.
+
+The drifts and the residual are indicators, not error bounds.
 """
 struct ExcitationFactorResult{O,A,AT,R,RT,B,BT,T,M}
     omega::O

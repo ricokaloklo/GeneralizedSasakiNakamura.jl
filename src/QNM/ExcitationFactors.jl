@@ -583,12 +583,18 @@ function _excitation_pair_function(result, radial_solver, teukolsky_solver,
 end
 
 """
-    qnm_excitation_factor(result::LeaverResult; kwargs...)
+    _qnm_richardson_full_excitation_factor(result::LeaverResult; h=nothing, incidence_tolerance=1e-8, direction_tolerance=1e-7, step_tolerance=1e-7, bridge_tolerance=1e-10, wronskian_tolerance=1e-8, radial_solver=GSN_radial, teukolsky_solver=Teukolsky_radial)
 
+Finite-difference route of `qnm_excitation_factor` and of `qnm(...; detailed=true)`,
+used when the direct route (the GSN equation integrated together with its
+frequency derivative at the root) is out of scope or fails its checks (except
+with `backend=:variational`), and always with `backend=:richardson`, an explicit
+`h` or `direction_tolerance`, or a custom radial or Teukolsky solver.
 Compute the incidence-amplitude derivative `alpha = dAin/domega` with central
 differences along the real and imaginary frequency directions and Richardson
-extrapolation over `h`, `h/2`, and `h/4`; `alpha` is the mean of the two
-directions and `direction_drift` their mismatch. The excitation factors are
+extrapolation over `h`, `h/2`, and `h/4` (default `h = 1e-4 * max(1, |omega|)`);
+`alpha` is the mean of the two directions and `direction_drift` their mismatch.
+The excitation factors are
 `B_gsn = Aout/(2 omega alpha)` and `B_teukolsky = Aout/(2i omega alpha)` in the
 respective package normalizations, returned as an `ExcitationFactorResult`
 with an explicit conversion-bridge residual.

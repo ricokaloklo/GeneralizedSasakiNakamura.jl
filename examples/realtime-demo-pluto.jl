@@ -50,7 +50,9 @@ md"""
 Choose a mode with the controls below. Each change solves the radial Teukolsky
 equation on the fly with `method = "ISEM"`, plots the Teukolsky function
 ``R(r)`` and the GSN function ``X(r_*)`` on the chosen grid, and shows the
-solve and evaluation times and the asymptotic amplitudes.
+solve time, the time to evaluate both functions on the grid, and the
+asymptotic amplitudes of ``R``. The first solve after the notebook starts also
+includes compilation time.
 """
 
 # ╔═╡ 19c21045-e740-4c9a-8625-b0bf419224ac
