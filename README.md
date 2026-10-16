@@ -4,7 +4,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/ricokaloklo/GeneralizedSasakiNakamura.jl.svg)](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/releases)
 [![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl/dev/)
 
-GeneralizedSasakiNakamura.jl solves the frequency-domain radial Teukolsky equation of a Kerr black hole with the Generalized Sasaki-Nakamura (GSN) formalism. It handles *both ingoing and outgoing* radiation of scalar, electromagnetic and gravitational type (spin weight $s = 0, \pm 1, \pm 2$), accepts *complex* frequencies, and uses the $M = 1$ convention throughout. Beyond the source-free (homogeneous) equation, it computes the gravitational ($s = \pm 2$) waveform amplitudes and fluxes radiated by a test particle on a generic stable bound Kerr geodesic.
+GeneralizedSasakiNakamura.jl solves the frequency-domain radial Teukolsky equation of a Kerr black hole with the Generalized Sasaki-Nakamura (GSN) formalism. It handles *both ingoing and outgoing* radiation of scalar, electromagnetic and gravitational type (spin weight $s = 0, \pm 1, \pm 2$), accepts *complex* frequencies, and uses the $M = 1$ convention throughout. Beyond the source-free (homogeneous) equation, it computes the waveform amplitudes and fluxes radiated by a test particle on a generic bound Kerr geodesic.
 
 The angular Teukolsky equation is solved with the accompanying package [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) using a spectral decomposition method.
 
@@ -23,13 +23,11 @@ The paper describing both the GSN formalism and the implementation can be found 
 - [How to cite](#how-to-cite)
 - [License](#license)
 
-More worked examples are on the [Examples](https://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl/dev/examples/) page of the documentation and in the notebooks in [`examples/`](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/tree/main/examples).
-
 ## What's new in v0.10.0
 
-Version 0.10.0 adds a GSN-based ISEM (iterative series expansion matching) solver, which solves the generalized Sasaki–Nakamura equation directly in about a millisecond for real and complex frequencies, including exact extremality $a = \pm 1$, and a Kerr quasinormal-mode solver, `qnm`, which returns QNM frequencies for $|a| \le 1$ with their GSN amplitudes and excitation factors (frequency only for the zero-damping modes at $|a| = 1$). Radial solves, QNM calls, and point-particle mode and flux calls are thread-safe, and point-particle calls on the same orbit can share one trajectory through `with_pointparticle_submission` (see [Parallel Calls](https://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl/dev/APIs/#Parallel-Calls)).
+Version 0.10.0 adds a GSN-based ISEM solver, which solves the generalized Sasaki–Nakamura equation directly in about a millisecond for real and complex frequencies, including exact extremality $a = \pm 1$, and a Kerr quasinormal-mode solver, `qnm`, which returns QNM frequencies with their amplitudes and excitation factors for any spin up to $a = 1$. The mode and flux solvers also support thread-safe parallel calls.
 
-Earlier releases: v0.8.0 added waveform amplitudes and fluxes at infinity and at the horizon for a test particle on a _generic (eccentric, inclined) timelike bound orbit_, by solving the inhomogeneous Sasaki–Nakamura (SN) equation using integration by parts; v0.9.0 added the first ISEM solver and the high-level total-flux interface `Teukolsky_pointparticle_flux`.
+Earlier releases: v0.8.0 added waveform amplitudes and fluxes at infinity and at the horizon for a test particle on a _generic (eccentric, inclined) timelike bound orbit_, by solving the inhomogeneous Sasaki–Nakamura (SN) equation using integration by parts; v0.9.0 added the ISEM solver (_iterative series expansion matching_) and the high-level total-flux interface `Teukolsky_pointparticle_flux`.
 
 ## Installation
 Julia 1.12 or later in the 1.x series is required.
@@ -40,25 +38,25 @@ using Pkg
 Pkg.add("GeneralizedSasakiNakamura")
 ```
 
-*Note: The dependencies, including [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) (v1.4 or later in the 1.x series) and KerrGeodesics.jl (v0.5), are installed automatically from the General registry. To load SpinWeightedSpheroidalHarmonics in your own code, also `Pkg.add("SpinWeightedSpheroidalHarmonics")`.*
+*Note: There is no need to install [SpinWeightedSpheroidalHarmonics.jl](https://github.com/ricokaloklo/SpinWeightedSpheroidalHarmonics.jl) separately as it should be automatically installed by the package manager.*
+
+Version 0.10 requires KerrGeodesics v0.5 and SpinWeightedSpheroidalHarmonics v1.4, both available from the General registry.
 
 ## Homogeneous solvers
 
-These solvers construct source-free radial solutions and their asymptotic amplitudes for four boundary conditions: `IN` (purely ingoing at the horizon), `UP` (purely outgoing at infinity), `OUT` (purely outgoing at the horizon) and `DOWN` (purely ingoing at infinity); `OUT` and `DOWN` are linear combinations of `IN` and `UP`. Pass the boundary condition as the sixth argument to get one solution, for example `Teukolsky_radial(-2, 2, 2, 0.7, 0.5, OUT)`; without it, `Teukolsky_radial` and `GSN_radial` return the pair `(IN, UP)` used below. Both accept real and complex frequencies.
+These solvers construct source-free radial solutions with prescribed boundary conditions (`IN`: purely ingoing at the horizon; `UP`: purely outgoing at infinity), together with their asymptotic amplitudes. `Teukolsky_radial` and `GSN_radial` accept real and complex frequencies.
 
 ### Solver methods
 
-The `method` keyword selects the solver: `"ISEM"`, `"linear"`, `"Riccati"`, or the default `"auto"`, which runs ISEM and, if ISEM throws, logs a warning and falls back to numerical integration (Riccati, then linear, for real frequencies; linear, then Riccati, for complex ones). With an explicit `xm`, `"auto"` raises the ISEM error instead.
+The `method` keyword selects the solver. The default `method = "auto"` uses ISEM and falls back to the legacy automatic route only if ISEM fails.
 
 #### Numerical integration (`method = "linear"` or `"Riccati"`)
 
-The original GSN solver numerically evolves the radial equation with the `linear` or `Riccati` method and attaches analytical boundary ansatzes near the horizon and infinity:
+The original GSN solver works at *both low and high frequencies* by numerically evolving the radial equation with the `linear` or `Riccati` method and attaching analytical boundary ansatzes near the horizon and infinity:
 
 <p align="center">
   <img width="60%" src="https://github-production-user-asset-6210df.s3.amazonaws.com/55488840/248724944-9707332b-1238-4b3b-b1c0-ac426a1b3dc6.gif">
 </p>
-
-At low frequency these methods move their outer boundary outward, and below $|M\omega| = 10^{-8}$ they lose the `UP` solution; use ISEM there.
 
 The on-the-fly benchmark against the Mathematica implementation of the Mano–Suzuki–Takasugi (MST) method is shown below:
 
@@ -73,27 +71,25 @@ The on-the-fly benchmark against the Mathematica implementation of the Mano–Su
   </tr>
 </table>
 
-*(No caching: the equation was solved on the fly. The left animation was made with an earlier version of [examples/realtime-demo.ipynb](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb), which now runs ISEM; the MST side with [examples/realtime-visualization-MST.nb](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-visualization-MST.nb).)*
+*(There was no caching in this benchmark; the equation was solved on the fly. The animation was made with an earlier version of [examples/realtime-demo.ipynb](examples/realtime-demo.ipynb), which now runs the ISEM solver.)*
 
 #### ISEM (`method = "ISEM"`)
 
-ISEM constructs the GSN radial function $X$ from series expansions matched on the generalized Sasaki–Nakamura equation itself: local solutions at the horizon and at infinity (with small-frequency and large-frequency expansions where they apply) are continued by ordinary-point series and matched at an interior point. The Teukolsky function $R$ and the auxiliary function $Y$ used by the point-particle convolutions are transformations of that same solution:
+ISEM (iterative series expansion matching) constructs the GSN radial function $X$ from series expansions matched on the generalized Sasaki–Nakamura equation itself: local solutions at the horizon and at infinity (with small-frequency and large-frequency expansions where they apply) are continued by ordinary-point series and matched at an interior point. The Teukolsky function $R$ and the auxiliary function $Y$ used by the point-particle convolutions are transformations of that same solution:
 
 <p align="center">
   <img width="80%" alt="ISEM matching" src="docs/src/isem_matching_original_30fps.gif">
 </p>
 
-`method = "ISEM"` never falls back. ISEM chooses its expansions, expansion order and matching point automatically, and the point-particle mode and flux calls use the same solver. Optional controls are the expansion order `N`, the tolerance `tol`, the small- and large-frequency expansion switches `sfe` and `lfe`, and the matching point `xm` in the compact coordinate $x = (r - r_+)/(r - r_-) \in (0, 1)$; see the [API reference](https://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl/dev/APIs/). Leave `xm` unset: an explicit `xm` can introduce a cancellation error in the incidence amplitude that `tol` does not bound.
+`method = "ISEM"` selects it strictly, with no fallback. The default `method = "auto"` first tries ISEM with automatic frequency, spin, representation and matching controls; if ISEM throws, it reports the failure and falls back to the legacy automatic radial route. The homogeneous radial Teukolsky/GSN equations are solved typically at millisecond timescale or faster, and this route is also used by the single-mode point-particle amplitudes and total-flux mode summations. Optional controls are the matching point `xm` in $(0,1)$, the expansion order `N`, the tolerance `tol`, and the small- and large-frequency expansion switches `sfe` and `lfe`; see the [API reference](https://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl/dev/APIs/).
 
-For $|a| < 1$, at the superradiant threshold $\omega = m a / (2 r_+)$ (exact equality only), the `UP` solution is always built with ISEM in a logarithmic horizon basis, and its incidence and reflection amplitudes are the coefficients of that basis. At $\omega = 0$ only `IN` and `UP` are available: they are the closed-form static solutions (Gauss hypergeometric functions), and their incidence and reflection amplitudes are `missing`.
+Superradiance-threshold solutions with $\omega = m a / (2 r_+)$ are built with a logarithmic horizon solution, while static/zero-frequency solutions are solved analytically with Gauss hypergeometric functions.
 
-The GSN-ISEM on-the-fly solve and evaluation speed, recorded with an interactive version of the demo that has a $\log_{10}\omega$ slider:
+The GSN-ISEM on-the-fly solve and evaluation speed:
 
 <p align="center">
   <img width="80%" alt="GSN-ISEM on-the-fly solve and evaluation" src="docs/src/isem_realtime_demo_30s.gif">
 </p>
-
-The Pluto notebook [examples/realtime-demo-pluto.jl](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo-pluto.jl) shows the same plots and re-solves on every control change (its $\omega$ slider is linear, from 0.05 to 1); [examples/realtime-demo.ipynb](https://github.com/ricokaloklo/GeneralizedSasakiNakamura.jl/blob/main/examples/realtime-demo.ipynb) draws a single frame.
 
 *Change from v0.9.0:* in v0.10.0, `method = "ISEM"` solves the GSN equation directly. The v0.9.0 ISEM matched series solutions of the Teukolsky equation; it has been replaced, together with its `rhom`, `TSinInf`/`TSoutInf`/`TSinHor`/`TSoutHor` controls and its negative `xm` coordinate.
 
@@ -109,7 +105,34 @@ s=-2; l=2; m=2; a=0.7; omega=0.5;
 # NOTE: julia uses 'just-ahead-of-time' compilation. Calling this the first time in each session will take some time
 Rin, Rup = Teukolsky_radial(s, l, m, a, omega)
 ```
-Displaying `Rin` in the REPL shows its asymptotic amplitudes:
+That's it! In the Julia REPL this returns
+
+<details>
+<summary>Output</summary>
+
+```
+(
+TeukolskyRadialFunction(
+    mode = Mode(s = -2, l = 2, m = 2, a = 0.7, omega = 0.5, lambda = 1.6966094016353415),
+    boundary_condition = IN,
+    transmission_amplitude = 1.0 + 0.0im,
+    incidence_amplitude = 6.536587661184236 - 4.941203897065118im,
+    reflection_amplitude = -0.1282466191290958 - 0.4404813349644446im,
+    normalization_convention = UNIT_TEUKOLSKY_TRANS
+),
+TeukolskyRadialFunction(
+    mode = Mode(s = -2, l = 2, m = 2, a = 0.7, omega = 0.5, lambda = 1.6966094016353415),
+    boundary_condition = UP,
+    transmission_amplitude = 1.0 + 0.0im,
+    incidence_amplitude = -1.1698840333865992 - 2.5455723340434875im,
+    reflection_amplitude = 2.5169908586317717 - 8.644964686261376im,
+    normalization_convention = UNIT_TEUKOLSKY_TRANS
+))
+```
+
+</details>
+
+In the Julia REPL you can inspect all the asymptotic amplitudes at a glimpse using something like
 ```julia
 julia> Rin
 TeukolskyRadialFunction(
@@ -122,45 +145,23 @@ TeukolskyRadialFunction(
 )
 ```
 
-Perturbations go as $e^{-i\omega t + im\phi}$. With `UNIT_TEUKOLSKY_TRANS` the transmission amplitude is 1 and, with $p = \omega - m\Omega_H$, $\Omega_H = a/(2r_+)$, $\Delta = r^2 - 2r + a^2$ and the tortoise coordinate $r_*$,
-
-```math
-R^{\rm in} \to
-\begin{cases}
-\Delta^{-s} e^{-ipr_*}, & r \to r_+,\\
-B^{\rm inc} r^{-1} e^{-i\omega r_*} + B^{\rm ref} r^{-2s-1} e^{+i\omega r_*}, & r \to \infty,
-\end{cases}
-\qquad
-R^{\rm up} \to
-\begin{cases}
-C^{\rm inc} e^{+ipr_*} + C^{\rm ref} \Delta^{-s} e^{-ipr_*}, & r \to r_+,\\
-r^{-2s-1} e^{+i\omega r_*}, & r \to \infty.
-\end{cases}
-```
-
-`incidence_amplitude` and `reflection_amplitude` are $B^{\rm inc}$ and $B^{\rm ref}$ for `IN`, and $C^{\rm inc}$ and $C^{\rm ref}$ for `UP`; `lambda` is the separation constant $\lambda$ of the radial Teukolsky equation. See [2306.16469](https://arxiv.org/abs/2306.16469) for the full conventions.
-
-`Rin(r)` evaluates $R^{\textrm{in}}$ at the Boyer–Lindquist radius $r$, here $r = 10M$:
+For example, if we want to evaluate the Teukolsky function $R^{\textrm{in}}$ at the location $r = 10M$, simply do
 ```julia
-julia> Rin(10)
+Rin(10)
+```
+This should give
+```
 77.57508416830544 - 429.4029095224015im
 ```
 
-The GSN function $X$ is available in the same way through `GSN_radial`, but it is a function of the tortoise coordinate $r_*$, not of $r$; `rstar_from_r(a, r)` and `r_from_rstar(a, rstar)` convert between the two:
-```julia
-Xin, Xup = GSN_radial(s, l, m, a, omega)
-Xin(rstar_from_r(a, 10))   # X at r = 10M; Xin(10) would be X at r_* = 10M
-```
-Its amplitudes use `UNIT_GSN_TRANS`: $X^{\rm in} \to e^{-ipr_*}$ at the horizon and $A^{\rm inc} e^{-i\omega r_*} + A^{\rm ref} e^{+i\omega r_*}$ at infinity; $X^{\rm up} \to e^{+i\omega r_*}$ at infinity and $C^{\rm ref} e^{-ipr_*} + C^{\rm inc} e^{+ipr_*}$ at the horizon. These GSN amplitudes are not the Teukolsky amplitudes $B$ and $C$ of `Rin` and `Rup`; the two differ by mode-dependent conversion factors.
-
-`Y_radial(s, l, m, a, omega, bc)` returns the auxiliary function $Y(r)$ that the point-particle convolutions integrate against the source. It needs an explicit boundary condition (there is no `(Yin, Yup)` form), supports only $s = -2$ with `IN` and $s = +2$ with `UP`, and requires $\omega \neq 0$; see the [API reference](https://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl/dev/APIs/).
+The GSN function $X$ is available in the same way through `GSN_radial`. `Y_radial(s, l, m, a, omega, bc)` returns the auxiliary function $Y$ that the point-particle convolutions integrate against the source (for $s = -2$ with `IN` and $s = +2$ with `UP`); see the [API reference](https://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl/dev/APIs/).
 
 ### Complex frequencies, quasinormal modes, and excitation factors
 
-Finding a quasinormal-mode (QNM) frequency is a root search in complex frequency: `qnm` computes the root and then evaluates the GSN scattering data at it. For the $a=0.68$, $s=-2$, $(\ell,m,n)=(2,2,0)$ mode, the ordinary ($\operatorname{Re}\omega > 0$) and mirror ($\operatorname{Re}\omega < 0$) branches are
+The radial interfaces accept complex frequencies directly. Finding a quasinormal-mode (QNM) frequency is a separate root search: `qnm` computes the root and then evaluates the corresponding GSN scattering data at it. For the $a=0.68$, $s=-2$, $(\ell,m,n)=(2,2,0)$ mode, the ordinary and mirror branches are
 
 ```julia
-ordinary_mode = qnm(0.68, -2, 2, 2, 0)           # (a, s, l, m, n): the spin comes first here
+ordinary_mode = qnm(0.68, -2, 2, 2, 0)
 mirror_mode = qnm(0.68, -2, 2, 2, 0, mirror)
 ```
 
@@ -191,9 +192,7 @@ QuasiNormalMode(
 
 </details>
 
-Check `.status` (`:accepted`, `:estimated` or `:failed`) first, then read the frequency from `.omega`. `qnm` returns a `QNMResult`, displayed as `QuasiNormalMode(...)` above, when every check passes; a `QNMEstimate` (`QuasiNormalModeEstimate(...)`) when the values are finite but one check missed its target, named in `limiting_gate`; a `QNMFailure` when a step fails (for example at the algebraically special frequency $-2i$ at $a = 0$, where the excitation factor is undefined); and, for a zero-damping mode (ZDM) at $a = \pm 1$, a `QNMEndpointResult` that carries the frequency but no amplitudes. At $|a| = 1$ a `QNMResult` displays as `ExtremalQuasiNormalMode(...)` and a `QNMEstimate` as `ExtremalQuasiNormalModeEstimate(...)`, both with `family = DM` (damped mode); a `QNMEndpointResult` displays as `ExtremalQuasiNormalMode(...)` with `family = ZDM`.
-
-Pass the computed frequency itself, not a rounded copy, to the radial interfaces:
+The computed frequency can be passed directly to the radial interfaces without truncating its digits:
 
 ```julia
 Rin, Rup = Teukolsky_radial(-2, 2, 2, 0.68, ordinary_mode.omega)
@@ -211,9 +210,7 @@ TeukolskyRadialFunction(
 )
 ```
 
-At a QNM frequency the incidence amplitude vanishes (here it is about $10^{-15}$): `Rup` is then also purely ingoing at the horizon, so it is proportional to `Rin`.
-
-For a QNM frequency $\omega_q$, let $A^{{\rm GSN},{\rm inc}}$ and $A^{{\rm GSN},{\rm ref}}$ be the amplitudes $A^{\rm inc}$ and $A^{\rm ref}$ of $X^{\rm in}$ above (the result's `incidence_amplitude` and `reflection_amplitude`). The result reports $\alpha$ as `incidence_derivative` and the excitation factor $B$ as `excitation_factor`:
+For a QNM frequency $\omega_q$, the returned GSN excitation factor is
 
 ```math
 \alpha^{{\rm GSN}}_{\ell m\omega_q}
@@ -225,20 +222,18 @@ B^{{\rm GSN}}_{\ell m\omega_q}
 {2\omega_q\alpha^{{\rm GSN}}_{\ell m\omega_q}}.
 ```
 
-`ordinary` is the default branch. `mirror` gives the mode with negative real frequency: by default its frequency is the reflection $-\bar\omega$ of the ordinary $(s, \ell, -m, n)$ root at the same spin (polished on the negative-real branch from that reflection when the ordinary root is not accepted and did not stop at the negative imaginary axis), and its amplitudes and excitation factor are evaluated at that frequency; pass `mirror_guess` to polish the mirror root from your own starting value instead. Use `detailed=true` only when you need the Teukolsky-normalized values (`result.teukolsky.excitation_factor`, `.incidence_derivative`, `.reflection_amplitude`) or the callable `IN` solutions `X(rstar)`, `Y(r)` and `R(r)` (`Y` uses `UP` for $s = +2$ and is `missing` for $|s| \neq 2$).
+`ordinary` is the default branch. `mirror` gives the mode with negative real frequency: by default its frequency is the exact reflection $-\bar\omega$ of the ordinary $(s, \ell, -m, n)$ root, and its amplitudes and excitation factor are evaluated at that frequency. Use `detailed=true` only when callable `X`, `Y`, and `R` solutions are needed.
 
-When only the frequency is needed, `qnm_frequency` takes the same five numbers and returns the root alone as a `LeaverResult` (no amplitudes): check that `root.status` is `:accepted` and read `root.omega`. `qnm_sequence` follows one mode along a list of spins and returns a vector of `LeaverResult`, stopping after the first spin whose root is not accepted:
+When only the frequency is needed, the same five numbers give the root directly:
 
 ```julia
 root = qnm_frequency(0.68, -2, 2, 2, 0)                    # (a, s, l, m, n)
-root.omega
 roots = qnm_sequence([0.0, 0.3, 0.68], -2, 2, 2, 0)        # (spins, s, l, m, n)
-[r.omega for r in roots]
 ```
 
-Overtone labels (`convention`): the default `:overtone` follows the Python [`qnm`](https://github.com/duetosymmetry/qnm) package (Stein 2019) and the Cook–Zalutskiy catalogue: `n` is the Kerr continuation of the `n`-th Schwarzschild overtone. `:complete_spectrum` (Forteza & Mourier, [arXiv:2107.11829](https://arxiv.org/abs/2107.11829)) numbers every root in order of damping. The two differ only for $s = -2$, $\ell = 2$, $|m| = 2$: for co-rotating modes ($a m > 0$ on the ordinary branch, $a m < 0$ on the mirror branch) the Schwarzschild frequency $M\omega = -2i$ (overtone 8) splits at $a \neq 0$ into Cook's $8_0$ (less damped) and $8_1$: both conventions label $8_0$ as $n = 8$, and `:complete_spectrum` labels $8_1$ as $n = 9$, a root that `:overtone` leaves unnumbered. For co- and counter-rotating modes alike, `:complete_spectrum` $n \ge 10$ is `:overtone` $n - 1$. At $a = 0$, $n = 8$ of every $|s| = 2$, $\ell = 2$ mode, and `:complete_spectrum` $n = 9$ of $s = -2$, $\ell = 2$, $|m| = 2$, is exactly $-2i$, where `qnm` returns a `QNMFailure`. For $\ell = 2$ and $n \ge 8$ use $s = -2$. A third value, `:leaver`, makes $n$ the continued-fraction inversion index only: it labels no mode and requires a `guess`.
+Overtone labels (`convention`): the default `:overtone` follows the Python [`qnm`](https://github.com/duetosymmetry/qnm) package (Stein 2019) and the Cook–Zalutskiy catalogue. For $s = -2$, $\ell = 2$, $|m| = 2$ co-rotating modes the Schwarzschild root $-2i$ splits into a pair $8_0$, $8_1$; `:overtone` calls $8_0$ $n = 8$, skips $8_1$, and keeps the Schwarzschild numbers above it, while `:complete_spectrum` (Forteza & Mourier) counts $8_1$ as $n = 9$, so its labels from there on are one higher. At $a = 0$ the pair is $-2i$ in both conventions. Elsewhere the two agree.
 
-Segments (`segment`): a few sequences (e.g. $\ell = 2$, $m = 0$, $9 \le n \le 26$) end on the negative imaginary axis at finite spin and reappear at larger spin (Cook's $n_0$ and $n_1$). `segment = 0` (default) is the piece connected to $a = 0$; beyond its end it fails with `stop_reason = :negative_imaginary_axis_endpoint`. `segment = 1` is the reappearing piece ($m = 0$ only), and `segment = :auto` whichever piece exists at $a$; for example `qnm(0.5, -2, 2, 0, 10; segment=1)`. The [QNM documentation](https://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl/dev/QNM/) has the label table and the segment details.
+Segments (`segment`): a few sequences (e.g. $\ell = 2$, $m = 0$, $9 \le n \le 26$) end on the negative imaginary axis at finite spin and reappear at larger spin (Cook's $n_0$ and $n_1$). `segment = 0` (default) is the piece connected to $a = 0$, `segment = 1` the reappearing piece, `segment = :auto` whichever exists at $a$; for example `qnm(0.5, -2, 2, 0, 10; segment=1)`. See the [QNM documentation](https://ricokaloklo.github.io/GeneralizedSasakiNakamura.jl/dev/QNM/) for the label table and the segment details.
 
 ## Inhomogeneous solvers
 
@@ -250,11 +245,12 @@ A source is specified by the black-hole spin $a/M$ and the orbit's semi-latus re
 
 #### Amplitudes at infinity
 
-For the $s = -2$, $\ell = m = 2$, $n = k = 0$ mode driven by a test particle on a bound geodesic with $a/M = 0.9, p = 6M, e = 0.7, x = \cos(\pi/4)$:
+For the $s = -2$, $\ell = m = 2$ mode driven by a test particle on a bound geodesic with $a/M = 0.9, p = 6M, e = 0.7, x = \cos(\pi/4)$:
 ```julia
-mode_info = Teukolsky_pointparticle_mode(-2, 2, 2, 0, 0, 0.9, 6, 0.7, cos(π/4))   # (s, l, m, n, k, a, p, e, x)
+mode_info = Teukolsky_pointparticle_mode(-2, 2, 2, 0, 0, 0.9, 6, 0.7, cos(π/4))
 ```
-Displaying `mode_info` gives
+where $n = 0$ and $k = 0$ label the radial and polar modes, respectively.
+To have a glimpse of the output, one can do so with
 ```julia
 julia> mode_info
 TeukolskyPointParticleMode(
@@ -266,13 +262,12 @@ TeukolskyPointParticleMode(
     method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_sfe = false, N = 256, K = 64, truncation_floor = 1.0e-16),
 )
 ```
-The `_inf`/`_hor` suffixes appear only in the display: the fields are `mode_info.amplitude`, `.energy_flux`, `.angular_momentum_flux` and `.Carter_const_flux`, together with `.mode`, `.method`, `.trajectory`, `.Y_solution` and `.SWSH`. The default `method = "auto"` runs `"isem_trapezoidal"`: ISEM radial solutions and a trapezoidal convolution on a sampling grid that starts at the recorded `N × K = 256 × 64` and is refined by doubling, up to `2^12 × 2^9`, until the mode's energy flux has converged to the relative tolerance `min(sample_tol, 3√tol)` (`3e-4` with the default keywords `sample_tol = 1e-3` and `tol = 1e-8`) or falls below `truncation_floor`. `radial_sfe` records whether the small-frequency expansion of the ISEM radial solve was switched off (`false`) or left to ISEM (`:auto`).
-
-`mode_info.amplitude` is $Z^{\infty}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near infinity at that frequency:
+To access for example the amplitude at infinity,
 ```julia
 julia> mode_info.amplitude
 0.00023429507956768906 - 6.558414441160938e-5im
 ```
+which is the value for $Z^{\infty}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near infinity for that particular frequency.
 
 #### Amplitudes at the horizon
 
@@ -280,7 +275,7 @@ For the same parameters, change the sign of $s$ to $2$:
 ```julia
 mode_info = Teukolsky_pointparticle_mode(2, 2, 2, 0, 0, 0.9, 6, 0.7, cos(π/4))
 ```
-gives
+The output should be
 ```julia
 julia> mode_info
 TeukolskyPointParticleMode(
@@ -292,29 +287,16 @@ TeukolskyPointParticleMode(
     method = (method = "isem_trapezoidal", radial_method = "ISEM", radial_sfe = false, N = 256, K = 64, truncation_floor = 1.0e-16),
 )
 ```
-Here `mode_info.amplitude` is $Z^{\mathrm{H}}_{\ell m n k}$, the amplitude near the horizon:
+To access for example the amplitude at the horizon,
 ```julia
 julia> mode_info.amplitude
 0.006089946888790668 - 0.0014130019665083518im
 ```
-
-The particle mass $\mu$ is not an input: amplitudes are per unit $\mu$ and fluxes per unit $\mu^2$. The fluxes are time-averaged rates, obtained from the amplitudes as
-
-```math
-\dot E^{\infty} = \frac{|Z^{\infty}|^2}{4\pi\omega^2},
-\qquad
-\dot E^{\rm H} = \frac{\omega\,|Z^{\rm H}|^2}{64\pi\kappa\,(2r_+)^3(\kappa^2 + 4\epsilon^2)},
-\qquad
-\dot L_z = \frac{m}{\omega}\,\dot E,
-```
-
-with $\kappa = \omega - m\Omega_H$ (written $p$ in the radial asymptotics above; in this section $p$ is the semi-latus rectum) and $\epsilon = \sqrt{1-a^2}/(4r_+)$. Horizon fluxes are the rates absorbed by the black hole, so they are negative for superradiant modes ($\omega\kappa < 0$), as in the example above. These formulas fix the normalization of $Z^{\infty}$ and $Z^{\rm H}$.
+which is the value for $Z^{\mathrm{H}}_{\ell m n k}$, the amplitude of the inhomogeneous radial Teukolsky solution near the horizon for that particular frequency.
 
 ### Total fluxes
 
-`Teukolsky_pointparticle_flux(a, p, e, x; tol = 1e-8)` sums the mode fluxes to the relative truncation tolerance `tol`. It chooses the summation from the orbit: circular equatorial for `e = 0`, `x = ±1` (no convolution integral), eccentric equatorial for `x = ±1`, inclined (spherical) for `e = 0`, and generic otherwise, which performs two-dimensional convolution integrals and is much slower. It accepts stable bound orbits and marginally stable (critical) bound circular orbits, as classified by KerrGeodesics; for other $(a, p, e, x)$ it warns and returns `nothing`.
-
-Each displayed line is a field of the result (`flux.infinity_energy_flux`, `flux.cost`, …; the `orbital_parameters` line shows `a`, `p`, `e`, `x`), except the `l_reached`, `k_reached_*`, `n_reached` and `convolution_integral` lines, which are stored in `flux.reached` (`flux.reached.l_reached_inf`, `flux.reached.n_reached_hor`, …); `flux.result` holds the raw summation output. `cost` is the wall-clock time of the call in seconds: on the machine that produced these examples, about 0.6–1 ms per mode (`cost / total_modes`) and about 22 minutes for the generic orbit. The first call in a session also compiles the code and takes longer.
+`Teukolsky_pointparticle_flux` sums the mode fluxes and automatically dispatches to circular, eccentric, inclined, or generic mode summation according to the orbital parameters. A generic-orbit run can be substantially slower than an eccentric equatorial run because it performs two-dimensional convolution integrals. The run times below were measured on the machine that produced these examples.
 
 <details>
 <summary>Circular equatorial orbit</summary>
@@ -338,6 +320,8 @@ TeukolskyPointParticleFlux(
     cost = 0.3374300003051758 seconds,
 )
 ```
+
+With `e = 0` and `x = 1` the call dispatches to the circular equatorial summation, which needs no convolution integral. In this example the warm run averaged about `0.89 ms` per computed mode.
 
 </details>
 
@@ -365,6 +349,8 @@ TeukolskyPointParticleFlux(
 )
 ```
 
+With `e = 0` and `|x| < 1` the call dispatches to the inclined (spherical-orbit) summation. In this example the warm run averaged about `0.90 ms` per computed mode.
+
 </details>
 
 <details>
@@ -390,6 +376,8 @@ TeukolskyPointParticleFlux(
 )
 ```
 
+This warm high-eccentricity equatorial run averaged about `0.58 ms` per computed mode.
+
 </details>
 
 <details>
@@ -414,6 +402,8 @@ TeukolskyPointParticleFlux(
     cost = 1306.2777690887451 seconds,
 )
 ```
+
+This high-eccentricity generic run averaged about `0.99 ms` per computed mode.
 
 </details>
 
@@ -463,7 +453,6 @@ If you have used this code's capability to solve for the gravitational waveform 
     doi = "10.1103/9ngz-k1lr",
     journal = "Phys. Rev. D",
     volume = "113",
-    number = "12",
     pages = "124007",
     year = "2026"
 }
