@@ -1821,6 +1821,8 @@ function _teukolsky_flux_reached(result, orbit_type::Symbol)
 end
 
 
+_pointparticle_float(a, p, e, x) = (Float64(a), Float64(p), Float64(e), Float64(x))
+
 """
     with_pointparticle_submission(f, a, p, e, x; Nmax=2^14, Kmax=2^12, stop_requested=nothing, lifecycle_observer=nothing)
 
@@ -1831,8 +1833,6 @@ trajectory and sampling geometry, while every admitted mode keeps its own privat
 On normal return, error or cancellation, all admitted modes and registered tasks are drained before the internal
 caches are released; returned results remain valid.
 """
-_pointparticle_float(a, p, e, x) = (Float64(a), Float64(p), Float64(e), Float64(x))
-
 function with_pointparticle_submission(f::Function,a,p,e,x;Nmax::Int=2^14,Kmax::Int=2^12,
         stop_requested=nothing,lifecycle_observer=nothing)
     # The point-particle routes run in Float64; any real input (e.g. an integer or BigFloat 0) is converted.
