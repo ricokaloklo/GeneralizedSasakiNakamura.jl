@@ -321,8 +321,10 @@ end
         @test ismissing(endpoint.excitation_factor)
         @test ismissing(endpoint.incidence_amplitude)
         @test !endpoint.simple_pole
-        @test startswith(sprint(show, MIME("text/plain"), endpoint), "ExtremalQuasiNormalModeEndpoint(")
+        @test startswith(sprint(show, MIME("text/plain"), endpoint), "ExtremalQuasiNormalMode(")
     end
+    damped_extremal = qnm(1.0, -2, 2, -2, 0)
+    @test startswith(sprint(show, MIME("text/plain"), damped_extremal), "ExtremalQuasiNormalMode(")
     if at_level(:full)
         plus = qnm(0.99999, -2, 2, 2, 0)
         minus = qnm(-0.99999, -2, 2, -2, 0)

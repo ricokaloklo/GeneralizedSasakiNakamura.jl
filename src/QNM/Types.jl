@@ -137,25 +137,16 @@ function Base.show(io::IO, result::QNMEndpointResult)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", result::QNMEndpointResult)
-    println(io, "ExtremalQuasiNormalModeEndpoint(")
+    println(io, "ExtremalQuasiNormalMode(")
     println(io, "    parameters = (a = ", result.a,
         ", s = ", result.mode.s, ", l = ", result.mode.l,
         ", m = ", result.mode.m, ", n = ", result.mode.n,
         _qnm_segment_suffix(result), ")")
     println(io, "    omega = ", _qnm_summary_number(result.frequency))
     println(io, "    lambda = ", _qnm_summary_number(result.lambda))
-    println(io, "    spectrum_object = ", result.spectrum_object)
-    println(io, "    branch = ", result.mode.branch)
-    println(io, "    simple_pole = ", result.simple_pole)
-    println(io, "    requested_overtone_label = ",
-        result.requested_overtone_label)
-    println(io, "    coalesced_overtone_labels = ",
-        result.coalesced_overtone_labels)
-    println(io, "    overtone_interpretation = ",
-        result.overtone_interpretation)
-    println(io, "    radial_observables = ", result.radial_observables)
-    println(io, "    endpoint_method = ", result.endpoint_method)
-    print(io, "    formalism = GSN/Teukolsky endpoint)")
+    println(io, "    family = ZDM")
+    println(io, "    simple_pole = false")
+    print(io, "    formalism = GSN)")
 end
 
 function Base.show(io::IO, result::QNMFailure)
@@ -202,8 +193,12 @@ function _qnm_summary_number(value::Complex)
     return string(real_text, separator, imaginary_text, "im")
 end
 
+# Exact-extremal (a = +-1) damped modes are labelled as such; zero-damping ones are
+# QNMEndpointResult.
+_qnm_extremal(result) = abs(result.a) == 1
+
 function Base.show(io::IO, ::MIME"text/plain", result::QNMResult)
-    println(io, "QuasiNormalMode(")
+    println(io, _qnm_extremal(result) ? "ExtremalQuasiNormalMode(" : "QuasiNormalMode(")
     println(io, "    parameters = (a = ", result.a,
         ", s = ", result.mode.s, ", l = ", result.mode.l,
         ", m = ", result.mode.m, ", n = ", result.mode.n,
@@ -218,11 +213,13 @@ function Base.show(io::IO, ::MIME"text/plain", result::QNMResult)
         _qnm_summary_number(result.incidence_derivative))
     println(io, "    excitation_factor = ",
         _qnm_summary_number(result.excitation_factor))
+    _qnm_extremal(result) && println(io, "    family = DM")
     print(io, "    formalism = GSN)")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", result::QNMEstimate)
-    println(io, "QuasiNormalModeEstimate(")
+    println(io, _qnm_extremal(result) ?
+        "ExtremalQuasiNormalModeEstimate(" : "QuasiNormalModeEstimate(")
     println(io, "    parameters = (a = ", result.a,
         ", s = ", result.mode.s, ", l = ", result.mode.l,
         ", m = ", result.mode.m, ", n = ", result.mode.n,
@@ -250,6 +247,7 @@ function Base.show(io::IO, ::MIME"text/plain", result::QNMEstimate)
             _qnm_summary_number(result.inferred_root_shift))
     end
     println(io, "    limiting_gate = ", result.limiting_gate)
+    _qnm_extremal(result) && println(io, "    family = DM")
     println(io, "    status = estimated")
     print(io, "    formalism = GSN)")
 end
