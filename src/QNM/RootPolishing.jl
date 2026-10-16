@@ -2194,8 +2194,12 @@ function qnm_frequency(mode::QNMMode, a; segment=0, kwargs...)
     internal_n = _overtone_internal_index(mode, a, convention)
     internal_mode = internal_n == mode.n ? mode :
         QNMMode(mode.s, mode.l, mode.m, internal_n, mode.branch)
+    # keywords at their default values (as passed on by `qnm`) keep the near-extremal expansion
+    default_keyword(k) = k === :convention ||
+        (k === :guess && kwargs[k] === nothing) ||
+        (k === :inversion_index && kwargs[k] === :auto)
     table_root = selected_segment === 0 && a isa Float64 &&
-        all(k -> k === :convention, keys(kwargs)) &&
+        all(default_keyword, keys(kwargs)) &&
         _qnm_convention(get(kwargs, :convention, :overtone)) == :overtone ?
         _kappa_squared_table_root(a < 0 ? QNMMode(internal_mode.s,
             internal_mode.l, -internal_mode.m, internal_mode.n,
