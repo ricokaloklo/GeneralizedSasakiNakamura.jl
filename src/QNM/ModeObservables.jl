@@ -409,23 +409,19 @@ end
 """
     qnm(a, s, l, m, n, branch=ordinary; kwargs...)
 
-Compute one complete QNM branch in `M=1` units using five numerical labels.
-The optional sixth positional argument is `ordinary` or `mirror`; it defaults
-to `ordinary`. The default result computes only the frequency, angular
-eigenvalue, directly evaluated GSN scattering amplitudes, frequency derivative
-and GSN excitation factor shown by its
-compact display.
+Compute one QNM in `M=1` units: its frequency, angular eigenvalue, GSN
+incidence and reflection amplitudes, the frequency derivative of the incidence
+amplitude and the GSN excitation factor. The optional sixth positional argument
+is `ordinary` (default) or `mirror`.
 
-For integer spins -2 through 2, l<=15 and n<=10 simple poles, the default
-excitation backend attempts a checked variational solve at one frequency.
-Failed refinement/contour checks, other modes, and explicit stencils/custom
-solvers retain Richardson. Set
-`excitation_options=(backend=:richardson,)` to select the original algorithm.
-The variational path keeps the supplied root; it does not run an additional
-GSN frequency polish, and rejects a root that fails the incidence check.
+For `s = -2, …, 2`, `l ≤ 15` and `n ≤ 10` the frequency derivative comes from a
+single radial solve that also integrates the derivative with respect to `ω`;
+when its accuracy checks fail, and for all other modes, it is
+Richardson-extrapolated from frequency stencils. Set
+`excitation_options=(backend=:richardson,)` to always use the stencils.
 
-Set `detailed=true` to additionally compute the Teukolsky excitation-factor
-bridge and callable radial solution objects `X`, `Y`, and `R`.
+Set `detailed=true` to also compute the excitation factor in the Teukolsky
+normalization and the callable radial solutions `X`, `Y` and `R`.
 
 `X(rstar)` evaluates the GSN solution, while `Y(r)` and `R(r)` use the
 Boyer-Lindquist radius. `X` and `R` use the `IN` QNM basis. The direct public
@@ -434,11 +430,10 @@ Boyer-Lindquist radius. `X` and `R` use the `IN` QNM basis. The direct public
 `missing`. The exact boundary and coordinate conventions are recorded in
 `branch.solutions`.
 
-For `mirror`, the root is the exact reflection `-conj(omega[s,l,-m,n])` of the
-ordinary root at the same spin, with the angular data recomputed; with
-`mirror_guess` it is polished on the negative-real branch from that guess. Amplitudes and frequency derivatives
-are evaluated at that branch; the radial solver may use exact conjugation
-symmetry rather than solve the reflected equation again.
+For `mirror`, the root is the exact reflection `-conj(ω)` of the ordinary
+`(s, l, -m, n)` root at the same spin, with the angular data recomputed; with
+`mirror_guess` it is polished on the negative-real branch from that guess. The
+amplitudes and the frequency derivative are evaluated at the mirror root.
 
 `convention` (`:overtone`, `:complete_spectrum` or `:leaver`), `inversion_index`
 and `segment` (`0`, `1` or `:auto`) have the meaning described in
@@ -451,13 +446,10 @@ explicit frequency guesses for the `ordinary` and `mirror` roots
 Use [`qnm_pair`](@ref) only when both branches are required in one result.
 `root_options` and `excitation_options` are optional NamedTuples forwarded to
 `qnm_frequency` and `qnm_excitation_factor`. The no-keyword call uses package
-defaults. The result is a `QNMResult` when every gate passes. If the
-observables are finite but one production gate is missed (usually the
-Richardson step-drift target; the gate is named in `limiting_gate`), the call
-returns `QNMEstimate` with the finite observables and measured convergence
-indicator. It does not relax the production
-acceptance threshold. A failed gate returns `QNMFailure`, and an exact-extremal
-zero-damping endpoint returns `QNMEndpointResult`.
+defaults. The result is a `QNMResult` when every check passes, a
+`QNMEstimate` when the observables are finite but one check misses its target
+(named in `limiting_gate`), a `QNMFailure` when a step fails, and a
+`QNMEndpointResult` for a zero-damping mode at `a = ±1`.
 """
 function qnm(a, s::Integer, l::Integer, m::Integer, n::Integer,
         branch::QNMBranch=ordinary;
@@ -503,8 +495,8 @@ end
 
 Compute and return both complete QNM branches as a `QNMPairResult` with fields
 `ordinary` and `mirror`. Keywords are those of [`qnm`](@ref). Without
-`mirror_guess`, the mirror root is seeded from `-conj` of the ordinary
-`(a, -m)` root and re-polished directly. Prefer [`qnm`](@ref) when only
+`mirror_guess`, the mirror root is the reflection `-conj(ω)` of the ordinary
+`(s, l, -m, n)` root at the same spin. Prefer [`qnm`](@ref) when only
 one branch is needed so the other branch is not evaluated.
 """
 function qnm_pair(a, s::Integer, l::Integer, m::Integer, n::Integer;

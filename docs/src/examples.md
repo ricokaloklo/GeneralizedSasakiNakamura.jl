@@ -4,10 +4,15 @@
 Pages = ["examples.md"]
 ```
 
+The plots use `Plots` and `LaTeXStrings`, and Example 4 also uses
+`SpinWeightedSpheroidalHarmonics`, `DifferentialEquations`, `Statistics`,
+`CubicSplines` and `QuadGK`; add them to your environment with `Pkg.add` first.
+
 ## Example 1: ISEM radial functions
 
 The public ISEM route constructs the GSN function $X$ directly. The
-Teukolsky function $R$ and source-adapted function $Y$ are numerical wrappers
+Teukolsky function $R$ and the auxiliary function $Y$ used by the point-particle
+convolutions are numerical wrappers
 around that route. The $Y$ wrapper is available for `s = -2, IN` and
 `s = +2, UP`.
 
@@ -61,7 +66,7 @@ plot(rstar_grid, [real.(dXdrstar_values) imag.(dXdrstar_values)];
     title = "Derivative from the same ISEM series evaluation")
 ```
 
-## QNM quick start
+## Example 2: QNM quick start
 
 The compact call computes the directly validated GSN quantities for one branch:
 
@@ -104,7 +109,7 @@ qnm_frequency(0.5, -2, 2, 0, 10; segment=1)                       # Cook's 10₁
 See [Quasinormal modes](@ref) for the excitation-factor convention, the overtone
 label conventions and the segments.
 
-## Example 2: Plotting reflectivity of black holes (in GSN formalism)
+## Example 3: Plotting reflectivity of black holes (in GSN formalism)
 ```julia
 using GeneralizedSasakiNakamura
 using Plots, LaTeXStrings
@@ -183,8 +188,8 @@ title!(L"a/M = 0.7")
 ```
 ![reflectivity-aOverM_0p7.png](reflectivity-aOverM_0p7.png)
 
-## Example 3: Calculating the gravitational waveform induced by a particle falling radially into a Kerr black hole
-Here, we show an example of our code implementation in calculating the gravitational waveform induced by a particle falling radially into a Kerr black hole along its spin axis (i.e. $\theta=0$ or $z$-axis). The particle has zero initial velocity at infinity, which we refer to as rest limit in the paper. It also means the orbital energy per mass is $\mathcal{E}=1$.
+## Example 4: Calculating the gravitational waveform induced by a particle falling radially into a Kerr black hole
+Here, we show an example of our code implementation in calculating the gravitational waveform induced by a particle falling radially into a Kerr black hole along its spin axis (i.e. $\theta=0$ or $z$-axis). The particle has zero initial velocity at infinity, which we refer to as the rest limit in [Yin, Lo & Chen, arXiv:2511.08673](https://arxiv.org/abs/2511.08673); the figure numbers below refer to that paper. It also means the orbital energy per mass is $\mathcal{E}=1$.
 
 
 ```julia
@@ -219,7 +224,7 @@ $w_{nn}^{(1)}(r)=w_{nn}^{(0)}(r)\left(\frac{\mathcal{N}}{u^r}\right)'\frac{u^r}{
 
 In our case $\xi(r)\equiv 0$, $\mathscr{A}=-1$ and 
 
-$u^t=\frac{r^2+a^2}{\Delta^2},$
+$u^t=\frac{r^2+a^2}{\Delta},$
 
 $u^r=-\sqrt{\frac{2r}{r^2+a^2}},$
 
@@ -539,7 +544,7 @@ plot(rs_values,
 
 ![v_of_rs.png](v_of_rs.png)
 
-We precompue the integrals in $\mathcal{W}_{nn}$ as ODE solving problems. The truncation of the integral $r_*^{\rm max}\to\infty$ can be set to some large numbers to make sure the convergence and precision.
+We precompute the integrals in $\mathcal{W}_{nn}$ as ODE solving problems. The truncation of the integral $r_*^{\rm max}\to\infty$ can be set to some large numbers to make sure the convergence and precision.
 
 
 ```julia
@@ -732,7 +737,7 @@ function SN_convolution(l, omega, a; rsout = 5000, rsin = - 50)
     Δr = 0.1*rsout
     result = baseline(soln, rsout-Δr, rsout)
 
-    if abs(result) === NaN
+    if isnan(result)
         return SN_convolution(l, omega, a; rsout = 2 * rsout, rsin = rsin)
     else
         return result
@@ -860,11 +865,11 @@ Since we have
 
 $\left|\frac{X_{\ell 0\omega}}{c_0}\right|\sim \omega^{(\ell -3)/3}$
 
-which is divergent for $\ell=2$ in the zero frequency limit. We can fix the error of $\ell=2$ oriented from truncating $|\omega_{\rm min}|=10^{-3}$ analytically by
+which is divergent for $\ell=2$ in the zero frequency limit. We can fix the error of $\ell=2$ originating from truncating $|\omega_{\rm min}|=10^{-3}$ analytically by
 
 $\int_{0}^{\omega_{\rm min}}\omega^{-1/3}d\omega=\frac{3}{2}\omega_{\rm min}^{2/3}$.
 
-One can check this analytical fix by removing it from the following inverse FT function and plot the waveform. When it is removed, the waveform is not calibrated to zero (which could be misunderstood as memory effect) when $u>0$.
+One can check this analytical fix by removing it from the following inverse FT function and plot the waveform. When it is removed, the waveform does not return to zero (which could be mistaken for a memory effect) when $u>0$.
 
 
 ```julia

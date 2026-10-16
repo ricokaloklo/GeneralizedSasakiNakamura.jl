@@ -1,12 +1,12 @@
 """
     QNMMode(s, l, m, n, branch=:positive_real)
 
-Label one directly solved QNM branch, accepted by [`qnm_frequency`](@ref) and
-[`qnm_sequence`](@ref) as an alternative to the plain `(s, l, m, n, branch)`
-arguments. In this form `branch=:negative_real` requires an explicit `guess`;
-the plain-argument form with `mirror` seeds it from `-conj` of the ordinary
-`(a, -m)` root. The negative-real root is always re-polished directly, never
-filled by conjugation.
+Label one QNM, accepted by [`qnm_frequency`](@ref) and [`qnm_sequence`](@ref)
+as an alternative to the plain `(s, l, m, n, branch)` arguments. In this form
+`branch=:negative_real` requires an explicit `guess`, from which the root is
+polished on the negative-real branch. The plain-argument form with `mirror`
+instead returns the reflection `-conj(ω)` of the ordinary `(s, l, -m, n)` root
+at the same spin.
 """
 struct QNMMode
     s::Int
@@ -37,8 +37,8 @@ end
 """
     QNMBranch
 
-Public branch selector for [`qnm`](@ref). `ordinary` selects the positive-real
-QNM branch and `mirror` selects the directly solved negative-real branch.
+Branch selector for [`qnm`](@ref). `ordinary` selects the QNM with positive
+real frequency and `mirror` the one with negative real frequency.
 `Ordinary` and `Mirror` are capitalised aliases of `ordinary` and `mirror`.
 """
 @enum QNMBranch begin
@@ -52,9 +52,8 @@ const Mirror = mirror
 """
     QNMResult
 
-Compact public wrapper returned by [`qnm`](@ref). All detailed fields remain
-available through property access, while notebook display omits the internal
-radial-route state.
+Result of [`qnm`](@ref) when every check passes. The display shows the main
+observables; all other fields are available as properties.
 """
 struct QNMResult{D}
     data::D
@@ -63,13 +62,12 @@ end
 """
     QNMEstimate
 
-Finite QNM observables that miss one explicitly reported production gate,
-named in `limiting_gate`. This includes a Richardson derivative that has not
-reached its convergence target, a conditioned near-extremal root or incidence
-check, or a high-damping complex-frequency route whose raw GSN incidence does
-not close at an independently identified Leaver root. The result preserves the
-computed amplitudes and convergence indicators; it is not an accepted
-production result or a rigorous error bound.
+Result of [`qnm`](@ref) when all observables are finite but one accuracy check
+did not reach its target. The check is named in `limiting_gate`, and
+`achieved_relative_precision` gives the precision it did reach (an estimate,
+not a bound). Typical cases are a frequency derivative that did not converge to
+`1e-8`, or a strongly damped mode whose incidence amplitude does not vanish to
+`1e-8` at the root. The values are usable as estimates.
 """
 struct QNMEstimate{D}
     data::D
@@ -78,10 +76,9 @@ end
 """
     QNMFailure
 
-Structured public result returned when a QNM root, independent ISEM
-validation, or excitation-factor gate fails.  It preserves the failing
-scientific object and first failed gate without presenting nonfinite amplitudes
-as a `QuasiNormalMode` success.
+Result of [`qnm`](@ref) when the root, the radial evaluation or the excitation
+factor fails. `stage` and `stop_reason` say which step failed and why; no
+amplitudes are returned.
 """
 struct QNMFailure{D}
     data::D
@@ -90,12 +87,11 @@ end
 """
     QNMEndpointResult
 
-Supported exact-extremal spectral endpoint data. A corotating zero-damping
-family ends at a Green-function branch point rather than an isolated simple
-pole. This type records that coalesced synchronous endpoint and exposes its
-ordinary simple-pole amplitude fields as `missing`. Discrete damped extremal
-limits use `QNMResult` after their exact-extremal radial gates pass, or
-`QNMEstimate` when only the Richardson production target remains unmet.
+Result of [`qnm`](@ref) for a zero-damping mode (ZDM) at exact extremality,
+`a = ±1`. These co-rotating families end at the synchronous frequency
+`ω = m a/2`, which is a branch point of the Green function rather than a simple
+pole, so the amplitude fields are `missing`. Damped modes (DM) at `a = ±1`
+return a `QNMResult` or `QNMEstimate`.
 """
 struct QNMEndpointResult{D}
     data::D

@@ -1,7 +1,9 @@
 # Quasinormal modes
 
-The QNM interface combines a Leaver continued-fraction root with an independent
-ISEM radial evaluation. Units are $M=1$.
+A QNM frequency is computed as a root of Leaver's continued fraction (a
+*Leaver root*); its scattering amplitudes and excitation factor are then
+evaluated at that frequency by solving the GSN equation (see below). Units are
+$M=1$.
 
 ## Compact interface
 
@@ -12,10 +14,12 @@ ordinary_mode = qnm(0.68, -2, 2, 2, 0)
 mirror_mode = qnm(0.68, -2, 2, 2, 0, mirror)
 ```
 
-The five numerical inputs are `(a, s, l, m, n)`. `ordinary` is the default
-branch. `mirror` polishes the negative-real root and evaluates its amplitudes
-and frequency derivative. The radial solver may use the exact conjugation
-symmetry; the QNM result is not copied from the ordinary branch.
+The five numerical inputs are `(a, s, l, m, n)`. `ordinary` (the default) is the
+mode with positive real frequency and `mirror` the one with negative real
+frequency. By default the mirror frequency is the exact reflection `-conj(ω)` of
+the ordinary `(s, l, -m, n)` root at the same spin; pass `mirror_guess` to
+polish it directly instead. Its amplitudes and frequency derivative are
+evaluated at the mirror frequency.
 
 A successful compact result exposes:
 
@@ -75,14 +79,15 @@ roots on 60 spins `a = 1 - u²` (`u` from `1` to `0.01`) and at `a = 1`:
 | :-- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `nmax(l)` | 10 | 9 | 8 | 8 | 7 | 6 | 5 | 4 | 4 | 3 | 2 |
 
-They are starting points only: the returned root is polished with the Leaver
-continued fraction at the requested spin. For `0.999 < a < 1` a damped mode is
+The grid runs from `a = 0` to `a = 0.9999`. The tabulated roots are starting
+points only: the returned root is polished with the Leaver continued fraction
+at the requested spin. For `0.999 < a < 1` a damped mode of the table is
 instead evaluated from the near-extremal expansion
-`ω = c₀ + c₁x + … + c₈x⁸` in `x = 1 - a²`. Its coefficients are solved order
-by order from the Teukolsky equation at `a = 1`, starting from the packaged
-`a = 1` root, on first use of the mode (tens of milliseconds) and then cached.
-The expansion is used where the term it omits, of order
-`exp(-2π Re(2ω - m)/√x)`, is below `1e-16`.
+`ω = c₀ + c₁x + … + c₈x⁸` in `x = 1 - a²` (ordinary branch, `Float64` spin,
+default keywords). Its coefficients are solved order by order from the
+Teukolsky equation at `a = 1`, starting from the packaged `a = 1` root, on first
+use of the mode (0.03–0.3 s) and then cached. The expansion is used where the
+term it omits, of order `exp(-2π Re(2ω - m)/√x)`, is below `1e-16`.
 
 Both functions take the same numbers as [`qnm`](@ref) (`qnm_sequence` takes a list of
 spins in place of `a`) and the keywords
@@ -119,31 +124,16 @@ At `a = 0` the pair has merged into `-2i`. Both `:complete_spectrum` `n = 8` and
 `QNMFailure`: the incidence amplitude has no simple zero at `-2i`, so the
 excitation factor is not defined.
 
-The default `convention=:overtone` treats `n` as a physical overtone label. The
-labels follow the Python [`qnm`](https://github.com/duetosymmetry/qnm) package
-(Stein 2019) and the Cook & Zalutskiy catalogue: overtone `n` is the Kerr
+The `:overtone` labels follow the Python [`qnm`](https://github.com/duetosymmetry/qnm)
+package (Stein 2019) and the Cook & Zalutskiy catalogue: overtone `n` is the Kerr
 continuation of the `n`-th Schwarzschild root, the same mode that
-[`qnm_sequence`](@ref) follows from `a = 0`. For `s = -2`, `l = 2`, `|m| = 2`
-co-rotating modes the Schwarzschild algebraically special frequency `-2i` splits
-at `a > 0` into a pair, which Cook labels `8₀` and `8₁`. Overtone `n = 8`
-returns `8₀` (the less damped one); `8₁` is available as `n = 9` with
-`convention=:complete_spectrum`, which numbers the pair consecutively:
+[`qnm_sequence`](@ref) follows from `a = 0`. For example, at `a = 0.68`:
 
 ```julia
 qnm_frequency(0.68, -2, 2, 2, 8)                                    # 8₀
 qnm_frequency(0.68, -2, 2, 2, 9; convention=:complete_spectrum)     # 8₁
 qnm_frequency(0.68, -2, 2, 2, 9)                                    # overtone 9 = complete-spectrum 10
 ```
-
-Overtones `n ≥ 9` therefore carry the same labels as the Python `qnm` package
-and the Cook catalogue. For the co-rotating `(2, 2)` modes the correspondence
-with tables that number the pair consecutively is
-
-| this package and Python `qnm` / Cook | Forteza & Mourier (2107.11829), `convention=:complete_spectrum` |
-| :--- | :--- |
-| `n = 8` (`8₀`) | `n = 8` |
-| `8₁` | `n = 9` |
-| `n ≥ 9` | `n + 1` |
 
 Counter-rotating modes have no such pair, and their labels coincide in these
 conventions. The mirror branch is counter-rotating when `a*m > 0`; for signed
@@ -192,35 +182,14 @@ whose axis frequency lies between the endpoints of overtones `n` and `n+1`.
 The successful result records `reemergence` (spin and frequency where `n₁`
 leaves the axis), `segment_endpoints`, and a `branch_label` such as `:kerr_overtone_n10_1`.
 
-Before declaring a later segment ended on the NIA, continuation attempts a
-restart in the same direction at `Re ω = ±1e-3`, using the last accepted
-imaginary frequency and the continuation root and branch checks. Successful
-crossings are counted in `provenance.continuation_axis_touches`;
-`nia_restart_rows` records each restart attempt and the failure that triggered
-it; both survive the automatic precision fallback. Segment 0 does not restart.
-
-A continuation step is not accepted when the interpolant of `Re ω` or of
-`Re ω²` through the last accepted points vanishes inside the step: the path
-reaches the axis there, and a root found beyond it belongs to another
-sequence. Close to `a = 1` the touches of `n₁` accumulate. If a re-emerged
-segment stalls on the axis after the restarts, the result fails with
-`:negative_imaginary_axis_tangent_accumulation` rather than claiming an end of
-the sequence. For `s = -2`, `l = 2`, `m = 0` and `n ≥ 17` this
-happens on the high-spin part of segment 1: for `n = 26` from about `a ≈ 0.81`,
-and for `n = 21`–`25` from about `a ≈ 0.91`–`0.97`. There the call fails with
-`:negative_imaginary_axis_tangent_accumulation` and returns no frequency.
-A Float64 root of segment 1 within two derivative steps of the
-axis is accepted only when a BigFloat re-polish at the same spin reproduces it
-to the stability gate; the check is recorded in
-`provenance.near_axis_precision_check`. A BigFloat (at least 128-bit) final root
-of segment 1 in that region must also pass a position certificate: the
-continued-fraction derivative from three stencils (step `h`, `h/2` and an
-imaginary step) must agree, and the Newton correction must not exceed the
-stability gate (`provenance.near_axis_position_check`). If the 128-bit
-certificate fails on its derivative, the root is solved again at the same spin
-in 192-bit arithmetic and must pass the certificate there
-(`provenance.near_axis_position_recovery`); the continuation itself is never
-repeated in higher precision.
+Near the axis the continuation restarts a stalled step, and segment-1 roots
+next to the axis are confirmed in BigFloat arithmetic; the corresponding checks
+are recorded in the result's `provenance`. Close to `a = 1` the touches of `n₁`
+accumulate, and a re-emerged segment that stalls on the axis fails with
+`:negative_imaginary_axis_tangent_accumulation` instead of returning a
+frequency. For `s = -2`, `l = 2`, `m = 0` this happens on the high-spin part of
+segment 1 of the higher overtones, for example from about `a ≈ 0.81` for
+`n = 26` and from about `a ≈ 0.91`–`0.97` for `n = 21`–`25`.
 
 | `stop_reason` | meaning |
 | :--- | :--- |
@@ -228,10 +197,7 @@ repeated in higher precision.
 | `:negative_imaginary_axis_gap` | `a` lies between the end of `n₀` and the start of `n₁` |
 | `:no_further_segment` | `segment=1` was requested where segment 0 exists |
 | `:negative_imaginary_axis_tangent_accumulation` | segment 1 stalled on the axis after its birth (touches accumulate toward `a = 1`) |
-| `:near_axis_precision_unverified` | a segment-1 Float64 root next to the axis was not reproduced by the BigFloat re-polish |
-| `:near_axis_position_derivative_unverified`, `:near_axis_position_cf_unverified`, `:near_axis_position_stencil_unverified` | the BigFloat position certificate could not be established |
-| `:near_axis_position_recovery_unverified` | the 192-bit same-spin re-solve did not pass the certificate |
-| `:near_axis_position_branch_guard` | the certified root moved off the continuation branch |
+| `:near_axis_precision_unverified`, `:near_axis_position_*` | a segment-1 root next to the axis could not be confirmed in BigFloat arithmetic |
 | `:segment_attribution_unavailable` | `m ≠ 0`: re-emergence events are listed in `provenance.reemergence_events`, but their labels are not assigned |
 | `:segment_unsupported_at_extremal` | `segment ≥ 1` at `abs(a) = 1` |
 | `:initial_guess_off_branch` | a Newton start on or beyond the NIA for its branch |
@@ -241,8 +207,11 @@ re-emerged labels are heuristic, so segment 1 is not assigned. The mirror of
 segment `k` is `-conj` of the ordinary segment `k`. `segment` is not available
 for the `8₀`/`8₁` pair and is limited to `0`, `1`, and `:auto`.
 
-The continued-fraction inversion convention is available separately and
-requires both an inversion index and a root guess:
+### Leaver inversion index
+
+With `convention=:leaver`, `n` (or an explicit `inversion_index`) is the
+inversion index of the continued fraction, which does not identify a mode by
+itself, so a `guess` is required:
 
 ```julia
 leaver_root = qnm_frequency(
@@ -255,8 +224,9 @@ leaver_root = qnm_frequency(
 
 ## Detailed radial solutions
 
-The compact call avoids constructing callable radial functions. Request the
-full bridge only when it is needed:
+The default call does not construct callable radial functions. Request them,
+together with the excitation factor in the Teukolsky normalization, only when
+they are needed:
 
 ```julia
 detailed = qnm(0.68, -2, 2, 2, 0; detailed=true)
@@ -300,21 +270,19 @@ For `a = 1` or `a = -1` (exact equality) a mode in the packaged table starts
 from its tabulated `a = 1` root, which must be reproduced by the recurrence
 below to `1e-10`. Any other mode is first followed to the near-extremal spins `a = sqrt(1 - κ²)`, `κ = 0.04, …, 0.0025`. A branch whose
 distance from `m a/2` halves with `κ` is a zero-damping branch and returns the
-synchronous endpoint `ω = m a/2` as a `QNMEndpointResult`. Every other branch is
-a damped mode: its frequency is the root of the exact-extremal radial
+synchronous endpoint `ω = m a/2` as a `QNMEndpointResult` (displayed as
+`ExtremalQuasiNormalMode` with `family = ZDM`, a zero-damping mode). Every other
+branch is a damped mode (`family = DM`): its frequency is the root of the exact-extremal radial
 recurrence of Richartz (Phys. Rev. D 93, 064062 (2016)), seeded by the
 near-extremal limit. The root is accepted only when it is stable under doubling
 of the recurrence depth and lies on the branch of the near-extremal ladder.
 The `P_3` coefficient of that paper is used with `-2im(1 + 6iω)`; the printed
 `-2im(1 - 6iω)` does not satisfy the Teukolsky equation for `m ≠ 0`.
 
-The radial amplitudes at `a = ±1` come from integrating out of an irregular
-singular horizon, which is ill-conditioned in `Float64`. For several damped
-modes, co-rotating and counter-rotating alike (for example
-`(s, l, m, n) = (-2, 2, 2, 1)` and `(2, 2, 2, 0)` at `a = -1`), the incidence
-closure does not reach the gate; `qnm` then keeps the exact frequency but
-reports the failed incidence gate instead of an excitation factor. At exact
-extremality the mirror root is the reflection `-conj(ω)` of the ordinary
+The radial amplitudes at `a = ±1` are integrated along a complex path out of
+the irregular singular horizon. If the incidence amplitude does not vanish to
+its target there, `qnm` keeps the exact frequency and reports the failed check
+instead of an excitation factor. At exact extremality the mirror root is the reflection `-conj(ω)` of the ordinary
 `(s, l, -m, n)` root at the same spin.
 
 ## Lower-level functions

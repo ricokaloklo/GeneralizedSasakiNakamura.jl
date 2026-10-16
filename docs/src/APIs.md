@@ -43,15 +43,15 @@ result = qnm(a, s, l, m, n, mirror)
 pair = qnm_pair(a, s, l, m, n)
 root = qnm_frequency(a, s, l, m, n)                 # frequency only
 roots = qnm_sequence(spins, s, l, m, n)
-# keywords: convention=:overtone | :complete_spectrum, segment=0 | 1 | :auto
+# keywords: convention=:overtone | :complete_spectrum | :leaver, segment=0 | 1 | :auto
 ```
 
-`ordinary` is the default branch. `mirror` requests the negative-real root
-and its amplitudes. The compact result contains:
+`ordinary` is the default branch. `mirror` requests the mode with negative real
+frequency and its amplitudes. The compact result contains:
 
 | field | meaning |
 | :--- | :--- |
-| `omega` or `frequency` | polished Leaver QNM frequency |
+| `omega` or `frequency` | QNM frequency (root of Leaver's continued fraction) |
 | `lambda` | radial Teukolsky separation constant |
 | `incidence_amplitude` | GSN incoming amplitude |
 | `reflection_amplitude` | GSN reflected amplitude |
@@ -102,11 +102,11 @@ Keyword summary:
 | keyword | default | meaning |
 | :--- | :--- | :--- |
 | `method` | `"auto"` | `"auto"` tries ISEM first and falls back to the legacy automatic route only on an ISEM failure with no explicit `xm`; `"ISEM"` is strict; `"linear"` and `"Riccati"` select the legacy GSN ODE solvers |
-| `tol` | internal default | ISEM matching tolerance or alias for the ODE tolerance in high-level calls |
-| `tolerance` | internal default | legacy ODE tolerance; `tol` takes precedence when both are supplied |
-| `xm` | `nothing` | ISEM matching point in the compact coordinate, `0 < xm < 1` |
+| `tol` | internal default | ISEM matching tolerance, or the tolerance of the ODE methods |
+| `tolerance` | internal default | tolerance of the ODE methods; `tol` takes precedence when both are supplied. Tuple form and the form with explicit `rsin, rsout`; not the boundary-specific form |
+| `xm` | `nothing` | ISEM matching point in the compactified radial coordinate `x ∈ (0, 1)`, which maps the horizon to `0` and infinity to `1` |
 | `N` | `nothing` | optional ISEM expansion order override; chosen automatically when omitted |
-| `sfe`, `lfe` | `nothing` | optional switches for the small-frequency (MST) and large-frequency (eikonal) expansions; `nothing` selects them automatically |
+| `sfe`, `lfe` | `nothing` | switches for the small-frequency expansion (MST, the Mano–Suzuki–Takasugi series) and the large-frequency (eikonal) expansion; `nothing` selects them automatically |
 
 Omit optional matching controls to use automatic selection.
 If construction at an explicit `xm` fails, `"auto"` reports the failure rather
@@ -133,7 +133,7 @@ Rin(10.0)
 Rin.Teukolsky_solution(10.0)
 ```
 
-`TeukolskyRadialFunction(r)` returns only the radial function value. `Teukolsky_solution(r)` returns the stored radial data from the selected backend.
+`TeukolskyRadialFunction(r)` returns the value of `R(r)`. `Teukolsky_solution(r)` returns `R` and `dR/dr` as its first two entries; with `method = "ISEM"` it returns the tuple `(R, dR/dr, d²R/dr², err)`.
 
 ### `GSN_radial`
 
@@ -155,17 +155,17 @@ Xin(rstar_from_r(0.9, 10.0))
 Xin.GSN_solution(rstar_from_r(0.9, 10.0))
 ```
 
-`GSNRadialFunction(rstar)` returns only the GSN function value. `GSN_solution(rstar)` returns the stored GSN data from the selected backend.
+`GSNRadialFunction(rstar)` returns the value of `X(r_*)`. With ISEM, `GSN_solution(rstar)` returns the tuple `(X, dX/dr_*, err)`, where `err` is an estimate of the local error, not a bound.
 
 Keyword summary (in addition to the matching controls shared with `Teukolsky_radial`):
 
 | keyword | default | meaning |
 | :--- | :--- | :--- |
 | `tol` | `nothing` | tolerance; alias for `tolerance` that takes precedence when both are supplied |
-| `tolerance` | `nothing` (`1e-12` for the legacy ODE paths) | legacy ODE tolerance |
-| `lambda` | `nothing` | precomputed spin-weighted spheroidal eigenvalue (method with `rsin`, `rsout`); computed from `s, l, m, a*omega` when omitted |
-| `ODE_algorithm` | `AutoVern9(Rosenbrock23(autodiff=false))` | ODE solver of the legacy `"linear"` and `"Riccati"` paths |
-| `data_type` | `ComplexF64` | number type of the legacy ODE paths |
+| `tolerance` | `nothing` (`1e-12` for the ODE methods) | tolerance of the ODE methods |
+| `lambda` | `nothing` | precomputed spin-weighted spheroidal eigenvalue; computed from `s, l, m, a*omega` when omitted. Only the form with explicit `rsin, rsout` |
+| `ODE_algorithm` | `AutoVern9(Rosenbrock23(autodiff=false))` | ODE solver of the `"linear"` and `"Riccati"` methods. Tuple form and the form with explicit `rsin, rsout` |
+| `data_type` | `ComplexF64` | number type of the ODE methods. Tuple form and the form with explicit `rsin, rsout` |
 
 ### `Y_radial`
 
@@ -173,7 +173,7 @@ Keyword summary (in addition to the matching controls shared with `Teukolsky_rad
 Y = Y_radial(s, l, m, a, omega, IN; method = "auto")
 ```
 
-Constructs the auxiliary ISEM radial function used by the point-particle convolutions, with the same matching controls as `Teukolsky_radial`. The returned `YRadialFunction` is callable.
+Constructs the auxiliary radial function `Y` that the point-particle convolutions integrate against the source, with the same matching controls as `Teukolsky_radial`. It is available for `s = -2` with `IN` and `s = +2` with `UP`, for nonzero `omega`; there is no tuple form. The returned `YRadialFunction` is callable.
 
 ```@docs
 Y_radial
@@ -275,7 +275,7 @@ Important keywords:
 | `levin_nmin` | `50` | radial shell at which tail Levin quadrature becomes eligible |
 | `levin_local_n` | `16` | number of local nodes per adaptive Levin subinterval |
 | `levin_max_depth` | `8` | maximum adaptive Levin subdivision depth |
-| `info` | `false` | accepted for signature stability; it has no effect, since the ISEM radial solver prints no fallback diagnostics |
+| `info` | `false` | no effect; kept for compatibility |
 | `record` | `false` | when set to `true`, records mode details to HDF5 where supported |
 | `record_path` | `nothing` | optional HDF5 output path |
 | `fast` | `true` | use cached/presampled fast summation path where available |
@@ -301,7 +301,7 @@ The return type is `TeukolskyPointParticleFlux`:
 | `total_modes` | number of single modes evaluated |
 | `tolerance` | effective summation tolerance |
 | `truncation_floor` | named tuple of final infinity and horizon absolute truncation floors |
-| `reached` | named tuple of reached shell indices, e.g. `l_reached`, `n_reached`, or `k_reached` with separate infinity and horizon entries where applicable |
+| `reached` | named tuple of the highest shell indices reached: `l_reached`, `l_reached_inf`, `l_reached_hor` (circular), `k_reached_inf`, `k_reached_hor` (inclined) or `n_reached_inf`, `n_reached_hor` (eccentric and generic); the display groups the infinity and horizon values |
 | `reached.convolution_integral` | named tuple describing whether convolution integrals were needed and which tail strategy was used |
 | `cost` | wall-clock runtime in seconds |
 | `result` | raw mode-summation result |
@@ -309,10 +309,14 @@ The return type is `TeukolskyPointParticleFlux`:
 Example:
 
 ```julia
-flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.7, cos(pi / 4))
+flux = Teukolsky_pointparticle_flux(0.9, 6.0, 0.0, 1.0)   # circular equatorial, about 0.3 s after warm-up
 flux.infinity_energy_flux
 flux.horizon_energy_flux
+flux.reached.l_reached_inf
 ```
+
+A generic orbit such as `(0.9, 6.0, 0.7, 0.5)` sums over about a million modes
+and takes about 20 minutes at `tol = 1e-8`.
 
 ## HDF5 Mode Records
 
@@ -394,20 +398,19 @@ Stores a homogeneous GSN radial solution.
 | `normalization_convention` | normally `UNIT_GSN_TRANS` |
 | `method` | solver method string |
 
-Reported errors are estimates, not complete error bounds; they exclude equation-coefficient evaluation error, which can be of order `1e-11` near the horizon.
+#### Accuracy
 
-They also exclude uncertainty in the input angular eigenvalue, and they can underestimate the true error. At an incidence zero, use absolute or transmission-normalized error rather than relative error with respect to the zero. Real-frequency estimates can miss larger relative errors in small reflection amplitudes.
+The error entry returned by `GSN_solution` is an estimate, not a bound. It does not include the error of the input angular
+eigenvalue or of the equation coefficients near the horizon (up to about
+`1e-11`). Reflection amplitudes that are small compared with the dominant
+amplitude, and solutions at strongly damped frequencies, can lose relative
+accuracy; at an incidence zero, judge the incidence amplitude by its size
+relative to the transmission amplitude.
 
-Amplitude estimates do not bound errors in `X`, `R`, or `Y` evaluations. Even at real or weakly damped frequencies, transmission-normalized `R(10)` can have relative errors above `1e-8`; strong damping can cause order-unity errors on the real radius axis despite successful construction. Small reflection amplitudes may also lose relative precision. No total radial-value error estimate is provided.
-
-Reflection amplitudes that are small relative to the dominant amplitude may have no reliable relative digits, even when the dominant amplitude is accurate.
-
-Explicit legacy methods have separate low-frequency limits. At low
-frequencies their incidence amplitudes can be wrong with the default outer
-boundary even when their near-zone values agree with the default method; an
-accurate local radial value does not certify the legacy far-field amplitudes. Below
-`|omega| = 1e-8` the legacy ODE routes lose the UP solution; `method = "auto"`
-warns when it falls back to them there.
+The ODE methods (`"linear"`, `"Riccati"`) have their own low-frequency limits:
+with the default outer boundary their incidence amplitudes can be wrong at low
+frequency, and below `|omega| = 1e-8` they lose the `UP` solution;
+`method = "auto"` warns when it falls back to them there.
 
 ### `TeukolskyPointParticleMode` and `GSNPointParticleMode`
 

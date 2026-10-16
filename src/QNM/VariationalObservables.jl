@@ -212,12 +212,14 @@ _qnm_gsn_excitation_factor(root::LeaverResult;kwargs...) =
 """
     qnm_excitation_factor(root::LeaverResult; backend=:auto, kwargs...)
 
-Use checked frequency sensitivities for integer spins -2 through 2, l<=15,
-n<=10 simple poles, or the original Richardson algorithm otherwise. Failed
-refinement or contour checks fall back to Richardson. Force either with
-`backend=:variational` or `:richardson`. Explicit stencils/custom solvers
-retain Richardson. The variational Teukolsky bridge includes the off-root
-product rule and does not claim an independent radial or direction check.
+Compute the excitation factor of a root returned by [`qnm_frequency`](@ref)
+and return an `ExcitationFactorResult`, in both the GSN and the Teukolsky
+normalization. For `s = -2, …, 2`, `l ≤ 15` and `n ≤ 10` the frequency
+derivative comes from a single radial solve that also integrates the derivative
+with respect to `ω`; when its accuracy checks fail, and for all other modes, it
+is Richardson-extrapolated from frequency stencils. Force either method with
+`backend=:variational` or `backend=:richardson`; explicit stencil options
+(`h`, `direction_tolerance`) and custom radial solvers always use the stencils.
 """
 qnm_excitation_factor(root::LeaverResult;kwargs...) =
     _qnm_selected_excitation(root,(;kwargs...);detailed=true)

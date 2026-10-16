@@ -568,7 +568,7 @@ and boundary condition specified by `boundary_condition`, which can be either
     - `OUT` for purely-outgoing at the horizon,
     - `DOWN` for purely-ingoing at infinity.
 
-Note that the `OUT` and `DOWN` solutions are constructed by linearly combining the `IN` and `UP` solutions, respectively.
+Note that the `OUT` and `DOWN` solutions are constructed by linearly combining the `IN` and `UP` solutions.
 
 The GSN function is numerically solved, for real values of `omega`, in the interval of *tortoise coordinates* $r_{*} \in$ `[rsin, rsout]` using the ODE solver (from `DifferentialEquations.jl`) specified by `ODE_algorithm` (default: `AutoVern9(Rosenbrock23(autodiff=false))`) 
 with tolerance specified by `tolerance` (default: `1e-12`); `tol` is an alias that takes precedence over `tolerance`.
@@ -578,7 +578,7 @@ Omit `xm` for automatic matching; an explicit `xm` can introduce a cancellation 
 By default the data type used is `ComplexF64` (i.e. double-precision floating-point number) but it can be changed by
 specifying `data_type` (e.g. `Complex{BigFloat}` for complex arbitrary precision number).
 
-With complex values of `omega`, the GSN function is solved along a rotated path on the complex plane of $r_*$, 
+For the ODE methods (`"linear"`, `"Riccati"`) and complex `omega`, the GSN function is solved along a rotated path on the complex plane of $r_*$, 
 where the path consists of two broken line segments parametrized by a real variable/a new coordinate $\rho$.
 The angle with which the path is rotated is determined by the frequency $\omega$, the Kerr spin parameter $a$ and the azimuthal index $m$, 
 such that the GSN function still behaves like a plane wave near the horizon and spatial infinity. 
@@ -587,7 +587,7 @@ Both the numerical and semi-analytical GSN solutions are evaluated as functions 
 
 While the numerical GSN solution is only accurate in the range `[rsin, rsout]`, 
 the full GSN solution is constructed by smoothly attaching the asymptotic solutions near horizon (up to `horizon_expansion_order`-th order) 
-and infinity (up to `infinity_expansion_order`-th order). These extensions remain subject to asymptotic truncation and numerical conditioning; successful construction does not certify accuracy at every evaluation point.
+and infinity (up to `infinity_expansion_order`-th order).
 
 Note, however, when `omega = 0`, the exact GSN function expressed using Gauss hypergeometric functions will be returned (i.e., instead of being solved numerically). Small nonzero frequencies retain their finite-frequency boundary conditions.
 In this case, only `s`, `l`, `m`, `a`, `omega`, `boundary_condition` will be parsed.
@@ -1088,10 +1088,10 @@ end
 Compute the GSN function for a given mode (specified by `s` the spin weight, `l` the harmonic index, `m` the azimuthal index, `a` the Kerr spin parameter, and `omega` the frequency)
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
 
-Note that for _real_ frequencies, the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
+For the ODE methods and _real_ frequencies, the numerical inner boundary (rsin) and outer boundary (rsout) are set to `-50` and `1000`,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
-while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
+while the asymptotic expansions at the horizon and infinity are taken to order `25`.
 These domain and order choices apply to the ODE routes; with the default `method="auto"` both solutions are first constructed with `ISEM`.
 
 Return the tuple `(Xin, Xup)` of `GSNRadialFunction`s.
@@ -1236,7 +1236,7 @@ and boundary condition specified by `boundary_condition`, which can be either
     - `OUT` for purely-outgoing at the horizon,
     - `DOWN` for purely-ingoing at infinity.
 
-Note that the `OUT` and `DOWN` solutions are constructed by linearly combining the `IN` and `UP` solutions, respectively.
+Note that the `OUT` and `DOWN` solutions are constructed by linearly combining the `IN` and `UP` solutions.
 
 The full GSN solution is converted to the corresponding Teukolsky solution $(R(r), dR/dr)$ and 
 the incidence, reflection and transmission amplitude are converted from the GSN formalism to the Teukolsky formalism 
@@ -1248,7 +1248,7 @@ ISEM fails. Explicit `method="ISEM"` is strict.
 Note, however, when `omega = 0`, the exact Teukolsky function expressed using Gauss hypergeometric functions will be returned (i.e., instead of using the GSN formalism). 
 In this case, only `s`, `l`, `m`, `a`, `omega`, `boundary_condition` will be parsed.
 
-With complex values of `omega`, the Teukolsky function is evaluated as a function of $r$,
+For the ODE methods (`"linear"`, `"Riccati"`) and complex `omega`, the Teukolsky function is evaluated as a function of $r$,
 where the value at the corresponding location $\rho = r_{*}(r) \in \mathbb{R}$ along the rotated integration path on the complex plane is returned.
 """
 function Teukolsky_radial(
@@ -1413,10 +1413,10 @@ Compute the Teukolsky function for a given mode (specified by `s` the spin weigh
 with the purely-ingoing boundary condition at the horizon (`IN`) and the purely-outgoing boundary condition at infinity (`UP`).
 When `method` is `"auto"`, this overload tries `ISEM` first and falls back to the legacy automatic radial route only if ISEM fails. Explicit `method="ISEM"` is strict.
 
-Note that for _real_ frequencies, the numerical inner boundary (rsin) and outer boundary (rsout) are set to the default values `_DEFAULT_rsin` and `_DEFAULT_rsout`, respectively,
+For the ODE methods and _real_ frequencies, the numerical inner boundary (rsin) and outer boundary (rsout) are set to `-50` and `1000`,
 while the order of the asymptotic expansion at the horizon and infinity are determined automatically.
 As for _complex_ frequencies, the numerical inner and the outer boundaries are determined automatically,
-while the order of the asymptotic expansion at the horizon and infinity are set to `_DEFAULT_horizon_expansion_order_for_cplx_freq` and `_DEFAULT_infinity_expansion_order_for_cplx_freq`, respectively.
+while the asymptotic expansions at the horizon and infinity are taken to order `25`.
 
 Return the tuple `(Rin, Rup)` of `TeukolskyRadialFunction`s.
 """
