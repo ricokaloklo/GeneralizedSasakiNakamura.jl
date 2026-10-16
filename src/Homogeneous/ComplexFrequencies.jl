@@ -201,7 +201,7 @@ function solve_Phi_in_rho(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, si
 end
 
 function Xup_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoout; order::Int=-1, dtype=_DEFAULTDATATYPE)
-    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
+    outgoing_coeff_func = coefficient_sequence(outgoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
     fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
     dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=order)
 
@@ -289,7 +289,7 @@ function solve_Phiup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda, r_fro
 end
 
 function Xin_initialconditions(s::Int, m::Int, a, beta, omega, lambda, r_from_rho, rs_mp, rhoin; order::Int=-1, dtype=_DEFAULTDATATYPE)
-    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
+    ingoing_coeff_func = coefficient_sequence(ingoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
     gin(r) = gansatz(ingoing_coeff_func, a, r; order=order)
     dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=order)
 
@@ -380,14 +380,14 @@ end
 function BrefBinc_SN_from_Xin(s::Int, m::Int, a, beta, omega, lambda, Xinsoln, r_from_rho, rs_mp, rhoout; order=10, dtype=_DEFAULTDATATYPE)
     rout = r_from_rho(rhoout)
 
-    ingoing_coeff_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
+    ingoing_coeff_func = coefficient_sequence(ingoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
     fin(r) = fansatz(ingoing_coeff_func, omega, r; order=order)
     dfin_dr(r) = dfansatz_dr(ingoing_coeff_func, omega, r; order=order)
     _fin = fin(rout)
     _dfin_dr = dfin_dr(rout)
     _phase_in = exp(-1im * abs(omega) * determine_sign(omega)*rhoout) * exp(-1im * omega * rs_mp)
 
-    outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
+    outgoing_coeff_func = coefficient_sequence(outgoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
     fout(r) = fansatz(outgoing_coeff_func, omega, r; order=order)
     dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=order)
     _fout = fout(rout)
@@ -411,14 +411,14 @@ function CrefCinc_SN_from_Xup(s::Int, m::Int, a, beta, omega, lambda, Xupsoln, r
     rin = r_from_rho(rhoin)
     # rsin = rs_mp \pm rhoin * exp(1im*beta)
 
-    ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
+    ingoing_coeff_func = coefficient_sequence(ingoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
     gin(r) = gansatz(ingoing_coeff_func, a, r; order=order)
     dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=order)
     _gin = gin(rin)
     _dgin_dr = dgin_dr(rin)
     _phase_in = exp(-1im * abs(p) * determine_sign(p)*rhoin) * exp(-1im * p * rs_mp)
 
-    outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
+    outgoing_coeff_func = coefficient_sequence(outgoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
     gout(r) = gansatz(outgoing_coeff_func, a, r; order=order)
     dgout_dr(r) = dgansatz_dr(outgoing_coeff_func, a, r; order=order)
     _gout = gout(rin)
@@ -450,7 +450,7 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         # _rs = rs_mp + rho * exp(1im*beta_neg)
 
         # Construct the analytical ansatz
-        ingoing_coeff_func_hor(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
+        ingoing_coeff_func_hor = coefficient_sequence(ingoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
         gin(r) = gansatz(ingoing_coeff_func_hor, a, r; order=horizon_expansionorder)
         dgin_dr(r) = dgansatz_dr(ingoing_coeff_func_hor, a, r; order=horizon_expansionorder)
         _gin = gin(_r)
@@ -478,14 +478,14 @@ function semianalytical_Xin(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         # _rs = rs_mp + rho * exp(1im*beta_pos)
 
         # Construct the analytical ansatz
-        ingoing_coeff_func(ord) = ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
+        ingoing_coeff_func = coefficient_sequence(ingoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
         fin(r) = fansatz(ingoing_coeff_func, omega, r; order=infinity_expansionorder)
         dfin_dr(r) = dfansatz_dr(ingoing_coeff_func, omega, r; order=infinity_expansionorder)
         _fin = fin(_r)
         _dfin_dr = dfin_dr(_r)
         _phase_in = exp(-1im * abs(omega) * determine_sign(omega)*rho) * exp(-1im * omega * rs_mp)
 
-        outgoing_coeff_func(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
+        outgoing_coeff_func = coefficient_sequence(outgoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
         fout(r) = fansatz(outgoing_coeff_func, omega, r; order=infinity_expansionorder)
         dfout_dr(r) = dfansatz_dr(outgoing_coeff_func, omega, r; order=infinity_expansionorder)
         _fout = fout(_r)
@@ -518,14 +518,14 @@ function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         # _rs = rs_mp + rho * exp(1im*beta_neg)
 
         # Construct the analytical ansatz
-        ingoing_coeff_func(ord) = ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
+        ingoing_coeff_func = coefficient_sequence(ingoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
         gin(r) = gansatz(ingoing_coeff_func, a, r; order=horizon_expansionorder)
         dgin_dr(r) = dgansatz_dr(ingoing_coeff_func, a, r; order=horizon_expansionorder)
         _gin = gin(_r)
         _dgin_dr = dgin_dr(_r)
         _phase_in = exp(-1im * abs(p) * determine_sign(p)* rho) * exp(-1im * p * rs_mp)
 
-        outgoing_coeff_func(ord) = outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype)
+        outgoing_coeff_func = coefficient_sequence(outgoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
         gout(r) = gansatz(outgoing_coeff_func, a, r; order=horizon_expansionorder)
         dgout_dr(r) = dgansatz_dr(outgoing_coeff_func, a, r; order=horizon_expansionorder)
         _gout = gout(_r)
@@ -547,7 +547,7 @@ function semianalytical_Xup(s::Int, m::Int, a, beta_pos, beta_neg, omega, lambda
         end
 
         # Construct the analytical ansatz
-        outgoing_coeff_func_inf(ord) = outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype)
+        outgoing_coeff_func_inf = coefficient_sequence(outgoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
         fout(r) = fansatz(outgoing_coeff_func_inf, omega, r; order=infinity_expansionorder)
         dfout_dr(r) = dfansatz_dr(outgoing_coeff_func_inf, omega, r; order=infinity_expansionorder)
         _fout = fout(_r)

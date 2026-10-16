@@ -17,6 +17,26 @@ export integrand_generic_sample_cheby_m2, integrand_generic_sample_cheby_p2, int
 export kerr_geo_eccentric_segment_sample_cheby, eccentric_segment_geometry_cache, eccentric_segment_phase_basis_cache, eccentric_segment_sample_bundle_cheby, integrand_eccentric_factored_segment_cheby_m2
 export carter_ingredients_sample
 
+# Phase-grid helpers. `_phase_values` evaluates an orbit function at Mino time λ = (q - q0)/ϒ for each phase q;
+# `_radial_phase_rates` and `_polar_phase_rates` return Σ·u(λ) with Σ = r² + a²cos²θ on the grid. Typed callable
+# arguments keep the loops specialized.
+_phase_values(f::F, qs, q0, frequency) where {F} =
+    map(q -> f((q - q0) / frequency), qs)
+
+function _radial_phase_rates(rate::F, theta::G, qs, radii, a, q0, frequency) where {F,G}
+    return map(qs, radii) do q, r
+        lambda = (q - q0) / frequency
+        (r^2 + a^2 * cos(theta(lambda))^2) * rate(lambda)
+    end
+end
+
+function _polar_phase_rates(rate::F, radius::G, qs, angles, a, q0, frequency) where {F,G}
+    return map(qs, angles) do q, theta
+        lambda = (q - q0) / frequency
+        (radius(lambda)^2 + a^2 * cos(theta)^2) * rate(lambda)
+    end
+end
+
 function kerr_geo_generic_sample(KG::Dict, N_sample::Int64, K_sample::Int64)
     # === Check input ===
     ispow2(N_sample) || throw(ArgumentError("N_sample must be a power of 2"))
@@ -35,12 +55,6 @@ function kerr_geo_generic_sample(KG::Dict, N_sample::Int64, K_sample::Int64)
     ϒθ = Frequencies["ϒθ"]
     Γ = Frequencies["ϒt"]
 
-    # === Map phase to physical quantities ===
-    rq(qr)  = r((qr - qr0) / ϒr)
-    θq(qθ)  = θ((qθ - qθ0) / ϒθ)
-    urq(qr) = (r((qr - qr0) / ϒr)^2 + a^2 * cos(θ((qr - qr0) / ϒr))^2) * ur((qr - qr0) / ϒr)
-    uθq(qθ) = (r((qθ - qθ0) / ϒθ)^2 + a^2 * cos(θ((qθ - qθ0) / ϒθ))^2) * uθ((qθ - qθ0) / ϒθ)
-
     # === Sampling grids ===
     qr_full = collect(range(0, π; length=N_sample))   # full radial phase
     qθ_full = collect(range(0, π; length=K_sample))   # full polar phase
@@ -54,24 +68,24 @@ function kerr_geo_generic_sample(KG::Dict, N_sample::Int64, K_sample::Int64)
         antisym ? vcat(half, -reverse(half)) : vcat(half, reverse(half))
 
     # === No-symmetry quantities ===
-    rq_vals  = [rq(q) for q in qr_full]
+    rq_vals  = _phase_values(r, qr_full, qr0, ϒr)
     rs_vals = rstar_from_r.(a, rq_vals)
-    θq_vals  = [θq(q) for q in qθ_full]
-    Δtr_vals = [Δtr(q) for q in qr_full]
-    Δφr_vals = [Δφr(q) for q in qr_full]  # no symmetry
+    θq_vals  = _phase_values(θ, qθ_full, qθ0, ϒθ)
+    Δtr_vals = map(Δtr, qr_full)
+    Δφr_vals = map(Δφr, qr_full)  # no symmetry
 
     # === Symmetric quantities (compute half then extend) ===
-    Δtθ_half = [Δtθ(q) for q in qθ_half]   # antisymmetric
-    Δφθ_half = [Δφθ(q) for q in qθ_half]   # antisymmetric
+    Δtθ_half = map(Δtθ, qθ_half)   # antisymmetric
+    Δφθ_half = map(Δφθ, qθ_half)   # antisymmetric
 
     Δtθ_vals = extend_half(Δtθ_half, true)
     Δφθ_vals = extend_half(Δφθ_half, true)
 
     # === urq / uθq values ===
-    urq_fwd = [urq(q) for q in qr_full]           # full forward
+    urq_fwd = _radial_phase_rates(ur, θ, qr_full, rq_vals, a, qr0, ϒr)           # full forward
     urq_rev = -urq_fwd                             # odd symmetry
 
-    uθq_half = [uθq(q) for q in qθ_half]
+    uθq_half = _polar_phase_rates(uθ, r, qθ_half, view(θq_vals, 1:length(qθ_half)), a, qθ0, ϒθ)
     uθq_fwd  = extend_half(uθq_half, false)       # even symmetry
     uθq_rev  = -reverse(uθq_fwd)                  # reversed then negated
 
@@ -117,14 +131,6 @@ function kerr_geo_generic_sample_cheby(KG::Dict, N_sample::Int64, K_sample::Int6
     ϒθ = Frequencies["ϒθ"]
     Γ = Frequencies["ϒt"]
 
-    # === Map phase variables to physical quantities ===
-    rq(qr)  = r((qr - qr0) / ϒr)  # Radial coordinate from radial phase
-    θq(qθ)  = θ((qθ - qθ0) / ϒθ)  # Polar angle from polar phase
-    # Radial four-velocity component (scaled)
-    urq(qr) = (r((qr - qr0) / ϒr)^2 + a^2 * cos(θ((qr - qr0) / ϒr))^2) * ur((qr - qr0) / ϒr)
-    # Polar four-velocity component (scaled)
-    uθq(qθ) = (r((qθ - qθ0) / ϒθ)^2 + a^2 * cos(θ((qθ - qθ0) / ϒθ))^2) * uθ((qθ - qθ0) / ϒθ)
-
     # === Chebyshev node generation ===
     # Generates Chebyshev extremal points on [a, b] (clustered at boundaries)
     function chebyshev_nodes(n::Int, a::Float64, b::Float64)
@@ -151,29 +157,29 @@ function kerr_geo_generic_sample_cheby(KG::Dict, N_sample::Int64, K_sample::Int6
         antisym ? vcat(half, -reverse(half)) : vcat(half, reverse(half))
 
     # === Quantities without symmetry ===
-    rq_vals  = [rq(q) for q in qr_full]         # Radial coordinate values
+    rq_vals  = _phase_values(r, qr_full, qr0, ϒr)         # Radial coordinate values
     rs_vals = rstar_from_r.(a, rq_vals)        # Tortoise coordinate (assumes rstar_from_r is defined)
-    θq_vals  = [θq(q) for q in qθ_full]        # Polar angle values
-    Δtr_vals = [Δtr(q) for q in qr_full]       # Radial cross function Δt
-    Δφr_vals = [Δφr(q) for q in qr_full]       # Radial cross function Δφ (no symmetry)
+    θq_vals  = _phase_values(θ, qθ_full, qθ0, ϒθ)        # Polar angle values
+    Δtr_vals = map(Δtr, qr_full)       # Radial cross function Δt
+    Δφr_vals = map(Δφr, qr_full)       # Radial cross function Δφ (no symmetry)
 
     # === Symmetric quantities (compute half then extend) ===
-    Δtθ_half = [Δtθ(q) for q in qθ_half]       # Polar cross function Δt (antisymmetric)
-    Δφθ_half = [Δφθ(q) for q in qθ_half]       # Polar cross function Δφ (antisymmetric)
+    Δtθ_half = map(Δtθ, qθ_half)       # Polar cross function Δt (antisymmetric)
+    Δφθ_half = map(Δφθ, qθ_half)       # Polar cross function Δφ (antisymmetric)
 
     Δtθ_vals = extend_half(Δtθ_half, true)     # Extend with odd symmetry
     Δφθ_vals = extend_half(Δφθ_half, true)     # Extend with odd symmetry
 
-    dtr_vals = [dtr(q) for q in qr_full]
-    dφr_vals = [dφr(q) for q in qr_full]
-    dtθ_vals = [dtθ(q) for q in qθ_full]
-    dφθ_vals = [dφθ(q) for q in qθ_full]
+    dtr_vals = map(dtr, qr_full)
+    dφr_vals = map(dφr, qr_full)
+    dtθ_vals = map(dtθ, qθ_full)
+    dφθ_vals = map(dφθ, qθ_full)
 
     # === urq / uθq values ===
-    urq_fwd = [urq(q) for q in qr_full]        # Forward radial velocity
+    urq_fwd = _radial_phase_rates(ur, θ, qr_full, rq_vals, a, qr0, ϒr)        # Forward radial velocity
     urq_rev = -urq_fwd                         # Reverse radial velocity (odd symmetry)
 
-    uθq_half = [uθq(q) for q in qθ_half]       # Half-grid polar velocity
+    uθq_half = _polar_phase_rates(uθ, r, qθ_half, view(θq_vals, 1:length(qθ_half)), a, qθ0, ϒθ)       # Half-grid polar velocity
     uθq_fwd  = extend_half(uθq_half, false)    # Forward polar velocity (even symmetry)
     uθq_rev  = -reverse(uθq_fwd)               # Reverse polar velocity
 
@@ -219,23 +225,18 @@ function kerr_geo_eccentric_sample(KG::Dict, N_sample::Int64)
     ϒr = Frequencies["ϒr"]
     Γ = Frequencies["ϒt"]
 
-    # === Map phase to physical quantities (radial only) ===
-    rq(qr)  = r((qr - qr0) / ϒr)  # Radial coordinate from radial phase
-    # 4-velocity radial component (simplified for θ=π/2 where cos(π/2)=0)
-    urq(qr) = (rq(qr)^2 + a^2 * cos(π/2)^2) * ur((qr - qr0) / ϒr)
-
     # === Radial sampling grid ===
     qr_full = collect(range(0, π; length=N_sample))  # Full radial phase grid
     qr_half = qr_full[1:N_half]                       # Half grid for symmetric functions
 
     # === Quantities without symmetry ===
-    rq_vals  = [rq(q) for q in qr_full]               # Radial coordinate values
+    rq_vals  = _phase_values(r, qr_full, qr0, ϒr)               # Radial coordinate values
     rs_vals = rstar_from_r.(a, rq_vals)               # Tortoise coordinate from radial coordinate
-    Δtr_vals = [Δtr(q) for q in qr_full]              # Radial time difference values
-    Δφr_vals = [Δφr(q) for q in qr_full]              # Radial azimuthal difference (no symmetry)
+    Δtr_vals = map(Δtr, qr_full)              # Radial time difference values
+    Δφr_vals = map(Δφr, qr_full)              # Radial azimuthal difference (no symmetry)
 
     # === Radial 4-velocity values (with symmetry) ===
-    urq_fwd = [urq(q) for q in qr_full]               # Forward radial velocity
+    urq_fwd = _radial_phase_rates(ur, Returns(π / 2), qr_full, rq_vals, a, qr0, ϒr)               # Forward radial velocity
     urq_rev = -urq_fwd                                # Odd symmetry for reverse direction
 
     # === Return results dictionary ===
@@ -257,6 +258,8 @@ function kerr_geo_eccentric_sample(KG::Dict, N_sample::Int64)
     )
 end
 
+# Dense uniform master grid of an eccentric equatorial orbit: N_sample + 1 points in qr on [0, π],
+# from which subsample_eccentric_sample extracts nested power-of-two grids.
 function kerr_geo_eccentric_sample_dense(KG::Dict, N_sample::Int64)
     ispow2(N_sample) || throw(ArgumentError("N_sample must be a power of 2"))
     N_points = N_sample + 1
@@ -271,20 +274,19 @@ function kerr_geo_eccentric_sample_dense(KG::Dict, N_sample::Int64)
     ϒr = Frequencies["ϒr"]
     Γ = Frequencies["ϒt"]
 
-    rq(qr) = r((qr - qr0) / ϒr)
-    urq(qr) = (rq(qr)^2 + a^2 * cos(π / 2)^2) * ur((qr - qr0) / ϒr)
     qr_full = collect(range(0, π; length = N_points))
-    rq_vals = [rq(q) for q in qr_full]
+    rq_vals = _phase_values(r, qr_full, qr0, ϒr)
     rs_vals = rstar_from_r.(a, rq_vals)
-    Δtr_vals = [Δtr(q) for q in qr_full]
-    Δφr_vals = [Δφr(q) for q in qr_full]
-    urq_fwd = [urq(q) for q in qr_full]
+    Δtr_vals = map(Δtr, qr_full)
+    Δφr_vals = map(Δφr, qr_full)
+    urq_fwd = _radial_phase_rates(ur, Returns(π / 2), qr_full, rq_vals, a, qr0, ϒr)
     urq_rev = -urq_fwd
 
     return Dict(
         "a" => a,
         "p" => KG["p"],
         "e" => KG["e"],
+        "x" => KG["Cosθ_inc"],
         "qr" => qr_full,
         "r" => rq_vals,
         "rs" => rs_vals,
@@ -308,6 +310,7 @@ function kerr_geo_eccentric_sample_dense(KG::Dict, N_sample::Int64)
     )
 end
 
+# Every step-th point of the dense eccentric grid, giving N_sample intervals (must divide the stored grid).
 function subsample_eccentric_sample(KG_sample::Dict, N_sample::Int64)
     ispow2(N_sample) || throw(ArgumentError("N_sample must be a power of 2"))
     full_points = length(KG_sample["r"])
@@ -315,6 +318,7 @@ function subsample_eccentric_sample(KG_sample::Dict, N_sample::Int64)
     full_intervals = full_points - 1
     target_intervals = target_points - 1
     full_intervals % target_intervals == 0 || throw(ArgumentError("N_sample does not divide the stored eccentric grid"))
+    full_intervals == target_intervals && return KG_sample
     step = div(full_intervals, target_intervals)
     idx = 1:step:full_points
     sample = Dict{Any, Any}()
@@ -328,6 +332,7 @@ function subsample_eccentric_sample(KG_sample::Dict, N_sample::Int64)
     sample["a"] = KG_sample["a"]
     sample["p"] = KG_sample["p"]
     sample["e"] = KG_sample["e"]
+    sample["x"] = KG_sample["x"]
     sample["E"] = KG_sample["E"]
     sample["Lz"] = KG_sample["Lz"]
     sample["Γ"] = KG_sample["Γ"]
@@ -357,11 +362,6 @@ function kerr_geo_eccentric_sample_cheby(KG::Dict, N_sample::Int64)
     ϒr = Frequencies["ϒr"]
     Γ = Frequencies["ϒt"]
 
-    # === Map phase to physical quantities (radial only) ===
-    rq(qr)  = r((qr - qr0) / ϒr)  # Radial coordinate from radial phase
-    # 4-velocity radial component (simplified for θ=π/2 where cos(π/2)=0)
-    urq(qr) = (rq(qr)^2 + a^2 * cos(π/2)^2) * ur((qr - qr0) / ϒr)
-
     # === Chebyshev node generation ===
     # Generates Chebyshev extremal points on [a, b] (clustered at boundaries)
     function chebyshev_nodes(n::Int, a::Float64, b::Float64)
@@ -376,17 +376,17 @@ function kerr_geo_eccentric_sample_cheby(KG::Dict, N_sample::Int64)
     qr_half = qr_full[1:N_half]                  # Half grid for symmetric functions
 
     # === Quantities without symmetry ===
-    rq_vals  = [rq(q) for q in qr_full]          # Radial coordinate values
+    rq_vals  = _phase_values(r, qr_full, qr0, ϒr)          # Radial coordinate values
     rs_vals = rstar_from_r.(a, rq_vals)          # Tortoise coordinate from radial coordinate
-    Δtr_vals = [Δtr(q) for q in qr_full]         # Radial time difference values
-    Δφr_vals = [Δφr(q) for q in qr_full]         # Radial azimuthal difference (no symmetry)
+    Δtr_vals = map(Δtr, qr_full)         # Radial time difference values
+    Δφr_vals = map(Δφr, qr_full)         # Radial azimuthal difference (no symmetry)
     
     # === Cross function derivative values (added) ===
-    dtr_vals = [dtr(q) for q in qr_full]         # Derivative of radial cross function Δt
-    dφr_vals = [dφr(q) for q in qr_full]         # Derivative of radial cross function Δφ
+    dtr_vals = map(dtr, qr_full)         # Derivative of radial cross function Δt
+    dφr_vals = map(dφr, qr_full)         # Derivative of radial cross function Δφ
 
     # === Radial 4-velocity values (with symmetry) ===
-    urq_fwd = [urq(q) for q in qr_full]          # Forward radial velocity
+    urq_fwd = _radial_phase_rates(ur, Returns(π / 2), qr_full, rq_vals, a, qr0, ϒr)          # Forward radial velocity
     urq_rev = -urq_fwd                           # Odd symmetry for reverse direction
 
     # === Return results dictionary ===
@@ -428,11 +428,6 @@ function kerr_geo_inclined_sample(KG::Dict, K_sample::Int64)
     Γ = Frequencies["ϒt"]
     p = KG["p"]
 
-    # === Map phase to physical quantities (polar only) ===
-    θq(qθ)  = θ((qθ - qθ0) / ϒθ)  # Polar angle from polar phase
-    # 4-velocity polar component (simplified for fixed r=p)
-    uθq(qθ) = (p^2 + a^2 * cos(θq(qθ))^2) * uθ((qθ - qθ0) / ϒθ)
-
     # === Polar sampling grid ===
     qθ_full = collect(range(0, π; length=K_sample))  # Full polar phase grid
     qθ_half = qθ_full[1:K_half]                       # Half grid for symmetric functions
@@ -444,16 +439,16 @@ function kerr_geo_inclined_sample(KG::Dict, K_sample::Int64)
         antisym ? vcat(half, -reverse(half)) : vcat(half, reverse(half))
 
     # === No-symmetry quantities ===
-    θq_vals  = [θq(q) for q in qθ_full]               # Polar angle values
+    θq_vals  = _phase_values(θ, qθ_full, qθ0, ϒθ)               # Polar angle values
     rs = rstar_from_r(a, p)
-    Δtθ_half = [Δtθ(q) for q in qθ_half]   # antisymmetric
-    Δφθ_half = [Δφθ(q) for q in qθ_half]   # antisymmetric
+    Δtθ_half = map(Δtθ, qθ_half)   # antisymmetric
+    Δφθ_half = map(Δφθ, qθ_half)   # antisymmetric
 
     Δtθ_vals = extend_half(Δtθ_half, true)
     Δφθ_vals = extend_half(Δφθ_half, true)
 
     # === Polar 4-velocity values (with symmetry) ===
-    uθq_half = [uθq(q) for q in qθ_half]
+    uθq_half = _polar_phase_rates(uθ, Returns(p), qθ_half, view(θq_vals, 1:length(qθ_half)), a, qθ0, ϒθ)
     uθq_fwd  = extend_half(uθq_half, false)           # Even symmetry for forward direction
     uθq_rev  = - reverse(uθq_fwd)                      # Reversed then negated for reverse direction
 
@@ -475,6 +470,7 @@ function kerr_geo_inclined_sample(KG::Dict, K_sample::Int64)
     )
 end
 
+# Dense uniform master grid of an inclined circular orbit: K_interval + 1 points in qθ on [0, π].
 function kerr_geo_inclined_sample_dense(KG::Dict, x::Real, K_interval::Int64)
     ispow2(K_interval) || throw(ArgumentError("K_interval must be a power of 2"))
     K_points = K_interval + 1
@@ -488,13 +484,11 @@ function kerr_geo_inclined_sample_dense(KG::Dict, x::Real, K_interval::Int64)
     Frequencies = KG["Frequencies"]
     ϒθ = Frequencies["ϒθ"]
     Γ = Frequencies["ϒt"]
-    θ_fun(qθ) = θ((qθ - qθ0) / ϒθ)
-    uθ_fun(qθ) = (p^2 + a^2 * cos(θ_fun(qθ))^2) * uθ((qθ - qθ0) / ϒθ)
     qθ_full = collect(range(0, π; length = K_points))
-    θ_vals = [θ_fun(q) for q in qθ_full]
-    Δtθ_vals = [Δtθ(q) for q in qθ_full]
-    Δφθ_vals = [Δφθ(q) for q in qθ_full]
-    uθ_fwd = [uθ_fun(q) for q in qθ_full]
+    θ_vals = _phase_values(θ, qθ_full, qθ0, ϒθ)
+    Δtθ_vals = map(Δtθ, qθ_full)
+    Δφθ_vals = map(Δφθ, qθ_full)
+    uθ_fwd = _polar_phase_rates(uθ, Returns(p), qθ_full, θ_vals, a, qθ0, ϒθ)
     return Dict(
         "a" => a,
         "p" => p,
@@ -520,6 +514,7 @@ function kerr_geo_inclined_sample_dense(KG::Dict, x::Real, K_interval::Int64)
     )
 end
 
+# Every step-th point of the dense inclined grid, giving K_interval intervals (views into the master arrays).
 function subsample_inclined_sample(KG_sample::Dict, K_interval::Int64)
     ispow2(K_interval) || throw(ArgumentError("K_interval must be a power of 2"))
     full_points = length(KG_sample["θ"])
@@ -596,21 +591,18 @@ function kerr_geo_eccentric_segment_sample_cheby(KG::Dict, qlo::Real, qhi::Real,
     ϒr = Frequencies["ϒr"]
     Γ = Frequencies["ϒt"]
 
-    rq(qr) = r((qr - qr0) / ϒr)
-    urq(qr) = (rq(qr)^2 + a^2 * cos(π / 2)^2) * ur((qr - qr0) / ϒr)
-
     qr_vals = _cheby_segment_nodes(N_sample, qlo, qhi)
-    r_vals = [rq(q) for q in qr_vals]
-    ur_fwd = [urq(q) for q in qr_vals]
+    r_vals = _phase_values(r, qr_vals, qr0, ϒr)
+    ur_fwd = _radial_phase_rates(ur, Returns(π / 2), qr_vals, r_vals, a, qr0, ϒr)
     sample = Dict{String, Any}(
         "qr" => qr_vals,
         "r" => r_vals,
         "rs" => rstar_from_r.(a, r_vals),
         "θ" => π / 2,
-        "Δtr" => [Δtr(q) for q in qr_vals],
-        "Δφr" => [Δφr(q) for q in qr_vals],
-        "dtr" => [dtr(q) for q in qr_vals],
-        "dφr" => [dφr(q) for q in qr_vals],
+        "Δtr" => map(Δtr, qr_vals),
+        "Δφr" => map(Δφr, qr_vals),
+        "dtr" => map(dtr, qr_vals),
+        "dφr" => map(dφr, qr_vals),
         "ur_fwd" => ur_fwd,
         "ur_rev" => -ur_fwd,
         "N_sample" => N_sample,
@@ -618,7 +610,7 @@ function kerr_geo_eccentric_segment_sample_cheby(KG::Dict, qlo::Real, qhi::Real,
         "a" => a,
         "p" => get(KG, "p", NaN),
         "e" => get(KG, "e", NaN),
-        "x" => get(KG, "x", 1.0),
+        "x" => KG["Cosθ_inc"],
         "E" => KG["Energy"],
         "Lz" => KG["AngularMomentum"],
         "Γ" => Γ,
@@ -760,11 +752,6 @@ function kerr_geo_inclined_sample_cheby(KG::Dict, K_sample::Int64)
     Γ = Frequencies["ϒt"]
     p = KG["p"]
 
-    # === Map phase to physical quantities (polar only) ===
-    θq(qθ)  = θ((qθ - qθ0) / ϒθ)  # Polar angle from polar phase
-    # 4-velocity polar component (simplified for fixed r=p)
-    uθq(qθ) = (p^2 + a^2 * cos(θq(qθ))^2) * uθ((qθ - qθ0) / ϒθ)
-
     # === Chebyshev node generation ===
     # Generates Chebyshev extremal points on [a, b] (clustered at boundaries)
     function chebyshev_nodes(n::Int, a::Float64, b::Float64)
@@ -785,17 +772,17 @@ function kerr_geo_inclined_sample_cheby(KG::Dict, K_sample::Int64)
         antisym ? vcat(half, -reverse(half)) : vcat(half, reverse(half))
 
     # === No-symmetry quantities ===
-    θq_vals  = [θq(q) for q in qθ_full]               # Polar angle values
+    θq_vals  = _phase_values(θ, qθ_full, qθ0, ϒθ)               # Polar angle values
     rs_vals = fill(rstar_from_r(a, p), K_sample)      # Tortoise coordinate (fixed r=p)
-    Δtθ_vals = [Δtθ(q) for q in qθ_full]              # Polar time difference values
-    Δφθ_vals = [Δφθ(q) for q in qθ_full]              # Polar azimuthal difference (no symmetry)
+    Δtθ_vals = map(Δtθ, qθ_full)              # Polar time difference values
+    Δφθ_vals = map(Δφθ, qθ_full)              # Polar azimuthal difference (no symmetry)
     
     # === Cross function derivative values (added) ===
-    dtθ_vals = [dtθ(q) for q in qθ_full]              # Derivative of polar cross function Δt
-    dφθ_vals = [dφθ(q) for q in qθ_full]              # Derivative of polar cross function Δφ
+    dtθ_vals = map(dtθ, qθ_full)              # Derivative of polar cross function Δt
+    dφθ_vals = map(dφθ, qθ_full)              # Derivative of polar cross function Δφ
 
     # === Polar 4-velocity values (with symmetry) ===
-    uθq_half = [uθq(q) for q in qθ_half]
+    uθq_half = _polar_phase_rates(uθ, Returns(p), qθ_half, view(θq_vals, 1:length(qθ_half)), a, qθ0, ϒθ)
     uθq_fwd  = extend_half(uθq_half, false)           # Even symmetry for forward direction
     uθq_rev  = -reverse(uθq_fwd)                      # Reversed then negated for reverse direction
 
@@ -901,7 +888,7 @@ function _y_sample_isem(Y_soln, KG_sample::Dict, amplitude_key::String; threaded
     X_vals = Vector{ComplexF64}(undef, n)
     Y = Y_soln.Y_solution
     if threaded
-        Threads.@threads :static for i in eachindex(r_vals)
+        Threads.@threads :dynamic for i in eachindex(r_vals)
             Yi, Ypi, Xi, _ = Y(r_vals[i])
             Y_vals[i] = Yi
             Yp_vals[i] = Ypi
@@ -922,6 +909,113 @@ function _y_sample_isem(Y_soln, KG_sample::Dict, amplitude_key::String; threaded
         "params" => Y_soln.mode,
         amplitude_key => _isem_gsn_incidence_amplitude(Y_soln)
     )
+end
+
+# Chebyshev table of (Y, Y', X) at M extremal points on [rmin, rmax], evaluated by barycentric interpolation.
+function y_cheb_table(Y_soln, rmin::Float64, rmax::Float64, M::Int)
+    xs = [cos(pi * j / (M - 1)) for j in 0:(M - 1)]
+    rs = 0.5 .* (rmin + rmax) .+ 0.5 .* (rmax - rmin) .* xs
+    Y = Y_soln.Y_solution
+    vals = [Y(r) for r in rs]
+    return (rmin = rmin, rmax = rmax, x = xs,
+            w = [(isodd(j) ? -1.0 : 1.0) * ((j == 0 || j == M - 1) ? 0.5 : 1.0) for j in 0:(M - 1)],
+            Y = ComplexF64[v[1] for v in vals], Yp = ComplexF64[v[2] for v in vals], X = ComplexF64[v[3] for v in vals])
+end
+
+function _bary_eval(tab, r::Float64)
+    x = clamp((2r - tab.rmin - tab.rmax) / (tab.rmax - tab.rmin), -1.0, 1.0)
+    num_Y = zero(ComplexF64); num_Yp = zero(ComplexF64); num_X = zero(ComplexF64); den = 0.0
+    @inbounds for j in eachindex(tab.x)
+        d = x - tab.x[j]
+        if d == 0.0
+            return tab.Y[j], tab.Yp[j], tab.X[j]
+        end
+        c = tab.w[j] / d
+        num_Y += c * tab.Y[j]; num_Yp += c * tab.Yp[j]; num_X += c * tab.X[j]; den += c
+    end
+    return num_Y / den, num_Yp / den, num_X / den
+end
+
+function y_sample_from_table(Y_soln, tab, KG_sample::Dict, amplitude_key::String)
+    r_vals = KG_sample["r"]
+    n = length(r_vals)
+    Y_vals = Vector{ComplexF64}(undef, n); Yp_vals = Vector{ComplexF64}(undef, n); X_vals = Vector{ComplexF64}(undef, n)
+    @inbounds for i in 1:n
+        Y_vals[i], Yp_vals[i], X_vals[i] = _bary_eval(tab, Float64(r_vals[i]))
+    end
+    return Dict("Y" => Y_vals, "Yp" => Yp_vals, "X" => X_vals, "params" => Y_soln.mode,
+        amplitude_key => _isem_gsn_incidence_amplitude(Y_soln))
+end
+
+
+const YINTERP_MIN_POINTS = 96
+const YINTERP_MAX_POINTS = 512
+const YINTERP_CHECK_RTOL = 1e-10
+const YINTERP_CHECK_FRACTIONS = (sqrt(2)/4, sqrt(3)/4, (sqrt(5)-1)/2)
+
+# Chebyshev table points per radian of Y phase over the radial range (calibrated at high n to need
+# about 1.92, rounded up to 2).
+const YINTERP_POINTS_PER_PHASE = 2.0
+# On nested radial grids retain old exact or checked values and interpolate only new nodes.
+function refine_generic_y_sample_from_table(Y_soln, tab, previous::Dict, next_sample::Dict, amplitude_key::String)
+    radii = next_sample["r"]::Vector{Float64}
+    old_Y = previous["Y"]::Vector{ComplexF64}
+    old_Yp = previous["Yp"]::Vector{ComplexF64}
+    old_X = previous["X"]::Vector{ComplexF64}
+    length(radii) == length(old_Y) && return previous
+    Y = Vector{ComplexF64}(undef, length(radii))
+    Yp = similar(Y); X = similar(Y)
+    @inbounds for i in eachindex(radii)
+        if isodd(i)
+            j = (i + 1) >>> 1
+            Y[i] = old_Y[j]; Yp[i] = old_Yp[j]; X[i] = old_X[j]
+        else
+            Y[i], Yp[i], X[i] = _bary_eval(tab, radii[i])
+        end
+    end
+    return Dict("Y"=>Y, "Yp"=>Yp, "X"=>X, "params"=>Y_soln.mode,
+                amplitude_key=>_isem_gsn_incidence_amplitude(Y_soln))
+end
+
+@inline _generic_y_initial_points(phase_extent::Float64) =
+    min(YINTERP_MAX_POINTS, max(YINTERP_MIN_POINTS,
+        ceil(Int, YINTERP_POINTS_PER_PHASE * phase_extent)))
+
+# Build a Chebyshev Y table, check it against direct Y evaluations at three irrational interior points and
+# double the table size until the relative error is <= YINTERP_CHECK_RTOL; table = nothing if YINTERP_MAX_POINTS fails.
+function _checked_generic_y_table(Y_soln, rmin::Float64, rmax::Float64,
+                                 phase_extent::Float64)
+    M = _generic_y_initial_points(phase_extent)
+    radii = [rmin + fraction*(rmax-rmin) for fraction in YINTERP_CHECK_FRACTIONS]
+    exact = [Y_soln.Y_solution(r) for r in radii]
+    doublings = 0
+    while true
+        tab = y_cheb_table(Y_soln, rmin, rmax, M)
+        # The irrational interior fractions must remain distinct from this table's nodes.
+        nodes = [0.5*(rmin+rmax) + 0.5*(rmax-rmin)*x for x in tab.x]
+        all(r -> all(node -> r != node, nodes), radii) ||
+            error("Interpolation self-check point coincides with a table node")
+        error_max = 0.0
+        for i in eachindex(radii)
+            interpolated = _bary_eval(tab, Float64(radii[i]))
+            for j in 1:3
+                numerator = abs(interpolated[j] - exact[i][j])
+                denominator = abs(exact[i][j])
+                component_error = iszero(denominator) ?
+                    (iszero(numerator) ? 0.0 : Inf) : numerator / denominator
+                error_max = max(error_max, component_error)
+            end
+        end
+        if error_max <= YINTERP_CHECK_RTOL
+            return (table=tab, points=M, doublings=doublings,
+                    fallback=false, self_check_error=error_max)
+        elseif M == YINTERP_MAX_POINTS
+            return (table=nothing, points=M, doublings=doublings,
+                    fallback=true, self_check_error=error_max)
+        end
+        M = min(2M, YINTERP_MAX_POINTS)
+        doublings += 1
+    end
 end
 
 function y_sample_m2_isem(Y_soln, KG_sample::Dict)
@@ -958,7 +1052,7 @@ function swsh_sample_threaded(SH, KG_sample::Dict)
     S0_vals = Vector{ComplexF64}(undef, n)
     S1_vals = Vector{ComplexF64}(undef, n)
     S2_vals = Vector{ComplexF64}(undef, n)
-    Threads.@threads :static for i in eachindex(θ_vals)
+    Threads.@threads :dynamic for i in eachindex(θ_vals)
         s0, s1, s2 = _swsh_values(SH, θ_vals[i], s, m, c, λ)
         S0_vals[i] = s0
         S1_vals[i] = s1
@@ -993,7 +1087,7 @@ function _refine_y_sample(Y_soln, Y_sample::Dict, next_sample::Dict; threaded::B
     out["X"] = Vector{ComplexF64}(undef, next_points)
     Y = Y_soln.Y_solution
     if threaded
-        Threads.@threads :static for i in 1:next_points
+        Threads.@threads :dynamic for i in 1:next_points
             if isodd(i)
                 j = (i + 1) >>> 1
                 out["Y"][i] = Y_sample["Y"][j]
@@ -1029,7 +1123,9 @@ function refine_eccentric_y_sample(Y_soln, Y_sample::Dict, KG_sample::Dict, N_sa
     return _refine_y_sample(Y_soln, Y_sample, subsample_eccentric_sample(KG_sample, 2N_sample))
 end
 
-@inline function _generic_integrand_sample_m2_fast(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64)
+# Trapezoidal (qr, qθ) convolution integral for s = -2 on a uniform generic sample, with θ-only factors
+# precomputed once per column.
+@inline function _generic_integral_sample_m2_fast(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64)
     r_vec = KG_samp["r"]::Vector{Float64}
     rs_vec = KG_samp["rs"]::Vector{Float64}
     θ_vec = KG_samp["θ"]::Vector{Float64}
@@ -1124,6 +1220,8 @@ end
 
     rphase = Vector{Float64}(undef, N)
     phase = Vector{ComplexF64}(undef, N)
+    exp_rphase_p = Vector{ComplexF64}(undef, N)
+    exp_rphase_m = Vector{ComplexF64}(undef, N)
     Np = Vector{Float64}(undef, N)
     Nm = Vector{Float64}(undef, N)
     Yv = Vector{ComplexF64}(undef, N)
@@ -1136,6 +1234,8 @@ end
         Δ = r2 - 2.0 * r + a^2
         qr_i = N > 1 ? (i - 1) * qr_step : 0.0
         rphase[i] = ω * Δtr[i] - m * Δφr[i] + n * qr_i
+        exp_rphase_p[i] = exp(im * rphase[i])
+        exp_rphase_m[i] = conj(exp_rphase_p[i])
         phase[i] = exp(im * ω * rs_vec[i] - im * a * m * log((r - rp) / (r - rm)) * inv2κ)
         numer = E * (r2 + a^2) - a * Lz
         Np[i] = (numer + urp[i]) / Δ
@@ -1148,8 +1248,9 @@ end
     Xi = Float64(m * (Δφr_func(qr0) + Δφθ_func(qθ0) - qφ0) - ω * (Δtr_func(qr0) + Δtθ_func(qθ0) - qt0) - k * qθ0 - n * qr0)
     prefactor = 4im * π * ω * exp(im * Xi) / (Γ * Binc)
 
-    out = Matrix{ComplexF64}(undef, N, K)
+    total = 0.0 + 0.0im
     @inbounds for j in 1:K
+        wj = (j == 1 || j == K) ? 0.5 : 1.0
         sθ = sinθ[j]
         cθ = cosθ[j]
         invsθ = inv_sinθ[j]
@@ -1181,7 +1282,6 @@ end
             Ypi = Ypv[i]
             Xi = Xv[i]
             phase_r = phase[i]
-            rphase_i = rphase[i]
             Npi = Np[i]
             Nmi = Nm[i]
 
@@ -1201,8 +1301,8 @@ end
             Nm2 = Nmi * Nmi
             Mpp2 = Mpj * Mpj
             Mm2 = Mmj * Mmj
-            exp_rp = exp(im * rphase_i)
-            exp_rm = exp(-im * rphase_i)
+            exp_rp = exp_rphase_p[i]
+            exp_rm = exp_rphase_m[i]
             exp_pp = exp_rp * expθp
             exp_pm = exp_rp * expθm
             exp_mp = exp_rm * expθp
@@ -1212,14 +1312,16 @@ end
             Jmp = (Wnn * Nm2 + Wnmbar * Nmi * Mpj + Wmbarmbar * Mpp2) * exp_mp * inv4π2
             Jmm = (Wnn * Nm2 + Wnmbar * Nmi * Mmj + Wmbarmbar * Mm2) * exp_mm * inv4π2
 
-            out[i, j] = prefactor * (Jpp + Jpm + Jmp + Jmm)
+            wi = (i == 1 || i == N) ? 0.5 : 1.0
+            total += (wi * wj) * prefactor * (Jpp + Jpm + Jmp + Jmm)
         end
     end
 
-    return out
+    return qr_step * qθ_step * total
 end
 
-@inline function _generic_integrand_sample_p2_fast(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64)
+# s = +2 counterpart of _generic_integral_sample_m2_fast.
+@inline function _generic_integral_sample_p2_fast(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64)
     r_vec = KG_samp["r"]::Vector{Float64}
     rs_vec = KG_samp["rs"]::Vector{Float64}
     θ_vec = KG_samp["θ"]::Vector{Float64}
@@ -1315,6 +1417,8 @@ end
 
     rphase = Vector{Float64}(undef, N)
     phase = Vector{ComplexF64}(undef, N)
+    exp_rphase_p = Vector{ComplexF64}(undef, N)
+    exp_rphase_m = Vector{ComplexF64}(undef, N)
     Lp = Vector{Float64}(undef, N)
     Lm = Vector{Float64}(undef, N)
     Yv = Vector{ComplexF64}(undef, N)
@@ -1327,6 +1431,8 @@ end
         Δ = r2 - 2.0 * r + a^2
         qr_i = N > 1 ? (i - 1) * qr_step : 0.0
         rphase[i] = ω * Δtr[i] - m * Δφr[i] + n * qr_i
+        exp_rphase_p[i] = exp(im * rphase[i])
+        exp_rphase_m[i] = conj(exp_rphase_p[i])
         phase[i] = exp(-im * ω * rs_vec[i] + im * a * m * log((r - rp) / (r - rm)) * inv2κ)
         numer = E * (r2 + a^2) - a * Lz
         Lp[i] = (numer - urp[i]) / Δ
@@ -1350,8 +1456,9 @@ end
     Xi = Float64(m * (Δφr_func(qr0) + Δφθ_func(qθ0) - qφ0) - ω * (Δtr_func(qr0) + Δtθ_func(qθ0) - qt0) - k * qθ0 - n * qr0)
     prefactor = -im * π * factor * η * exp(im * Xi) / (Γ * κ * Cinc)
 
-    out = Matrix{ComplexF64}(undef, N, K)
+    total = 0.0 + 0.0im
     @inbounds for j in 1:K
+        wj = (j == 1 || j == K) ? 0.5 : 1.0
         sθ = sinθ[j]
         cθ = cosθ[j]
         invsθ = inv_sinθ[j]
@@ -1383,7 +1490,6 @@ end
             Ypi = Ypv[i]
             Xi = Xv[i]
             phase_r = phase[i]
-            rphase_i = rphase[i]
             Lpi = Lp[i]
             Lmi = Lm[i]
 
@@ -1403,8 +1509,8 @@ end
             Lm2 = Lmi * Lmi
             Mp2 = Mpj * Mpj
             Mm2 = Mmj * Mmj
-            exp_rp = exp(im * rphase_i)
-            exp_rm = exp(-im * rphase_i)
+            exp_rp = exp_rphase_p[i]
+            exp_rm = exp_rphase_m[i]
             exp_pp = exp_rp * expθp
             exp_pm = exp_rp * expθm
             exp_mp = exp_rm * expθp
@@ -1414,11 +1520,12 @@ end
             Jmp = (Wll * Lm2 + Wlm * Lmi * Mpj + Wmm * Mp2) * exp_mp * inv4π2
             Jmm = (Wll * Lm2 + Wlm * Lmi * Mmj + Wmm * Mm2) * exp_mm * inv4π2
 
-            out[i, j] = prefactor * (Jpp + Jpm + Jmp + Jmm)
+            wi = (i == 1 || i == N) ? 0.5 : 1.0
+            total += (wi * wj) * prefactor * (Jpp + Jpm + Jmp + Jmm)
         end
     end
 
-    return out
+    return qr_step * qθ_step * total
 end
 
 function integrand_generic_sample_m2(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64)
@@ -1817,7 +1924,22 @@ function integrand_generic_sample_p2(KG_samp, Y_samp, SH_samp, n::Int64, k::Int6
     return .- im .* π .* factor .* Jlmnk .* exp(im * Xi) .* η ./ (Γ .* κ .* Cinc)
 end
 
-function integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64)
+function _validate_generic_cheby_geometry(geometry, KG_samp, a)
+    geometry === nothing && return nothing
+    # A precomputed geometry (built in ConvolutionIntegrals) belongs to one sample; check that it
+    # matches this sample and mode. With geometry = nothing the integrands compute everything locally.
+    geometry.r === KG_samp["r"] && geometry.rs === KG_samp["rs"] &&
+        geometry.theta === KG_samp["θ"] ||
+        throw(ArgumentError("Cheby geometry belongs to another orbit sample"))
+    geometry.N == KG_samp["N_sample"] && geometry.K == KG_samp["K_sample"] &&
+        geometry.a == a && geometry.E == KG_samp["E"] && geometry.Lz == KG_samp["Lz"] ||
+        throw(ArgumentError("Cheby geometry parameters do not match the sample/mode"))
+    return nothing
+end
+
+# `geometry`: optional precomputed `GenericM2Geometry` for this sample (built by ConvolutionIntegrals); when given,
+# its cached angular, ρ and N± arrays are used instead of being recomputed.
+function integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64; geometry = nothing)
     # --------------------------
     # 1. Extract Parameters (1D Vectors)
     # --------------------------
@@ -1873,6 +1995,8 @@ function integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n::Int64, k
     ω = params.omega              # Frequency (scalar)
     λ = params.lambda             # Eigenvalue (scalar)
 
+    _validate_generic_cheby_geometry(geometry, KG_samp, a)
+
     # Black hole horizons (scalar)
     rp = 1.0 + sqrt(1.0 - a^2)    # Outer horizon
     rm = 1.0 - sqrt(1.0 - a^2)    # Inner horizon
@@ -1885,10 +2009,10 @@ function integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n::Int64, k
     θ_grid = reshape(θ_vec, 1, :)  # 1×K: broadcast across rows
 
     # Precompute θ-dependent grid matrices (K→N×K broadcast)
-    sinθ_grid = sin.(θ_grid)
-    cosθ_grid = cos.(θ_grid)
+    sinθ_grid = geometry === nothing ? sin.(θ_grid) : reshape(geometry.st, 1, :)
+    cosθ_grid = geometry === nothing ? cos.(θ_grid) : reshape(geometry.ct, 1, :)
     cotθ_grid = cot.(θ_grid)
-    inv_sinθ_grid = 1.0 ./ sinθ_grid
+    inv_sinθ_grid = geometry === nothing ? 1.0 ./ sinθ_grid : reshape(geometry.invst, 1, :)
     inv_sin2θ_grid = 1.0 ./ (sinθ_grid .^ 2)  # Precompute 1/sin²θ
 
     # Precompute r-dependent grid matrices (N→N×K broadcast)
@@ -1899,9 +2023,9 @@ function integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n::Int64, k
     # 3. Compute Complex Parameters (Vectorized)
     # --------------------------
     # ρ and ρbar (N×K, complex-valued)
-    ρ_grid = -1.0 ./ (r_grid .- im .* a .* cosθ_grid)
-    ρbar_grid = -1.0 ./ (r_grid .+ im .* a .* cosθ_grid)
-    inv_ρ_grid = 1.0 ./ ρ_grid  # Precompute 1/ρ
+    ρ_grid = geometry === nothing ? -1.0 ./ (r_grid .- im .* a .* cosθ_grid) : geometry.rho
+    ρbar_grid = geometry === nothing ? -1.0 ./ (r_grid .+ im .* a .* cosθ_grid) : geometry.rhobar
+    inv_ρ_grid = geometry === nothing ? 1.0 ./ ρ_grid : geometry.invrho  # Precompute 1/ρ
 
     # --------------------------
     # 4. L-series Operators (Vectorized)
@@ -1979,8 +2103,8 @@ function integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n::Int64, k
 
     # Np/Nm (using precomputed Δ_grid)
     numerator_N = E .* (r2_grid .+ a^2) .- a .* Lz
-    Np_grid = (numerator_N .+ urp_grid) ./ Δ_grid
-    Nm_grid = (numerator_N .+ urm_grid) ./ Δ_grid
+    Np_grid = geometry === nothing ? (numerator_N .+ urp_grid) ./ Δ_grid : reshape(geometry.Np, :, 1)
+    Nm_grid = geometry === nothing ? (numerator_N .+ urm_grid) ./ Δ_grid : reshape(geometry.Nm, :, 1)
 
     # Mbarp/Mbarm
     term_M = im .* sinθ_grid .* (a .* E .- Lz .* inv_sin2θ_grid)
@@ -2006,7 +2130,9 @@ function integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n::Int64, k
     return Jpp_grid, Jpm_grid, Jmp_grid, Jmm_grid, drphase, dθphase, rphaseL, rphaseR, θphaseL, θphaseR, prefactor
 end
 
-function integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64)
+# `geometry`: optional precomputed `GenericM2Geometry` for this sample (built by ConvolutionIntegrals); when given,
+# its cached angular, ρ and L± arrays are used instead of being recomputed.
+function integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n::Int64, k::Int64; geometry = nothing)
     # --------------------------
     # 1. Extract Parameters (1D Vectors)
     # --------------------------
@@ -2062,6 +2188,8 @@ function integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n::Int64, k
     ω = params.omega              # Frequency (scalar)
     λ = params.lambda             # Eigenvalue (scalar)
 
+    _validate_generic_cheby_geometry(geometry, KG_samp, a)
+
     # Black hole horizons (scalar)
     rp = 1.0 + sqrt(1.0 - a^2)    # Outer horizon
     rm = 1.0 - sqrt(1.0 - a^2)    # Inner horizon
@@ -2074,10 +2202,10 @@ function integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n::Int64, k
     θ_grid = reshape(θ_vec, 1, :)  # 1×K: broadcast across rows
 
     # Precompute θ-dependent grid matrices (K→N×K broadcast)
-    sinθ_grid = sin.(θ_grid)
-    cosθ_grid = cos.(θ_grid)
+    sinθ_grid = geometry === nothing ? sin.(θ_grid) : reshape(geometry.st, 1, :)
+    cosθ_grid = geometry === nothing ? cos.(θ_grid) : reshape(geometry.ct, 1, :)
     cotθ_grid = cot.(θ_grid)
-    inv_sinθ_grid = 1.0 ./ sinθ_grid
+    inv_sinθ_grid = geometry === nothing ? 1.0 ./ sinθ_grid : reshape(geometry.invst, 1, :)
     inv_sin2θ_grid = 1.0 ./ (sinθ_grid .^ 2)  # Precompute 1/sin²θ
 
     # Precompute r-dependent grid matrices (N→N×K broadcast)
@@ -2088,9 +2216,9 @@ function integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n::Int64, k
     # 3. Compute Complex Parameters (Vectorized)
     # --------------------------
     # ρ and ρbar (N×K, complex-valued)
-    ρ_grid = -1.0 ./ (r_grid .- im .* a .* cosθ_grid)
-    ρbar_grid = -1.0 ./ (r_grid .+ im .* a .* cosθ_grid)
-    inv_ρ_grid = 1.0 ./ ρ_grid  # Precompute 1/ρ
+    ρ_grid = geometry === nothing ? -1.0 ./ (r_grid .- im .* a .* cosθ_grid) : geometry.rho
+    ρbar_grid = geometry === nothing ? -1.0 ./ (r_grid .+ im .* a .* cosθ_grid) : geometry.rhobar
+    inv_ρ_grid = geometry === nothing ? 1.0 ./ ρ_grid : geometry.invrho  # Precompute 1/ρ
 
     # --------------------------
     # 4. L-series Operators (Vectorized)
@@ -2168,8 +2296,8 @@ function integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n::Int64, k
 
     # Lp/Lm (using precomputed Δ_grid)
     numerator_L = E .* (r2_grid .+ a^2) .- a .* Lz
-    Lp_grid = (numerator_L .- urp_grid) ./ Δ_grid
-    Lm_grid = (numerator_L .- urm_grid) ./ Δ_grid
+    Lp_grid = geometry === nothing ? (numerator_L .- urp_grid) ./ Δ_grid : reshape(geometry.Lp, :, 1)
+    Lm_grid = geometry === nothing ? (numerator_L .- urm_grid) ./ Δ_grid : reshape(geometry.Lm, :, 1)
 
     # Mp/Mm
     term_M = .- im .* sinθ_grid .* (a .* E .- Lz .* inv_sin2θ_grid)
@@ -2204,6 +2332,187 @@ function integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n::Int64, k
     prefactor = .- im .* π .* factor .* η .* exp(im * Xi) ./ (Γ .* κ .* Cinc)
 
     return Jpp_grid, Jpm_grid, Jmp_grid, Jmm_grid, drphase, dθphase, rphaseL, rphaseR, θphaseL, θphaseR, prefactor
+end
+
+# Trapezoidal qr convolution integral for s = -2 on a uniform eccentric equatorial sample.
+@inline function _eccentric_integral_sample_m2_fast(KG_samp, Y_samp,
+        SH, n::Int64)
+    r_vec = KG_samp["r"]::Vector{Float64}
+    rs_vec = KG_samp["rs"]::Vector{Float64}
+    urp = KG_samp["ur_fwd"]::Vector{Float64}
+    urm = KG_samp["ur_rev"]::Vector{Float64}
+    delta_tr = KG_samp["Δtr"]::Vector{Float64}
+    delta_phir = KG_samp["Δφr"]::Vector{Float64}
+    gamma = KG_samp["Γ"]::Float64
+    energy = KG_samp["E"]::Float64
+    angular_momentum = KG_samp["Lz"]::Float64
+    qt0, qr0, _, qphi0 = KG_samp["InitialPhases"]::NTuple{4, Float64}
+    delta_tr_func, delta_phir_func = KG_samp["CrossFunction"]
+    S0, S1, S2 = SH
+    params = Y_samp["params"]::Mode
+    m = params.m::Int
+    a = params.a::Float64
+    omega = params.omega::Float64
+    Y = Y_samp["Y"]::Vector{ComplexF64}
+    Yp = Y_samp["Yp"]::Vector{ComplexF64}
+    X = Y_samp["X"]::Vector{ComplexF64}
+    Binc = Y_samp["Binc"]::ComplexF64
+    count = length(r_vec)
+
+    horizon_gap = sqrt(1.0 - a^2)
+    rp = 1.0 + horizon_gap
+    rm = 1.0 - horizon_gap
+    L1 = -m + a * omega
+    L2 = L1
+    L2S = S1 + L2 * S0
+    L1L2S = S2 + L1 * S1 - 2.0 * S0 + L2 * S1 +
+        L1 * L2 * S0
+    angular_constant = 3im * a * L1 * S0 + 2im * a * S1 -
+        1im * a * L2 * S0
+    Mbar = im * (a * energy - angular_momentum)
+    Mbar2 = Mbar * Mbar
+    qstep = count > 1 ? pi / (count - 1) : 0.0
+    phase0 = m * (delta_phir_func(qr0) - qphi0) -
+        omega * (delta_tr_func(qr0) - qt0) - n * qr0
+    prefactor = 4im * pi * omega * cis(phase0) / (gamma * Binc)
+    total = 0.0 + 0.0im
+
+    @inbounds for i in eachindex(r_vec)
+        r = r_vec[i]
+        r2 = r * r
+        rho = -1.0 / r
+        carrier = cis(omega * rs_vec[i] -
+            a * m * log((r - rp) / (r - rm)) / (2.0 * horizon_gap))
+        Yi = Y[i]
+        Ypi = Yp[i]
+        Xi = X[i]
+        L1pL2pS = -r * L1L2S + angular_constant
+        Wnn = rho * L1pL2pS * r2 * Yi * carrier / 2.0
+        termB = 2.0 * Yi + r * Ypi
+        termC = L2S * (2.0 * rho) * r * Yi
+        Wnmbar = -r * (L2S * termB + termC) * carrier
+        termD = Xi / (2.0 * sqrt(r2 + a^2))
+        termE = (Yi + 2.0 * r * Ypi) * carrier
+        termF = rho * r * termB * carrier
+        Wmbarmbar = S0 * (termD + termE + termF)
+        delta = r2 - 2.0 * r + a^2
+        numerator = energy * (r2 + a^2) - a * angular_momentum
+        Np = (numerator + urp[i]) / delta
+        Nm = (numerator + urm[i]) / delta
+        radial_phase = omega * delta_tr[i] - m * delta_phir[i] +
+            n * (i - 1) * qstep
+        exp_p = cis(radial_phase)
+        exp_m = conj(exp_p)
+        Jp = (Wnn * Np * Np + Wnmbar * Np * Mbar +
+            Wmbarmbar * Mbar2) * exp_p
+        Jm = (Wnn * Nm * Nm + Wnmbar * Nm * Mbar +
+            Wmbarmbar * Mbar2) * exp_m
+        weight = (i == 1 || i == count) ? 0.5 : 1.0
+        total += weight * prefactor * (Jp + Jm) / (2.0 * pi)
+    end
+    return qstep * total
+end
+
+# s = +2 counterpart of _eccentric_integral_sample_m2_fast.
+@inline function _eccentric_integral_sample_p2_fast(KG_samp, Y_samp,
+        SH, n::Int64)
+    r_vec = KG_samp["r"]::Vector{Float64}
+    rs_vec = KG_samp["rs"]::Vector{Float64}
+    urp = KG_samp["ur_fwd"]::Vector{Float64}
+    urm = KG_samp["ur_rev"]::Vector{Float64}
+    delta_tr = KG_samp["Δtr"]::Vector{Float64}
+    delta_phir = KG_samp["Δφr"]::Vector{Float64}
+    gamma = KG_samp["Γ"]::Float64
+    energy = KG_samp["E"]::Float64
+    angular_momentum = KG_samp["Lz"]::Float64
+    qt0, qr0, _, qphi0 = KG_samp["InitialPhases"]::NTuple{4, Float64}
+    delta_tr_func, delta_phir_func = KG_samp["CrossFunction"]
+    S0, S1, S2 = SH
+    params = Y_samp["params"]::Mode
+    m = params.m::Int
+    a = params.a::Float64
+    omega = params.omega::Float64
+    lambda = params.lambda::Float64
+    Y = Y_samp["Y"]::Vector{ComplexF64}
+    Yp = Y_samp["Yp"]::Vector{ComplexF64}
+    X = Y_samp["X"]::Vector{ComplexF64}
+    Cinc = Y_samp["Cinc"]::ComplexF64
+    count = length(r_vec)
+
+    horizon_gap = sqrt(1.0 - a^2)
+    rp = 1.0 + horizon_gap
+    rm = 1.0 - horizon_gap
+    L1 = m - a * omega
+    L2 = L1
+    L2S = S1 + L2 * S0
+    L1L2S = S2 + L1 * S1 - 2.0 * S0 + L2 * S1 +
+        L1 * L2 * S0
+    angular_constant = 3im * a * L1 * S0 + 2im * a * S1 -
+        1im * a * L2 * S0
+    M = -im * (a * energy - angular_momentum)
+    M2 = M * M
+    qstep = count > 1 ? pi / (count - 1) : 0.0
+    kappa = omega - a * m / (2.0 * rp)
+    c0 = 24 + 12im * omega + lambda * (10 + lambda) -
+        12 * a * omega * (a * omega - m)
+    c1 = -32im * a * m - 8im * a * m * lambda +
+        8im * a^2 * omega * (1 + lambda)
+    c2 = 12 * a^2 - 24im * a * m - 24 * a^2 * m^2 +
+        24im * a^2 * omega + 48 * a^3 * m * omega -
+        24 * a^4 * omega^2
+    c3 = -24im * a^3 * (a * omega - m) - 24 * a^2
+    c4 = 12 * a^4
+    eta = c0 + c1 / rp + c2 / rp^2 + c3 / rp^3 + c4 / rp^4
+    factor = 2 * sqrt(2) * rp^(3 / 2) *
+        (((4 * omega) * (im - 4 * omega) -
+          a * m * (im - 8 * omega) -
+          a^2 * (m^2 + 2im * omega - 4 * omega^2)) * rp^2 +
+         a^2 * (im - 4 * omega) * (a * m - 2 * omega) * rp) /
+        (2 * rp^3 * (24 + 10 * lambda + lambda^2 + 12im * omega) -
+         rp^2 * (8im * a * m * (11 + 2 * lambda + 6im * omega) +
+          a^2 * (24 + 24 * m^2 + 10 * lambda + lambda^2 -
+           28im * omega - 16im * lambda * omega + 48 * omega^2)) +
+         8im * a^3 * rp * (m * (7 + lambda - 6im * omega) -
+          a * omega * (4 + lambda)) +
+         12 * a^5 * omega * (a * omega - 3 * m))
+    phase0 = m * (delta_phir_func(qr0) - qphi0) -
+        omega * (delta_tr_func(qr0) - qt0) - n * qr0
+    prefactor = -im * pi * factor * eta * cis(phase0) /
+        (gamma * Cinc * kappa)
+    total = 0.0 + 0.0im
+
+    @inbounds for i in eachindex(r_vec)
+        r = r_vec[i]
+        r2 = r * r
+        rho = -1.0 / r
+        carrier = cis(-omega * rs_vec[i] +
+            a * m * log((r - rp) / (r - rm)) / (2.0 * horizon_gap))
+        Yi = Y[i]
+        Ypi = Yp[i]
+        Xi = X[i]
+        L1pL2pS = -r * L1L2S + angular_constant
+        Wll = 2.0 * rho * L1pL2pS * r2 * Yi * carrier
+        termB = 2.0 * Yi + r * Ypi
+        termC = L2S * (2.0 * rho) * r * Yi
+        Wlm = 4.0 * r * (L2S * termB + termC) * carrier
+        termD = Xi / (2.0 * sqrt(r2 + a^2))
+        termE = (Yi + 2.0 * r * Ypi) * carrier
+        termF = rho * r * termB * carrier
+        Wmm = 4.0 * S0 * (termD + termE + termF)
+        delta = r2 - 2.0 * r + a^2
+        numerator = energy * (r2 + a^2) - a * angular_momentum
+        Lp = (numerator - urp[i]) / delta
+        Lm = (numerator - urm[i]) / delta
+        radial_phase = omega * delta_tr[i] - m * delta_phir[i] +
+            n * (i - 1) * qstep
+        exp_p = cis(radial_phase)
+        exp_m = conj(exp_p)
+        Jp = (Wll * Lp * Lp + Wlm * Lp * M + Wmm * M2) * exp_p
+        Jm = (Wll * Lm * Lm + Wlm * Lm * M + Wmm * M2) * exp_m
+        weight = (i == 1 || i == count) ? 0.5 : 1.0
+        total += weight * prefactor * (Jp + Jm) / (2.0 * pi)
+    end
+    return qstep * total
 end
 
 function integrand_eccentric_sample_m2(KG_samp, Y_samp, SH, n::Int64)
@@ -3372,6 +3681,7 @@ function carter_ingredients_sample(KG_samp, a, m, omega)
     return Lmnk
 end
 
+# Dense uniform master grid of a generic orbit: (N_interval + 1) x (K_interval + 1) points in (qr, qθ).
 function kerr_geo_generic_sample_dense(KG::Dict, N_interval::Int64, K_interval::Int64)
     ispow2(N_interval) || throw(ArgumentError("N_interval must be a power of 2"))
     ispow2(K_interval) || throw(ArgumentError("K_interval must be a power of 2"))
@@ -3390,27 +3700,24 @@ function kerr_geo_generic_sample_dense(KG::Dict, N_interval::Int64, K_interval::
     ϒθ = Frequencies["ϒθ"]
     Γ = Frequencies["ϒt"]
 
-    rq(qr) = r((qr - qr0) / ϒr)
-    θq(qθ) = θ((qθ - qθ0) / ϒθ)
-    urq(qr) = (r((qr - qr0) / ϒr)^2 + a^2 * cos(θ((qr - qr0) / ϒr))^2) * ur((qr - qr0) / ϒr)
-    uθq(qθ) = (r((qθ - qθ0) / ϒθ)^2 + a^2 * cos(θ((qθ - qθ0) / ϒθ))^2) * uθ((qθ - qθ0) / ϒθ)
-
     qr_full = collect(range(0, π; length = N_points))
     qθ_full = collect(range(0, π; length = K_points))
 
-    rq_vals = [rq(q) for q in qr_full]
+    rq_vals = _phase_values(r, qr_full, qr0, ϒr)
     rs_vals = rstar_from_r.(a, rq_vals)
-    θ_vals = [θq(q) for q in qθ_full]
-    Δtr_vals = [Δtr(q) for q in qr_full]
-    Δφr_vals = [Δφr(q) for q in qr_full]
-    Δtθ_vals = [Δtθ(q) for q in qθ_full]
-    Δφθ_vals = [Δφθ(q) for q in qθ_full]
-    ur_fwd = [urq(q) for q in qr_full]
-    uθ_fwd = [uθq(q) for q in qθ_full]
+    θ_vals = _phase_values(θ, qθ_full, qθ0, ϒθ)
+    Δtr_vals = map(Δtr, qr_full)
+    Δφr_vals = map(Δφr, qr_full)
+    Δtθ_vals = map(Δtθ, qθ_full)
+    Δφθ_vals = map(Δφθ, qθ_full)
+    ur_fwd = _radial_phase_rates(ur, θ, qr_full, rq_vals, a, qr0, ϒr)
+    uθ_fwd = _polar_phase_rates(uθ, r, qθ_full, θ_vals, a, qθ0, ϒθ)
 
     return Dict(
         "a" => a,
         "p" => p,
+        "e" => KG["e"],
+        "x" => KG["Cosθ_inc"],
         "r" => rq_vals,
         "rs" => rs_vals,
         "θ" => θ_vals,
@@ -3439,6 +3746,7 @@ function kerr_geo_generic_sample_dense(KG::Dict, N_interval::Int64, K_interval::
     )
 end
 
+# Every stepN-th radial and stepK-th polar point of the dense generic grid (must divide the stored grid).
 function subsample_generic_sample(KG_sample::Dict, N_interval::Int64, K_interval::Int64)
     ispow2(N_interval) || throw(ArgumentError("N_interval must be a power of 2"))
     ispow2(K_interval) || throw(ArgumentError("K_interval must be a power of 2"))
@@ -3452,6 +3760,7 @@ function subsample_generic_sample(KG_sample::Dict, N_interval::Int64, K_interval
     target_K_minus = target_K - 1
     full_N_minus % target_N_minus == 0 || throw(ArgumentError("N_interval does not divide the stored generic grid"))
     full_K_minus % target_K_minus == 0 || throw(ArgumentError("K_interval does not divide the stored generic grid"))
+    full_N_minus == target_N_minus && full_K_minus == target_K_minus && return KG_sample
     stepN = div(full_N_minus, target_N_minus)
     stepK = div(full_K_minus, target_K_minus)
     idxN = 1:stepN:full_N
@@ -3463,7 +3772,7 @@ function subsample_generic_sample(KG_sample::Dict, N_interval::Int64, K_interval
     for key in ("θ", "Δtθ", "Δφθ", "uθ_fwd", "uθ_rev")
         sample[key] = KG_sample[key][idxK]
     end
-    for key in ("a", "p", "E", "Lz", "Γ", "Frequencies", "Trajectory", "FourVelocity", "CrossFunction", "DerivativesCrossFunction", "InitialPhases", "initialPhases")
+    for key in ("a", "p", "e", "x", "E", "Lz", "Γ", "Frequencies", "Trajectory", "FourVelocity", "CrossFunction", "DerivativesCrossFunction", "InitialPhases", "initialPhases")
         sample[key] = KG_sample[key]
     end
     sample["N_interval"] = N_interval
@@ -3497,7 +3806,7 @@ function refine_generic_swsh_sample_threaded(SH, prev_SHsamp::Dict, next_sample:
     m = SH.params.m
     c = SH.params.c
     λ = SH.lambda
-    Threads.@threads :static for i in 1:next_points
+    Threads.@threads :dynamic for i in 1:next_points
         if isodd(i)
             j = (i + 1) >>> 1
             refined["S0"][i] = prev_SHsamp["S0"][j]

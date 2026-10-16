@@ -12,6 +12,7 @@ makedocs(
     pages = [
         "Home" => "index.md",
         "Examples" => "examples.md",
+        "Quasinormal modes" => "QNM.md",
         "API Reference" => "APIs.md",
     ],
     checkdocs = :none,
@@ -19,5 +20,5 @@ makedocs(
 
 deploydocs(
     repo = "github.com/ricokaloklo/GeneralizedSasakiNakamura.jl.git",
-    devbranch = "master",
+    devbranch = "main",
 )

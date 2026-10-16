@@ -16,6 +16,7 @@ _DEFAULTTOLERANCE = 1e-12
 _DEFAULT_rsin = -50
 _DEFAULT_rsout = 500
 
+# Call the package-level GSN_radial, defined in the parent module.
 _parent_GSN_radial(args...; kwargs...) = getfield(parentmodule(@__MODULE__), :GSN_radial)(args...; kwargs...)
 
 struct YSolutionResult

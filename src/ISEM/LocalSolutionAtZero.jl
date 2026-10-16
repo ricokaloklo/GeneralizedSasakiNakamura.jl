@@ -1,478 +1,233 @@
 module LocalSolutionAtZero
 
-include("TeukolskyTransformation.jl")
-using .TeukolskyTransformation
+using ..CoefficientTables: CoefficientSet
+using ..OrdinaryPointExpansion:
+    endpoint_ab_series,
+    endpoint_power_lookup,
+    denom_ok,
+    poly_pair,
+    poly_triple,
+    poly_value,
+    series_issue
 
-export an_zero, bn_zero, an_zero_auto, bn_zero_auto, zero_in_coeffs, zero_out_coeffs,
-       convergence_radius_an_zero, convergence_radius_bn_zero,
-       convergence_radius_zero_in, convergence_radius_zero_out,
-       evaluate_zero_in, evaluate_zero_out, error_zero_in, error_zero_out,
-       evaluate_zero_in_rho, evaluate_zero_out_rho, error_zero_in_rho, error_zero_out_rho,
-       zero_out_resonant_log_coeffs, evaluate_zero_out_resonant_log, error_zero_out_resonant_log,
-       zero_in_resonant_log_coeffs, evaluate_zero_in_resonant_log, error_zero_in_resonant_log
+export horizon_rotation_frequency, horizon_exponent, is_horizon_threshold
+export zero_local_solution, zero_log_solution
+export horizon_series_value, horizon_series_pair, horizon_series_triple
 
-function an_zero(s, epsilon, tau, kappa, lambda, N)
-    a = zeros(ComplexF64, N + 1)
-    a[1] = 1.0 + 0.0im # a_0 = 1
+_param_a(params) = hasproperty(params, :a) ? getproperty(params, :a) : sin(getproperty(params, :nu))
+_param_kappa(params) = hasproperty(params, :kappa) ? getproperty(params, :kappa) : cos(getproperty(params, :nu))
 
-    if N == 0
-        return a
-    end
-
-    for n = 1:N
-        term1_num = n^2 - s^2 + epsilon^2 + 1im * epsilon * kappa + s * (2im * epsilon * kappa - 1) -
-                    lambda + tau * (1im - tau) - 1im * n * (2 * tau + 2 * epsilon * kappa - 1im)
-
-        term2_num = - 2 * epsilon * kappa * (1im - 1im * n + 1im * s + epsilon - tau)
-
-        denom = n * (n - s - 1im * (tau + epsilon))
-
-        if isapprox(abs(denom), 0.0, atol=eps(Float64))
-            error("Denominator in a_n recurrence is zero for n=$n. This implies superradiance, which requires special handling.")
-        end
-
-        if n == 1
-            # a_1 calculation (a_{-1} = 0)
-            a[n+1] = (term1_num / denom) * a[n] # a[n+1] corresponds to a_n
-        else
-            # a_n calculation (n >= 2)
-            a[n+1] = (term1_num / denom) * a[n] + (term2_num / denom) * a[n-1]
-        end
-    end
-
-    return a
+# Horizon exponent scale (2 r_+ omega - a m) / (2 kappa); the local solutions
+# behave as x^(-i nu_h) (in) and x^(+i nu_h) (out) at x = 0.
+function horizon_rotation_frequency(params)
+    a = _param_a(params)
+    kappa = _param_kappa(params)
+    r_plus = 1 + kappa
+    return (2 * r_plus * getproperty(params, :omega) - a * getproperty(params, :m)) / (2 * kappa)
 end
 
-function bn_zero(s, epsilon, tau, kappa, lambda, N)
-    b = zeros(ComplexF64, N + 1)
-    b[1] = 1.0 + 0.0im # b_0 = 1
-
-    if N == 0
-        return b
-    end
-
-    for n = 1:N
-        term1_num = n^2 - 1im * epsilon + 2im * s * (1im + epsilon) + n * (2 * s - 1 - 2im * epsilon * (kappa - 1)) +
-                    epsilon * kappa * (1im + 2 * epsilon + 2 * tau) - lambda
-
-        term2_num = 2im * kappa * epsilon * (n + 2im * epsilon - 1)
-
-        denom = n * (n + s + 1im * (tau + epsilon))
-
-        if isapprox(denom, 0.0 + 0.0im, atol=eps(Float64))
-            error("Denominator in b_n recurrence is zero for n=$n. This implies -s - i(epsilon + tau) is an integer, which requires special handling (logarithmic term).")
-        end
-
-        if n == 1
-            # b_1 calculation (b_{-1} = 0)
-            b[n+1] = (term1_num / denom) * b[n] # b[n+1] corresponds to b_n
-        else
-            # b_n calculation (n >= 2)
-            b[n+1] = (term1_num / denom) * b[n] + (term2_num / denom) * b[n-1]
-        end
-    end
-
-    return b
+# True at the superradiant threshold, 2 r_+ omega = a m, up to rounding (8 ulp of the
+# larger side): there the two horizon exponents coincide and the outgoing horizon
+# solution is the logarithmic companion. A frequency set to m Omega_H with a
+# different but equivalent formula for r_+ differs from it only by rounding.
+function is_horizon_threshold(params)
+    a = _param_a(params)
+    kappa = _param_kappa(params)
+    rotation = 2 * (1 + kappa) * getproperty(params, :omega)
+    azimuthal = a * getproperty(params, :m)
+    isreal(rotation) || return false
+    return abs(rotation - azimuthal) <=
+        8 * eps(Float64) * max(abs(rotation), abs(azimuthal))
 end
 
-@inline function _threshold_zero_polynomial_coeffs(s, epsilon, kappa, lambda)
-    B0 = 1 - s
-    B1 = -2 - 2im * epsilon * (1 - kappa)
-    B2 = -2im * epsilon * kappa
-    C0 = lambda + s + s^2 + 1im * epsilon * (-1 + kappa - 2 * kappa * s)
-    C1 = 4 * epsilon^2 * kappa + 2im * epsilon * kappa * (-1 + s)
-    return B0, B1, B2, C0, C1
+# Frobenius exponent at the horizon: -i nu_h for the ingoing branch, +i nu_h for
+# the outgoing branch.
+function horizon_exponent(params, branch::Symbol)
+    nu_h = horizon_rotation_frequency(params)
+    branch in (:in, :ingoing, :IN) && return -1im * nu_h
+    branch in (:out, :outgoing, :OUT) && return 1im * nu_h
+    throw(ArgumentError("horizon branch must be :in or :out."))
 end
 
-@inline function _resonant_regular_source_coeff(j, h, B0, B1, B2)
-    hj = j <= length(h) - 1 ? h[j + 1] : 0.0 + 0.0im
-    hjm1 = j >= 1 ? h[j] : 0.0 + 0.0im
-    hjm2 = j >= 2 ? h[j - 1] : 0.0 + 0.0im
-    return (2 * j - 1 + B0) * hj + (-2 * (j - 1) + 1 + B1) * hjm1 + B2 * hjm2
-end
-
-function zero_out_resonant_log_coeffs(s, epsilon, kappa, lambda, N)
-    s < 0 || error("zero_out_resonant_log_coeffs requires a negative spin weight. Got s=$s.")
-    h = an_zero(s, epsilon, -epsilon, kappa, lambda, N)
-    b = zeros(ComplexF64, N + 1)
-    b[1] = 1.0 + 0.0im
-    log_coefficient = 0.0 + 0.0im
-    nres = -s
-    B0, B1, B2, C0, C1 = _threshold_zero_polynomial_coeffs(s, epsilon, kappa, lambda)
-
-    for k in 1:N
-        D = (s + k) * k
-        E = -(s + k - 1) * (s + k - 2) + B1 * (s + k - 1) + C0
-        F = B2 * (s + k - 2) + C1
-        prev1 = b[k]
-        prev2 = k >= 2 ? b[k - 1] : 0.0 + 0.0im
-        source = k >= nres ? _resonant_regular_source_coeff(k - nres, h, B0, B1, B2) : 0.0 + 0.0im
-
-        if abs(D) < 1e-13
-            abs(source) < 1e-13 && error("Resonant logarithmic source vanished at k=$k.")
-            log_coefficient = -(E * prev1 + F * prev2) / source
-        else
-            b[k + 1] = -(E * prev1 + F * prev2 + log_coefficient * source) / D
-        end
-    end
-
-    return h, b, log_coefficient
-end
-
-@inline function _resonant_source_coeff_exponent_s(j, h, s, B1, B2)
-    hj = j <= length(h) - 1 ? h[j + 1] : 0.0 + 0.0im
-    hjm1 = j >= 1 ? h[j] : 0.0 + 0.0im
-    hjm2 = j >= 2 ? h[j - 1] : 0.0 + 0.0im
-    return (s + 2j) * hj + (-2 * (s + j - 1) + 1 + B1) * hjm1 + B2 * hjm2
-end
-
-function zero_in_resonant_log_coeffs(s, epsilon, kappa, lambda, N)
-    s > 0 || error("zero_in_resonant_log_coeffs requires a positive spin weight. Got s=$s.")
-    b = bn_zero(s, epsilon, -epsilon, kappa, lambda, N)
-    a = zeros(ComplexF64, N + 1)
-    a[1] = 1.0 + 0.0im
-    log_coefficient = 0.0 + 0.0im
-    nres = s
-    B0, B1, B2, C0, C1 = _threshold_zero_polynomial_coeffs(s, epsilon, kappa, lambda)
-    phase = (-1.0 + 0.0im)^s
-
-    for k in 1:N
-        D = k * (k - s)
-        E = -(k - 1) * (k - 2) + B1 * (k - 1) + C0
-        F = B2 * (k - 2) + C1
-        prev1 = a[k]
-        prev2 = k >= 2 ? a[k - 1] : 0.0 + 0.0im
-        source = k >= nres ? phase * _resonant_source_coeff_exponent_s(k - nres, b, s, B1, B2) : 0.0 + 0.0im
-
-        if abs(D) < 1e-13
-            abs(source) < 1e-13 && error("Resonant logarithmic source vanished at k=$k.")
-            log_coefficient = -(E * prev1 + F * prev2) / source
-        else
-            a[k + 1] = -(E * prev1 + F * prev2 + log_coefficient * source) / D
-        end
-    end
-
-    return a, b, log_coefficient
-end
-
-function _zero_best_radius(coeff, n, tol)
-    cn = abs(coeff)
-    return iszero(cn) ? Inf : (tol / cn)^(1 / n)
-end
-
-function _zero_optimal_prefix(coeffs, tol, patience; tail = 4, min_order = 10)
-    Nmax = length(coeffs) - 1
-    Nmax <= 0 && return coeffs, 0, 0.0
-    Npeak = 1
-    peak = abs(coeffs[2])
-    bad = 0
-    for n in 2:Nmax
-        cn = abs(coeffs[n + 1])
-        if cn > peak
-            peak = cn
-            Npeak = n
-            bad = 0
-        else
-            bad += 1
-        end
-        bad >= patience && n > Npeak && break
-    end
-    Nuse = min(Nmax, max(min_order, Npeak + tail))
-    return coeffs[1:Nuse + 1], Nuse, _zero_best_radius(coeffs[Nuse + 1], Nuse, tol)
-end
-
-const _ZERO_AUTO_TARGET_RADIUS = 0.1
-
-function an_zero_auto(s, epsilon, tau, kappa, lambda, Nmax; tol = 1e-15, patience = 12, min_order = 10, target_radius = _ZERO_AUTO_TARGET_RADIUS)
-    coeffs = ComplexF64[1.0 + 0.0im]
-    Nopt = min_order
-    Ropt = 0.0
-    bad = 0
-    for n in 1:Nmax
-        term1_num = n^2 - s^2 + epsilon^2 + 1im * epsilon * kappa + s * (2im * epsilon * kappa - 1) -
-                    lambda + tau * (1im - tau) - 1im * n * (2 * tau + 2 * epsilon * kappa - 1im)
-        term2_num = - 2 * epsilon * kappa * (1im - 1im * n + 1im * s + epsilon - tau)
-        denom = n * (n - s - 1im * (tau + epsilon))
-        isapprox(abs(denom), 0.0, atol=eps(Float64)) && error("Denominator in a_n recurrence is zero for n=$n.")
-        cn = n == 1 ? (term1_num / denom) * coeffs[n] :
-             (term1_num / denom) * coeffs[n] + (term2_num / denom) * coeffs[n - 1]
-        push!(coeffs, cn)
-        if n >= min_order
-            Rn = convergence_radius_an_zero(@view(coeffs[1:n + 1]), tol)
-            if isfinite(Rn) && Rn >= target_radius
-                return coeffs[1:n + 1], n, Rn
-            end
-            if isfinite(Rn) && Rn > Ropt
-                Ropt = Rn
-                Nopt = n
-                bad = 0
-            else
-                bad += 1
-            end
-        elseif n == Nmax
-            Nopt = n
-            Ropt = convergence_radius_an_zero(coeffs, tol)
-        end
-        if n >= min_order && bad >= patience && n > Nopt
-            break
-        end
-    end
-    Nuse = min(length(coeffs) - 1, max(min_order, Nopt))
-    return coeffs[1:Nuse + 1], Nuse, convergence_radius_an_zero(@view(coeffs[1:Nuse + 1]), tol)
-end
-
-function bn_zero_auto(s, epsilon, tau, kappa, lambda, Nmax; tol = 1e-15, patience = 12, min_order = 10, target_radius = _ZERO_AUTO_TARGET_RADIUS)
-    coeffs = ComplexF64[1.0 + 0.0im]
-    Nopt = min_order
-    Ropt = 0.0
-    bad = 0
-    for n in 1:Nmax
-        term1_num = n^2 - 1im * epsilon + 2im * s * (1im + epsilon) + n * (2 * s - 1 - 2im * epsilon * (kappa - 1)) +
-                    epsilon * kappa * (1im + 2 * epsilon + 2 * tau) - lambda
-        term2_num = 2im * kappa * epsilon * (n + 2im * epsilon - 1)
-        denom = n * (n + s + 1im * (tau + epsilon))
-        isapprox(denom, 0.0 + 0.0im, atol=eps(Float64)) && error("Denominator in b_n recurrence is zero for n=$n.")
-        cn = n == 1 ? (term1_num / denom) * coeffs[n] :
-             (term1_num / denom) * coeffs[n] + (term2_num / denom) * coeffs[n - 1]
-        push!(coeffs, cn)
-        if n >= min_order
-            Rn = convergence_radius_bn_zero(@view(coeffs[1:n + 1]), tol)
-            if isfinite(Rn) && Rn >= target_radius
-                return coeffs[1:n + 1], n, Rn
-            end
-            if isfinite(Rn) && Rn > Ropt
-                Ropt = Rn
-                Nopt = n
-                bad = 0
-            else
-                bad += 1
-            end
-        elseif n == Nmax
-            Nopt = n
-            Ropt = convergence_radius_bn_zero(coeffs, tol)
-        end
-        if n >= min_order && bad >= patience && n > Nopt
-            break
-        end
-    end
-    Nuse = min(length(coeffs) - 1, max(min_order, Nopt))
-    return coeffs[1:Nuse + 1], Nuse, convergence_radius_bn_zero(@view(coeffs[1:Nuse + 1]), tol)
-end
-
-function convergence_radius_an_zero(coeffs, tol = 1e-15)
-    N = length(coeffs) - 1
-    if N <= 0
-        return 0.0 # No coefficients to determine radius
-    end
-    a_N = coeffs[N+1] # coeffs is 1-indexed, so a_N is at index N+1
-    if abs(a_N) == 0.0
-        return Inf # If the last coefficient is zero, it implies infinite radius or a problem
-    end
-    return (tol / abs(a_N))^(1.0 / N)
-end
-
-function convergence_radius_bn_zero(coeffs, tol = 1e-15)
-    N = length(coeffs) - 1
-    if N <= 0
-        return 0.0
-    end
-    b_N = coeffs[N+1]
-    if abs(b_N) == 0.0
-        return 0.6
-    end
-    return min((tol / abs(b_N))^(1.0 / N), 0.6)
-end
-
-function zero_in_coeffs(s, epsilon, tau, kappa, lambda, z, N::Integer; tol = 1e-15)
-    coeffs = Vector{ComplexF64}(undef, N + 1)
+# Frobenius recurrence at x = 0 for X'' + A X' + B X = 0 with A ~ x^-1, B ~ x^-2
+# and exponent mu. With `guarded`, stops at the first ill-conditioned denominator
+# or suspicious coefficient and returns (effective order, reason).
+function _horizon_coefficients!(
+    coeffs::Vector{ComplexF64},
+    a_power,
+    b_power,
+    mu,
+    order::Integer,
+    guarded::Bool,
+)
+    order >= 0 || throw(ArgumentError("series order must be non-negative."))
+    length(coeffs) >= order + 1 || throw(ArgumentError("coefficient buffer is too short."))
+    mu = ComplexF64(mu)
     coeffs[1] = 1.0 + 0.0im
-    N == 0 && return coeffs, 0.95
-
-    for n in 1:N
-        prev1 = -epsilon^2 + lambda + n - n^2 + 1im * epsilon * kappa * (-1 + 2 * n - 2 * s) +
-                s + s^2 - 1im * tau + 2im * n * tau + tau^2
-        prev2 = -2 * epsilon * kappa * (1im + epsilon - 1im * n + 1im * s - tau)
-        denom = n * (epsilon + 1im * n - 1im * s + tau) * z^2
-        coeffs[n + 1] = 1im * (prev2 * (n >= 2 ? coeffs[n - 1] : 0.0 + 0.0im) +
-                               prev1 * z * coeffs[n]) / denom
+    a_minus_one = a_power(-1)
+    b_minus_two = b_power(-2)
+    @inbounds for n in 1:order
+        numerator = 0.0 + 0.0im
+        for j in 0:(n - 1)
+            numerator += a_power(j) * (mu + n - j - 1) * coeffs[n - j]
+        end
+        for j in -1:(n - 2)
+            numerator += b_power(j) * coeffs[n - j - 1]
+        end
+        denominator = (mu + n) * (mu + n - 1) + a_minus_one * (mu + n) + b_minus_two
+        denominator_scale = abs((mu + n) * (mu + n - 1)) +
+            abs(a_minus_one * (mu + n)) + abs(b_minus_two)
+        if !denom_ok(denominator, denominator_scale)
+            guarded || error("ill-conditioned denominator in ISEM GSN horizon recurrence at n=$n")
+            return n - 1, :small_recurrence_denominator
+        end
+        coeffs[n + 1] = -numerator / denominator
+        if guarded
+            issue = series_issue(coeffs, n + 1)
+            issue == :none || return n - 1, issue
+        end
     end
-
-    R = convergence_radius_zero_in(coeffs, tol)
-    return coeffs, R
+    return order, :none
 end
 
-function zero_out_coeffs(s, epsilon, tau, kappa, lambda, z, N::Integer; tol = 1e-15)
-    coeffs = Vector{ComplexF64}(undef, N + 1)
-    coeffs[1] = 1.0 + 0.0im
-    N == 0 && return coeffs, 0.95
+# Guarded horizon Frobenius series for the :in or :out branch, with metadata.
+function zero_local_solution(
+    coefficients::CoefficientSet,
+    branch::Symbol,
+    order::Integer,
+)
+    a_coeffs, b_coeffs = endpoint_ab_series(coefficients, :H, order)
+    mu = horizon_exponent(coefficients.params, branch)
+    a_power = endpoint_power_lookup(a_coeffs, -1)
+    b_power = endpoint_power_lookup(b_coeffs, -2)
+    solution_coeffs = Vector{ComplexF64}(undef, order + 1)
+    effective_order, reason = _horizon_coefficients!(
+        solution_coeffs,
+        a_power,
+        b_power,
+        mu,
+        order,
+        true,
+    )
+    minimum_order = min(2, Int(order))
+    effective_order >= minimum_order || error(
+        "ISEM GSN horizon recurrence lost Float64 credibility before order $minimum_order: $reason")
+    effective_order < order && resize!(solution_coeffs, effective_order + 1)
+    return (
+        branch=branch,
+        exponent=mu,
+        coefficients=solution_coeffs,
+        A=a_coeffs,
+        B=b_coeffs,
+        variable=:x,
+        requested_order=Int(order),
+        effective_order=effective_order,
+        truncation_reason=reason,
+    )
+end
 
-    for n in 1:N
-        prev1 = -2 * epsilon^2 * kappa + lambda - (n - 1) * (n + 2 * s) +
-                1im * epsilon * (1 - 2 * n - 2 * s + kappa * (-1 + 2 * n + 2im * tau))
-        prev2 = -2 * epsilon * kappa * (2 * epsilon - 1im * (n - 1))
-        denom = n * (1im * epsilon + n + s + 1im * tau) * z^2
-        coeffs[n + 1] = (prev2 * (n >= 2 ? coeffs[n - 1] : 0.0 + 0.0im) +
-                         prev1 * z * coeffs[n]) / denom
+function _horizon_numerator(coeffs, a_power, b_power, mu, n::Int)
+    numerator = zero(ComplexF64)
+    @inbounds for j in 0:(n - 1)
+        numerator +=
+            a_power(j) * (mu + n - j - 1) * coeffs[n - j]
     end
-
-    R = convergence_radius_zero_out(coeffs, tol)
-    return coeffs, R
-end
-
-function convergence_radius_zero_in(coeffs, tol = 1e-15)
-    N = length(coeffs) - 1
-    N <= 0 && return 0.0
-    last = coeffs[end]
-    abs(last) == 0 && return 0.6
-    return min((tol / abs(last))^(1.0 / N), 0.6)
-end
-
-function convergence_radius_zero_out(coeffs, tol = 1e-15)
-    N = length(coeffs) - 1
-    N <= 0 && return 0.0
-    last = coeffs[end]
-    abs(last) == 0 && return 0.6
-    return min((tol / abs(last))^(1.0 / N), 0.6)
-end
-
-function evaluate_series(x, coeffs)
-    n = length(coeffs)
-    n == 0 && return (0.0 + 0.0im, 0.0 + 0.0im, 0.0 + 0.0im)
-    val  = coeffs[end]
-    dval = zero(val)
-    ddval = zero(val)
-    @inbounds for i in (n-1):-1:1
-        ddval = muladd(ddval, x, 2dval)
-        dval  = muladd(dval,  x, val)
-        val   = muladd(val,   x, coeffs[i])
+    @inbounds for j in -1:(n - 2)
+        numerator += b_power(j) * coeffs[n - j - 1]
     end
-    return (val, dval, ddval)
+    return ComplexF64(numerator)
 end
 
-function evaluate_zero_in(x, coeffs)
-    return evaluate_series(x, coeffs)
+# Coefficient of x^(mu+n-2) contributed by the non-logarithmic terms
+# 2u'/x - u/x^2 + A u/x when X = log(x) u, u = x^mu sum c_k x^k, is substituted
+# into the equation.
+function _horizon_log_forcing(coeffs, a_power, mu, n::Int)
+    forcing = (2 * (mu + n) - 1 + a_power(-1)) * coeffs[n + 1]
+    @inbounds for j in 0:(n - 1)
+        forcing += a_power(j) * coeffs[n - j]
+    end
+    return ComplexF64(forcing)
 end
 
-function evaluate_zero_out(x, s, epsilon, tau, coeffs)
-    # P0_out(x) = (-x)^(s+i*(epsilon+tau)) * sum(b_n * x^n)
-    P, P_prime, P_primeprime = evaluate_series(x, coeffs)
-    prefactor = (-x)^(s + 1im * (epsilon + tau))
-    prefactor_prime = (s + 1im * (epsilon + tau)) * prefactor / x
-    prefactor_primeprime = (s + 1im * (epsilon + tau) - 1) * prefactor_prime / x
-    P0out = prefactor * P
-    P0out_prime = prefactor_prime * P + prefactor * P_prime
-    P0out_primeprime = prefactor_primeprime * P + 2 * prefactor_prime * P_prime + prefactor * P_primeprime
-    return (P0out, P0out_prime, P0out_primeprime)
+# At the threshold frequency (nu_h = 0) the two horizon exponents coincide; this
+# returns the logarithmic companion X = log(x) X_in + x^mu sum c_n x^n.
+function zero_log_solution(
+    coefficients::CoefficientSet,
+    branch::Symbol,
+    order::Integer,
+)
+    is_horizon_threshold(coefficients.params) ||
+        throw(ArgumentError(
+            "logarithmic horizon solution requires the threshold frequency."))
+    normalized = branch in (:out, :outgoing, :OUT) ? :out :
+        throw(ArgumentError(
+            "the threshold logarithmic companion is the outgoing horizon branch."))
+    base = zero_local_solution(coefficients, :in, order)
+    a_power = endpoint_power_lookup(base.A, -1)
+    b_power = endpoint_power_lookup(base.B, -2)
+    mu = ComplexF64(base.exponent)
+    companion = Vector{ComplexF64}(undef, order + 1)
+    companion[1] = zero(ComplexF64)
+    a_minus_one = a_power(-1)
+    b_minus_two = b_power(-2)
+    @inbounds for n in 1:order
+        numerator = _horizon_numerator(
+            companion, a_power, b_power, mu, n)
+        numerator += _horizon_log_forcing(
+            base.coefficients, a_power, mu, n)
+        denominator = (mu + n) * (mu + n - 1) +
+            a_minus_one * (mu + n) + b_minus_two
+        denominator_scale = abs((mu + n) * (mu + n - 1)) +
+            abs(a_minus_one * (mu + n)) + abs(b_minus_two)
+        denom_ok(denominator, denominator_scale) ||
+            error("threshold logarithmic horizon recurrence is ill-conditioned at n=$n")
+        companion[n + 1] = -numerator / denominator
+        series_issue(companion, n + 1) == :none ||
+            error("threshold logarithmic horizon recurrence lost Float64 credibility at n=$n")
+    end
+    return (
+        branch=normalized,
+        exponent=mu,
+        coefficients=companion,
+        A=base.A,
+        B=base.B,
+        variable=:x,
+        requested_order=Int(order),
+        effective_order=Int(order),
+        truncation_reason=:threshold_log_companion,
+        representation=:threshold_log_frobenius,
+        log_exponent=mu,
+        log_coefficient=one(ComplexF64),
+        log_coefficients=base.coefficients,
+    )
 end
 
-function evaluate_zero_out_resonant_log(x, s, h, b, log_coefficient)
-    H, Hp, Hpp = evaluate_series(x, h)
-    B, Bp, Bpp = evaluate_series(x, b)
-    prefactor = (-x)^s
-    prefactor_prime = s * prefactor / x
-    prefactor_primeprime = (s - 1) * prefactor_prime / x
-    logx = log(-x)
-
-    Psing = prefactor * B
-    Psing_prime = prefactor_prime * B + prefactor * Bp
-    Psing_primeprime = prefactor_primeprime * B + 2 * prefactor_prime * Bp + prefactor * Bpp
-
-    Plog = log_coefficient * H * logx
-    Plog_prime = log_coefficient * (Hp * logx + H / x)
-    Plog_primeprime = log_coefficient * (Hpp * logx + 2 * Hp / x - H / x^2)
-
-    return Psing + Plog, Psing_prime + Plog_prime, Psing_primeprime + Plog_primeprime
+# x^mu times the power series, with first and second x-derivatives in the
+# _pair and _triple versions.
+function horizon_series_value(coeffs, mu, x)
+    return x^mu * poly_value(coeffs, x)
 end
 
-function evaluate_zero_in_resonant_log(x, s, a, b, log_coefficient)
-    A, Ap, App = evaluate_series(x, a)
-    H, Hp, Hpp = evaluate_zero_out(x, s, 0.0, 0.0, b)
-    logx = log(-x)
-
-    Plog = log_coefficient * H * logx
-    Plog_prime = log_coefficient * (Hp * logx + H / x)
-    Plog_primeprime = log_coefficient * (Hpp * logx + 2 * Hp / x - H / x^2)
-
-    return A + Plog, Ap + Plog_prime, App + Plog_primeprime
+function horizon_series_pair(coeffs, mu, x)
+    series, dseries = poly_pair(coeffs, x)
+    prefactor = x^mu
+    value = prefactor * series
+    derivative = prefactor * (dseries + mu * series / x)
+    return value, derivative
 end
 
-function evaluate_zero_out_rho(rho, s, epsilon, tau, coeffs, z)
-    sigma = s + 1im * (epsilon + tau)
-    y, yp, ypp = evaluate_frobenius_series(rho, sigma, coeffs)
-    pref = z^(-sigma)
-    return (pref * y, pref * yp, pref * ypp)
-end
-
-function error_zero_in(x, s, epsilon, tau, kappa, lambda, coeffs)
-    P, P_prime, P_primeprime = evaluate_zero_in(x, coeffs)
-    q1, q2 = calculate_q1_q2(x, s, epsilon, kappa, tau, lambda)
-    term1 = (1 - x) * x * P_primeprime
-    term2 = q1 * P_prime
-    term3 = q2 * P
-    return _relative_residual(term1, term2, term3)
-end
-
-function error_zero_in((x, P, P_prime, P_primeprime), s, epsilon, tau, kappa, lambda)
-    q1, q2 = calculate_q1_q2(x, s, epsilon, kappa, tau, lambda)
-    term1 = (1 - x) * x * P_primeprime
-    term2 = q1 * P_prime
-    term3 = q2 * P
-    return _relative_residual(term1, term2, term3)
-end
-
-function error_zero_out(x, s, epsilon, tau, kappa, lambda, coeffs)
-    P, P_prime, P_primeprime = evaluate_zero_out(x, s, epsilon, tau, coeffs)
-    q1, q2 = calculate_q1_q2(x, s, epsilon, kappa, tau, lambda)
-    term1 = (1 - x) * x * P_primeprime
-    term2 = q1 * P_prime
-    term3 = q2 * P
-    return _relative_residual(term1, term2, term3)
-end
-
-function error_zero_out_resonant_log(x, s, epsilon, kappa, lambda, h, b, log_coefficient)
-    P, P_prime, P_primeprime = evaluate_zero_out_resonant_log(x, s, h, b, log_coefficient)
-    q1, q2 = calculate_q1_q2(x, s, epsilon, kappa, -epsilon, lambda)
-    term1 = (1 - x) * x * P_primeprime
-    term2 = q1 * P_prime
-    term3 = q2 * P
-    return _relative_residual(term1, term2, term3)
-end
-
-function error_zero_in_resonant_log(x, s, epsilon, kappa, lambda, a, b, log_coefficient)
-    P, P_prime, P_primeprime = evaluate_zero_in_resonant_log(x, s, a, b, log_coefficient)
-    q1, q2 = calculate_q1_q2(x, s, epsilon, kappa, -epsilon, lambda)
-    term1 = (1 - x) * x * P_primeprime
-    term2 = q1 * P_prime
-    term3 = q2 * P
-    return _relative_residual(term1, term2, term3)
-end
-
-function error_zero_out((x, P, P_prime, P_primeprime), s, epsilon, tau, kappa, lambda)
-    q1, q2 = calculate_q1_q2(x, s, epsilon, kappa, tau, lambda)
-    term1 = (1 - x) * x * P_primeprime
-    term2 = q1 * P_prime
-    term3 = q2 * P
-    return _relative_residual(term1, term2, term3)
-end
-
-function evaluate_zero_in_rho(rho, coeffs)
-    return evaluate_frobenius_series(rho, coeffs)
-end
-
-function error_zero_in_rho(rho, s, epsilon, tau, kappa, lambda, z, coeffs)
-    P, Pp, Ppp = evaluate_zero_in_rho(rho, coeffs)
-    term1 = rho * (z + rho) * Ppp
-    term2 = contour_q1(rho, s, epsilon, tau, kappa, z) * Pp
-    term3 = contour_q2(rho, s, epsilon, tau, kappa, lambda, z) * P
-    return _relative_residual(term1, term2, term3)
-end
-
-function error_zero_out_rho(rho, s, epsilon, tau, kappa, lambda, z, coeffs)
-    P, Pp, Ppp = evaluate_zero_out_rho(rho, s, epsilon, tau, coeffs, z)
-    term1 = rho * (z + rho) * Ppp
-    term2 = contour_q1(rho, s, epsilon, tau, kappa, z) * Pp
-    term3 = contour_q2(rho, s, epsilon, tau, kappa, lambda, z) * P
-    return _relative_residual(term1, term2, term3)
+function horizon_series_triple(coeffs, mu, x)
+    series, dseries, ddseries = poly_triple(coeffs, x)
+    prefactor = x^mu
+    log_derivative = mu / x
+    log_second = -mu / x^2
+    value = prefactor * series
+    derivative = prefactor * (dseries + log_derivative * series)
+    second = prefactor * (
+        ddseries + 2 * log_derivative * dseries +
+        (log_derivative^2 + log_second) * series
+    )
+    return value, derivative, second
 end
 
 end

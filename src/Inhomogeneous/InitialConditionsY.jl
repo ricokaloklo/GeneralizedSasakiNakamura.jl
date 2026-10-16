@@ -291,8 +291,11 @@ function Y_initial_values_inf_m2(m::Int, a, omega, lambda, Binc, Bref, rsout; or
     _default_order = _DEFAULT_infinity_expansion_order
     order = (order == -1 ? _default_order : order)
 
-    Ypp_out(ord) = Ypp_outgoing_inf_m2(m, a, omega, lambda, ord)
-    Ypp_in(ord) = Ypp_ingoing_inf_m2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_inf_m2(m, a, omega, lambda, ord) for ord in 0:order]
+
+    Ypp_out(ord) = ypp_out_values[ord + 1]
+    ypp_in_values = [Ypp_ingoing_inf_m2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_in(ord) = ypp_in_values[ord + 1]
 
     rout = r_from_rstar(a, rsout)
     Yp_out(r) = Yp_outgoing_inf_m2(Ypp_out, r, order)
@@ -314,8 +317,11 @@ function Y_initial_values_inf_p2(m::Int, a, omega, lambda, Binc, Bref, rsout; or
     _default_order = _DEFAULT_infinity_expansion_order
     order = (order == -1 ? _default_order : order)
 
-    Ypp_out(ord) = Ypp_outgoing_inf_p2(m, a, omega, lambda, ord)
-    Ypp_in(ord) = Ypp_ingoing_inf_p2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_inf_p2(m, a, omega, lambda, ord) for ord in 0:order]
+
+    Ypp_out(ord) = ypp_out_values[ord + 1]
+    ypp_in_values = [Ypp_ingoing_inf_p2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_in(ord) = ypp_in_values[ord + 1]
 
     rout = r_from_rstar(a, rsout)
     Yp_out(r) = Yp_outgoing_inf_p2(Ypp_out, omega, r, order)
@@ -337,8 +343,11 @@ function Y_initial_values_hor_m2(m::Int, a, omega, lambda, Cinc, Cref, rsin; ord
     _default_order = _DEFAULT_horizon_expansion_order
     order = (order == -1 ? _default_order : order)
 
-    Ypp_out(ord) = Ypp_outgoing_hor_m2(m, a, omega, lambda, ord)
-    Ypp_in(ord) = Ypp_ingoing_hor_m2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_hor_m2(m, a, omega, lambda, ord) for ord in 0:order]
+
+    Ypp_out(ord) = ypp_out_values[ord + 1]
+    ypp_in_values = [Ypp_ingoing_hor_m2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_in(ord) = ypp_in_values[ord + 1]
 
     rin = r_from_rstar(a, rsin)
     Yp_out(r) = Yp_outgoing_hor_m2(Ypp_out, a, r, order)
@@ -361,7 +370,9 @@ function Y_initial_values_inf_up_m2(m::Int, a, omega, lambda, rsout; order::Int=
     _default_order = _DEFAULT_horizon_expansion_order
     order = (order == -1 ? _default_order : order)
 
-    Ypp_out(ord) = Ypp_outgoing_inf_m2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_inf_m2(m, a, omega, lambda, ord) for ord in 0:order]
+
+    Ypp_out(ord) = ypp_out_values[ord + 1]
 
     rout = r_from_rstar(a, rsout)
     Yp_out(r) = Yp_outgoing_inf_m2(Ypp_out, r, order)
@@ -378,7 +389,9 @@ function Y_initial_values_inf_up_p2(m::Int, a, omega, lambda, rsout; order::Int=
     _default_order = _DEFAULT_horizon_expansion_order
     order = (order == -1 ? _default_order : order)
 
-    Ypp_out(ord) = Ypp_outgoing_inf_p2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_inf_p2(m, a, omega, lambda, ord) for ord in 0:order]
+
+    Ypp_out(ord) = ypp_out_values[ord + 1]
 
     rout = r_from_rstar(a, rsout)
     Yp_out(r) = Yp_outgoing_inf_p2(Ypp_out, omega, r, order)
@@ -395,8 +408,11 @@ function Y_initial_values_hor_p2(m::Int, a, omega, lambda, Cinc, Cref, rsin; ord
     _default_order = _DEFAULT_horizon_expansion_order
     order = (order == -1 ? _default_order : order)
 
-    Ypp_out(ord) = Ypp_outgoing_hor_p2(m, a, omega, lambda, ord)
-    Ypp_in(ord) = Ypp_ingoing_hor_p2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_hor_p2(m, a, omega, lambda, ord) for ord in 0:order]
+
+    Ypp_out(ord) = ypp_out_values[ord + 1]
+    ypp_in_values = [Ypp_ingoing_hor_p2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_in(ord) = ypp_in_values[ord + 1]
 
     rin = r_from_rstar(a, rsin)
     Yp_out(r) = Yp_outgoing_hor_p2(Ypp_out, a, omega, m, r, order)
@@ -414,7 +430,8 @@ end
 function Y_and_Yp_ingoing_hor_m2(m::Int, a, omega, lambda; order::Int=-1)
     _default_order = _DEFAULT_horizon_expansion_order
     order = (order == -1 ? _default_order : order)
-    Ypp_in(ord) = Ypp_ingoing_hor_m2(m, a, omega, lambda, ord)
+    ypp_in_values = [Ypp_ingoing_hor_m2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_in(ord) = ypp_in_values[ord + 1]
 
     Yp_in(r) = Yp_ingoing_hor_m2(Ypp_in, a, omega, m, r, order)
     Y_in(r) = Y_ingoing_hor_m2(Ypp_in, a, omega, m, r, order)
@@ -425,7 +442,8 @@ end
 function Y_and_Yp_outgoing_hor_m2(m::Int, a, omega, lambda; order::Int=-1)
     _default_order = _DEFAULT_horizon_expansion_order
     order = (order == -1 ? _default_order : order)
-    Ypp_out(ord) = Ypp_outgoing_hor_m2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_hor_m2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_out(ord) = ypp_out_values[ord + 1]
 
     Yp_out(r) = Yp_outgoing_hor_m2(Ypp_out, a, r, order)
     Y_out(r) = Y_outgoing_hor_m2(Ypp_out, a, r, order)
@@ -436,7 +454,8 @@ end
 function Y_and_Yp_ingoing_hor_p2(m::Int, a, omega, lambda; order::Int=-1)
     _default_order = _DEFAULT_horizon_expansion_order
     order = (order == -1 ? _default_order : order)
-    Ypp_in(ord) = Ypp_ingoing_hor_p2(m, a, omega, lambda, ord)
+    ypp_in_values = [Ypp_ingoing_hor_p2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_in(ord) = ypp_in_values[ord + 1]
 
     Yp_in(r) = Yp_ingoing_hor_p2(Ypp_in, a, r, order)
     Y_in(r) = Y_ingoing_hor_p2(Ypp_in, a, r, order)
@@ -447,7 +466,8 @@ end
 function Y_and_Yp_outgoing_hor_p2(m::Int, a, omega, lambda; order::Int=-1)
     _default_order = _DEFAULT_horizon_expansion_order
     order = (order == -1 ? _default_order : order)
-    Ypp_out(ord) = Ypp_outgoing_hor_p2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_hor_p2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_out(ord) = ypp_out_values[ord + 1]
 
     Yp_out(r) = Yp_outgoing_hor_p2(Ypp_out, a, omega, m, r, order)
     Y_out(r) = Y_outgoing_hor_p2(Ypp_out, a, omega, m, r, order)
@@ -458,7 +478,8 @@ end
 function Y_and_Yp_outgoing_inf_m2(m::Int, a, omega, lambda; order::Int=-1)
     _default_order = _DEFAULT_infinity_expansion_order
     order = (order == -1 ? _default_order : order)
-    Ypp_out(ord) = Ypp_outgoing_inf_m2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_inf_m2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_out(ord) = ypp_out_values[ord + 1]
 
     Yp_out(r) = Yp_outgoing_inf_m2(Ypp_out, r, order)
     Y_out(r) = Y_outgoing_inf_m2(Ypp_out, r, order)
@@ -469,7 +490,8 @@ end
 function Y_and_Yp_outgoing_inf_p2(m::Int, a, omega, lambda; order::Int=-1)
     _default_order = _DEFAULT_infinity_expansion_order
     order = (order == -1 ? _default_order : order)
-    Ypp_out(ord) = Ypp_outgoing_inf_p2(m, a, omega, lambda, ord)
+    ypp_out_values = [Ypp_outgoing_inf_p2(m, a, omega, lambda, ord) for ord in 0:order]
+    Ypp_out(ord) = ypp_out_values[ord + 1]
 
     Yp_out(r) = Yp_outgoing_inf_p2(Ypp_out, omega, r, order)
     Y_out(r) = Y_outgoing_inf_p2(Ypp_out, omega, r, order)

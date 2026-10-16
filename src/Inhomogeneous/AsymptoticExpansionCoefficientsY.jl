@@ -36,6 +36,13 @@ function a_minus_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DE
     return aminus_inf
 end
 
+# All infinity coefficients a_{+/-}(0..order) from one coefficient sequence, so the recurrence of Eq.(F12)
+# of RL2024 is run once for all orders; same relation to C_{+/-} as in a_plus_inf / a_minus_inf.
+function _a_inf_values(coefficient, s::Int, m::Int, a, omega, lambda, order::Int, data_type)
+    C = coefficient_values(coefficient, s, m, a, omega, lambda, order)
+    return data_type[data_type(C[ord + 1] / omega^ord) for ord in 0:order]
+end
+
 function a_plus_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE)
 
     C_plus_hor = outgoing_coefficient_at_hor(s, m, a, omega, lambda, order)
@@ -136,7 +143,7 @@ function Ypp_outgoing_inf_m2(m::Int, a, omega, lambda, order::Int; data_type=_DE
     if order == 0
         return data_type(1)
     else
-        fplus = data_type[a_plus_inf(-2, m, a, omega, lambda, ord) for ord in 0:order]
+        fplus = _a_inf_values(outgoing_coefficient_at_inf, -2, m, a, omega, lambda, order, data_type)
         a_ord = data_type[a_coefficient_m2(m, a, ord) for ord in 0:order]
         b_ord = data_type[b_coefficient(a, ord) for ord in 0:order]
 
@@ -161,7 +168,7 @@ function Ypp_ingoing_inf_p2(m::Int, a, omega, lambda, order::Int; data_type=_DEF
     if order == 0
         return data_type(1)
     else
-        fminus = data_type[a_minus_inf(2, m, a, omega, lambda, ord) for ord in 0:order]
+        fminus = _a_inf_values(ingoing_coefficient_at_inf, 2, m, a, omega, lambda, order, data_type)
         a_ord = data_type[a_coefficient_p2(m, a, ord) for ord in 0:order]
         b_ord = data_type[b_coefficient(a, ord) for ord in 0:order]
 
@@ -187,7 +194,7 @@ function Ypp_ingoing_inf_m2(m::Int, a, omega, lambda, order::Int; data_type=_DEF
     if order == 0
         return YIm0
     else
-        fminus = data_type[a_minus_inf(-2, m, a, omega, lambda, ord) for ord in 0:order]
+        fminus = _a_inf_values(ingoing_coefficient_at_inf, -2, m, a, omega, lambda, order, data_type)
         a_ord = data_type[a_coefficient_m2(m, a, ord) for ord in 0:order]
         b_ord = data_type[b_coefficient(a, ord) for ord in 0:order]
         d_ord = data_type[d_coefficient_m2(a, omega, ord) for ord in 0:order]
@@ -213,7 +220,7 @@ function Ypp_outgoing_inf_p2(m::Int, a, omega, lambda, order::Int; data_type=_DE
     if order == 0
         return YIm0
     else
-        fplus = data_type[a_plus_inf(2, m, a, omega, lambda, ord) for ord in 0:order]
+        fplus = _a_inf_values(outgoing_coefficient_at_inf, 2, m, a, omega, lambda, order, data_type)
         a_ord = data_type[a_coefficient_p2(m, a, ord) for ord in 0:order]
         b_ord = data_type[b_coefficient(a, ord) for ord in 0:order]
         d_ord = data_type[d_coefficient_p2(a, omega, ord) for ord in 0:order]
