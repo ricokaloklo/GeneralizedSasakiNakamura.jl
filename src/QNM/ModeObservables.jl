@@ -416,7 +416,7 @@ eigenvalue, directly evaluated GSN scattering amplitudes, frequency derivative
 and GSN excitation factor shown by its
 compact display.
 
-For integer spins -2 through 2, l<=4 and n<=3 simple poles, the default
+For integer spins -2 through 2, l<=15 and n<=10 simple poles, the default
 excitation backend attempts a checked variational solve at one frequency.
 Failed refinement/contour checks, other modes, and explicit stencils/custom
 solvers retain Richardson. Set

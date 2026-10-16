@@ -2,7 +2,7 @@
 # finding, mirror construction or extremal-family classification happens here.
 function _qnm_variational_scope(root)
     m = root.mode
-    return m.s in -2:2 && abs(m.s) <= m.l <= 4 && 0 <= m.n <= 3 &&
+    return m.s in -2:2 && abs(m.s) <= m.l <= 15 && 0 <= m.n <= 10 &&
         abs(root.a) <= 1 && isfinite(root.omega) &&
         !iszero(real(root.omega)) && imag(root.omega) < 0 &&
         !(get(root.provenance, :extremal_endpoint, false) &&
@@ -18,7 +18,7 @@ function _qnm_use_variational(root, options)
         get(options, :radial_solver, GSN_radial) in (GSN_radial, _qnm_default_radial_solver) &&
         get(options, :teukolsky_solver, Teukolsky_radial) in (nothing, Teukolsky_radial)
     if backend === :variational && (!compatible || !_qnm_variational_scope(root))
-        throw(ArgumentError("variational backend supports default solvers, no explicit stencil/direction check, and integer s=-2:2,abs(s)<=l<=4,n=0:3 simple poles"))
+        throw(ArgumentError("variational backend supports default solvers, no explicit stencil/direction check, and integer s=-2:2,abs(s)<=l<=15,n=0:10 simple poles"))
     end
     return backend !== :richardson && compatible && _qnm_variational_scope(root)
 end
@@ -55,12 +55,16 @@ function _qnm_checked_variational(root; h=nothing, radial_solver=GSN_radial,
     end
     coarse_series=series===nothing ? nothing : map(c->c[1:17],series)
     potential_setup_s=(time_ns()-setup_start)/1e9
-    coarse = _qnm_variational_excitation(root; horizon_scale=0.4,
-        horizon_order=24, infinity_radius=80.0, horizon_ray=extreme,
+    # The outer radius is kept short: past it the two infinity branches are balanced
+    # but the tangent propagation accumulates error with path length, which limited
+    # strongly damped overtones; the asymptotic order makes up for the shorter radius
+    # (the radius never drops below (order + 8)/|omega|).
+    coarse = _qnm_variational_excitation(root; tol=1e-12, horizon_scale=0.4,
+        horizon_order=24, infinity_order=60, infinity_radius=25.0, horizon_ray=extreme,
         extremal_scale=24.0, extremal_radius=0.2, extremal_order=40,
         extremal_precision=bits,horizon_tortoise=complex_horizon,potential_series=coarse_series)
-    fine = _qnm_variational_excitation(root; tol=3e-12, horizon_scale=0.8,
-        horizon_order=40, infinity_order=40, infinity_radius=100.0,
+    fine = _qnm_variational_excitation(root; tol=1e-13, horizon_scale=0.8,
+        horizon_order=40, infinity_order=60, infinity_radius=25.0,
         horizon_ray=extreme, extremal_scale=32.0, extremal_radius=0.15,
         extremal_order=64, extremal_precision=bits,horizon_tortoise=complex_horizon,potential_series=series)
     drift(x,y) = abs(x-y)/max(abs(x), abs(y), floatmin(Float64))
@@ -180,8 +184,8 @@ _qnm_gsn_excitation_factor(root::LeaverResult;kwargs...) =
 """
     qnm_excitation_factor(root::LeaverResult; backend=:auto, kwargs...)
 
-Use checked frequency sensitivities for integer spins -2 through 2, l<=4,
-n<=3 simple poles, or the original Richardson algorithm otherwise. Failed
+Use checked frequency sensitivities for integer spins -2 through 2, l<=15,
+n<=10 simple poles, or the original Richardson algorithm otherwise. Failed
 refinement or contour checks fall back to Richardson. Force either with
 `backend=:variational` or `:richardson`. Explicit stencils/custom solvers
 retain Richardson. The variational Teukolsky bridge includes the off-root
