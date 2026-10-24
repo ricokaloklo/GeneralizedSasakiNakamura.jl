@@ -6,9 +6,25 @@ using ..Coordinates
 
 export outgoing_coefficient_at_inf, ingoing_coefficient_at_inf
 export outgoing_coefficient_at_hor, ingoing_coefficient_at_hor
+export coefficient_sequence
+export coefficient_values
 
 const I = 1im # Mathematica being Mathematica
-_DEFAULTDATATYPE = ComplexF64 # Double precision by default
+const _DEFAULTDATATYPE = ComplexF64 # Double precision by default
+
+# Returns order -> coefficient of `f`, caching the recursion state so earlier orders are not recomputed.
+function coefficient_sequence(f, s, m, a, omega, lambda; data_type=_DEFAULTDATATYPE)
+    state_type = NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs),
+        Tuple{Vector{data_type}, Vector{data_type}, Vector{data_type}}}
+    workspace = Ref{Union{Nothing,state_type}}(nothing)
+    return order -> f(s, m, a, omega, lambda, order; data_type, workspace)
+end
+
+# Coefficients of orders 0..order as a vector.
+function coefficient_values(f, s, m, a, omega, lambda, order; data_type=_DEFAULTDATATYPE)
+    sequence = coefficient_sequence(f, s, m, a, omega, lambda; data_type)
+    return data_type[sequence(n) for n in 0:order]
+end
 
 function PminusInf_z(s::Int, m::Int, a, omega, lambda, z)
     if s == 0
@@ -201,16 +217,11 @@ function QminusInf_z(s::Int, m::Int, a, omega, lambda, z)
     end
 end
 
-# Cache mechanism for the ingoing coefficients at infinity
-# Initialize the cache with a set of fiducial parameters
-_cached_ingoing_coefficients_at_inf_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, _DEFAULTDATATYPE, _DEFAULTDATATYPE, _DEFAULTDATATYPE}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_ingoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}}} = (
-    expansion_coeffs = [_DEFAULTDATATYPE(1.0)], 
-    Pcoeffs = [_DEFAULTDATATYPE(0.0)],
-    Qcoeffs = [_DEFAULTDATATYPE(0.0)]
-)
 
-function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE)
+# workspace: a Ref holding (expansion_coeffs, Pcoeffs, Qcoeffs) from a previous call with the
+# same (s, m, a, omega, lambda); when given, the recurrence is extended from the stored order
+# and the Ref is updated (see coefficient_sequence).
+function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE, workspace=nothing)
     #=
     We have derived/shown the explicit expression for
     different physically-relevant spin weight (s=0, \pm 1, \pm2)
@@ -223,8 +234,6 @@ function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int
     is designed to be evaluated recursively to build
     the full list of coefficients
     =#
-    global _cached_ingoing_coefficients_at_inf_params
-    global _cached_ingoing_coefficients_at_inf
 
     if order < 0
         throw(DomainError(order, "Only positive expansion order is supported"))
@@ -362,12 +371,10 @@ function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int
         # Evaluate higher order corrections using AD
         # Specifically we use TaylorSeries.jl for a much more performant AD
 
-        _this_params = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-        # Check if we can use the cached results
-        if _cached_ingoing_coefficients_at_inf_params == _this_params
-            expansion_coeffs = _cached_ingoing_coefficients_at_inf.expansion_coeffs
-            Pcoeffs = _cached_ingoing_coefficients_at_inf.Pcoeffs
-            Qcoeffs = _cached_ingoing_coefficients_at_inf.Qcoeffs
+        if workspace !== nothing && workspace[] !== nothing
+            expansion_coeffs = workspace[].expansion_coeffs
+            Pcoeffs = workspace[].Pcoeffs
+            Qcoeffs = workspace[].Qcoeffs
         else
             # Cannot re-use the cached results, re-compute from zero
             expansion_coeffs = [data_type(1.0)] # order 0
@@ -399,13 +406,11 @@ function ingoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int
             append!(expansion_coeffs, omega^(i)*((i*(i-1)*(expansion_coeffs[i]/omega^(i-1)) + sum)/(_P0*i)))
         end
 
-        # Update cache
-        _cached_ingoing_coefficients_at_inf_params = _this_params
-        _cached_ingoing_coefficients_at_inf = (
+        workspace === nothing || (workspace[] = (
             expansion_coeffs = expansion_coeffs,
             Pcoeffs = Pcoeffs,
             Qcoeffs = Qcoeffs
-        )
+        ))
 
         return expansion_coeffs[order+1]
     end
@@ -616,16 +621,11 @@ function QplusInf_z(s::Int, m::Int, a, omega, lambda, z)
     end
 end
 
-# Cache mechanism for the outgoing coefficients at infinity
-# Initialize the cache with a set of fiducial parameters
-_cached_outgoing_coefficients_at_inf_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, _DEFAULTDATATYPE, _DEFAULTDATATYPE, _DEFAULTDATATYPE}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_outgoing_coefficients_at_inf::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}}} = (
-    expansion_coeffs = [_DEFAULTDATATYPE(1.0)], 
-    Pcoeffs = [_DEFAULTDATATYPE(0.0)],
-    Qcoeffs = [_DEFAULTDATATYPE(0.0)]
-)
 
-function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE)
+# workspace: a Ref holding (expansion_coeffs, Pcoeffs, Qcoeffs) from a previous call with the
+# same (s, m, a, omega, lambda); when given, the recurrence is extended from the stored order
+# and the Ref is updated (see coefficient_sequence).
+function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE, workspace=nothing)
     #=
     We have derived/shown the explicit expression for
     different physically-relevant spin weight (s=0, \pm 1, \pm2)
@@ -638,8 +638,6 @@ function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::In
     is designed to be evaluated recursively to build
     the full list of coefficients
     =#
-    global _cached_outgoing_coefficients_at_inf_params
-    global _cached_outgoing_coefficients_at_inf
 
     if order < 0
         throw(DomainError(order, "Only positive expansion order is supported"))
@@ -764,12 +762,10 @@ function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::In
     else
         # Evaluate higher order corrections using AD
 
-        _this_params = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-        # Check if we can use the cached results
-        if _cached_outgoing_coefficients_at_inf_params == _this_params
-            expansion_coeffs = _cached_outgoing_coefficients_at_inf.expansion_coeffs
-            Pcoeffs = _cached_outgoing_coefficients_at_inf.Pcoeffs
-            Qcoeffs = _cached_outgoing_coefficients_at_inf.Qcoeffs
+        if workspace !== nothing && workspace[] !== nothing
+            expansion_coeffs = workspace[].expansion_coeffs
+            Pcoeffs = workspace[].Pcoeffs
+            Qcoeffs = workspace[].Qcoeffs
         else
             # Cannot re-use the cached results, re-compute from zero
             expansion_coeffs = [data_type(1.0)] # order 0
@@ -801,13 +797,11 @@ function outgoing_coefficient_at_inf(s::Int, m::Int, a, omega, lambda, order::In
             append!(expansion_coeffs, omega^(i)*((i*(i-1)*(expansion_coeffs[i]/omega^(i-1)) + sum)/(_P0*i)))
         end
 
-        # Update cache
-        _cached_outgoing_coefficients_at_inf_params = _this_params
-        _cached_outgoing_coefficients_at_inf = (
+        workspace === nothing || (workspace[] = (
             expansion_coeffs = expansion_coeffs,
             Pcoeffs = Pcoeffs,
             Qcoeffs = Qcoeffs
-        )
+        ))
 
         return expansion_coeffs[order+1]
     end
@@ -1193,29 +1187,20 @@ function QplusH(s::Int, m::Int, a, omega, lambda, x)
     end
 end
 
-# Cache mechanism for the outgoing coefficients at horizon
-# Initialize the cache with a set of fiducial parameters
-_cached_outgoing_coefficients_at_hor_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, _DEFAULTDATATYPE, _DEFAULTDATATYPE, _DEFAULTDATATYPE}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_outgoing_coefficients_at_hor::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}}} = (
-    expansion_coeffs = [_DEFAULTDATATYPE(1.0)], 
-    Pcoeffs = [_DEFAULTDATATYPE(0.0)],
-    Qcoeffs = [_DEFAULTDATATYPE(0.0)]
-)
 
-function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE)
-    global _cached_outgoing_coefficients_at_hor_params
-    global _cached_outgoing_coefficients_at_hor
+# workspace: a Ref holding (expansion_coeffs, Pcoeffs, Qcoeffs) from a previous call with the
+# same (s, m, a, omega, lambda); when given, the recurrence is extended from the stored order
+# and the Ref is updated (see coefficient_sequence).
+function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE, workspace=nothing)
 
     if order < 0
         throw(DomainError(order, "Only positive expansion order is supported"))
     end
 
-    _this_params = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    # Check if we can use the cached results
-    if _cached_outgoing_coefficients_at_hor_params == _this_params
-        expansion_coeffs = _cached_outgoing_coefficients_at_hor.expansion_coeffs
-        Pcoeffs = _cached_outgoing_coefficients_at_hor.Pcoeffs
-        Qcoeffs = _cached_outgoing_coefficients_at_hor.Qcoeffs
+    if workspace !== nothing && workspace[] !== nothing
+        expansion_coeffs = workspace[].expansion_coeffs
+        Pcoeffs = workspace[].Pcoeffs
+        Qcoeffs = workspace[].Qcoeffs
     else
         # Cannot re-use the cached results, re-compute from zero
         expansion_coeffs = [data_type(1.0)] # order 0
@@ -1249,13 +1234,11 @@ function outgoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::In
         end
     end
 
-    # Update cache
-    _cached_outgoing_coefficients_at_hor_params = _this_params
-    _cached_outgoing_coefficients_at_hor = (
+    workspace === nothing || (workspace[] = (
         expansion_coeffs = expansion_coeffs,
         Pcoeffs = Pcoeffs,
         Qcoeffs = Qcoeffs
-    )
+    ))
     return expansion_coeffs[order+1]
 end
 
@@ -1639,29 +1622,20 @@ function QminusH(s::Int, m::Int, a, omega, lambda, x)
     end
 end
 
-# Cache mechanism for the ingoing coefficients at horizon
-# Initialize the cache with a set of fiducial parameters
-_cached_ingoing_coefficients_at_hor_params::NamedTuple{(:s, :m, :a, :omega, :lambda), Tuple{Int, Int, _DEFAULTDATATYPE, _DEFAULTDATATYPE, _DEFAULTDATATYPE}} = (s=-2, m=2, a=0, omega=0.5, lambda=1)
-_cached_ingoing_coefficients_at_hor::NamedTuple{(:expansion_coeffs, :Pcoeffs, :Qcoeffs), Tuple{Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}, Vector{_DEFAULTDATATYPE}}} = (
-    expansion_coeffs = [_DEFAULTDATATYPE(1.0)], 
-    Pcoeffs = [_DEFAULTDATATYPE(0.0)],
-    Qcoeffs = [_DEFAULTDATATYPE(0.0)]
-)
 
-function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE)
-    global _cached_ingoing_coefficients_at_hor_params
-    global _cached_ingoing_coefficients_at_hor
+# workspace: a Ref holding (expansion_coeffs, Pcoeffs, Qcoeffs) from a previous call with the
+# same (s, m, a, omega, lambda); when given, the recurrence is extended from the stored order
+# and the Ref is updated (see coefficient_sequence).
+function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int; data_type=_DEFAULTDATATYPE, workspace=nothing)
 
     if order < 0
         throw(DomainError(order, "Only positive expansion order is supported"))
     end
 
-    _this_params = (s=s, m=m, a=a, omega=omega, lambda=lambda)
-    # Check if we can use the cached results
-    if _cached_ingoing_coefficients_at_hor_params == _this_params
-        expansion_coeffs = _cached_ingoing_coefficients_at_hor.expansion_coeffs
-        Pcoeffs = _cached_ingoing_coefficients_at_hor.Pcoeffs
-        Qcoeffs = _cached_ingoing_coefficients_at_hor.Qcoeffs
+    if workspace !== nothing && workspace[] !== nothing
+        expansion_coeffs = workspace[].expansion_coeffs
+        Pcoeffs = workspace[].Pcoeffs
+        Qcoeffs = workspace[].Qcoeffs
     else
         # Cannot re-use the cached results, re-compute from zero
         expansion_coeffs = [data_type(1.0)] # order 0
@@ -1695,13 +1669,11 @@ function ingoing_coefficient_at_hor(s::Int, m::Int, a, omega, lambda, order::Int
         end
     end
 
-    # Update cache
-    _cached_ingoing_coefficients_at_hor_params = _this_params
-    _cached_ingoing_coefficients_at_hor = (
+    workspace === nothing || (workspace[] = (
         expansion_coeffs = expansion_coeffs,
         Pcoeffs = Pcoeffs,
         Qcoeffs = Qcoeffs
-    )
+    ))
     return expansion_coeffs[order+1]
 end
 

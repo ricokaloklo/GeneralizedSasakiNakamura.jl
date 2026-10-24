@@ -1,0 +1,36 @@
+旁轴全量尝试及QNM已完成；精确轴仍在运行，本包不是最终包。
+{
+  "snapshot_utc": "2026-10-17T13:47:23.897824+00:00",
+  "machine": "CUBERYYC",
+  "versions": {
+    "Mathematica": "14.1.0",
+    "Teukolsky": "1.1.1",
+    "SWSH": "1.0.1",
+    "QNM": "0.4.1"
+  },
+  "near_status": {
+    "NUMERIC_COMPLETE": 856,
+    "KERNEL_TERMINATED": 104
+  },
+  "exact_status": {
+    "NUMERIC_COMPLETE": 6,
+    "INTERNAL_TIMEOUT": 6,
+    "PENDING_OR_RUNNING": 84
+  },
+  "current_controller_pid": "26892",
+  "resource_monitor_pid": 32572,
+  "current_resources": {
+    "utc": "2026-10-17T13:47:22.8781536Z",
+    "kernels": "6",
+    "rss_bytes": "1478037504"
+  },
+  "sampled_peak_processes": 10,
+  "sampled_peak_kernel_rss_bytes": 5510029312,
+  "total_job_status": "PENDING_EXACT_AXIS; not final",
+  "instructions": "FINISHING_STEPS.txt",
+  "hourly_automation": "not created; parent explicitly directed no automation and no further permission request"
+}
+正式精度表按完整InputForm小数字串剥离标签作Decimal650复数比较；首批标签读回表仅供审计。
+omega10最弱a2/5,l=m=2,Up.R(rprime)/Transmission，200/400对照13.027093734322477位，四舍五入13.03；不证明400位值自身最多13位。
+QNM冷种子MST120/独立CF100均通过60位频率检查，最低80.13548位；导数双步长最低38.39422位。
+末尾精确轴失败/超时不能改为通过；后续步骤见FINISHING_STEPS.txt。

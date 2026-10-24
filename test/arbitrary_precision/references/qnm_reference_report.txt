@@ -1,0 +1,37 @@
+GSN Arbitrary Precision：独立 QNM 参考数据
+
+正式参考为 qnm_reference.txt；qnm_validation.json 给出逐模式检查结果。
+参数为 s=-2,l=m=2,M=1,a=2/5及9/10，Cook/Python qnm 标号 n=0..9。
+另给两个明确标记的8_1伙伴，共22个根。8_1不是本约定中的普通n=9。
+
+数值方法与认证：
+1. 官方QuasiNormalModes旧名称已由官方停用；安装官方后继QNM0.4.1。
+   官方Leaver80只做了a=2/5,n=0校准：出现FindRoot::lstol，结果仅与独立根一致约10位。
+   此校准未通过，其他模式没有宣称运行或通过该Leaver80方法。
+2. 替代方法为官方QNM0.4.1的IncidenceAmplitude/MST零点，工作精度120。
+   最终认证全部从原双精度种子独立求根，没有用高精度CF根作起点。
+3. 独立实现Cook/Leaver径向连分式，FindRoot工作精度100，内部220位保护，
+   固定精度Lentz迭代与1e-90收敛阈值。径向实现独立于BHPT MST；两者共用SWSH角本征值。
+4. 22个根的独立冷种子MST/CF实际一致位数均超过60，最低80.13548位，发生于a=2/5,n=9。
+   最终一致位数按完整InputForm小数字串剥离精度标签后用Decimal650复数运算计算。
+   CF残差单列作残差，绝不当作独立精度；旧热启动MST一致值也不作认证。
+
+导数：使用In.Incidence/Transmission，含角本征值对频率的依赖。
+工作精度120，四阶中心差分，h=1e-15|omega|与1e-12|omega|。
+逐模式保留两种导数和两者一致位数；最低约38.39422位，发生于a=9/10,n=4。
+导数在原CF起点MST精化根处计算；该根与最终冷种子根的误差远小于导数已认证位数。
+同时保留冷种子根处的A_inc和|A_inc|/|dA_inc|。
+任何0``accuracy形式的幅度或残差只是有限工作精度下的零，不是严格数学零。
+
+标号核验：
+n=0..7及9均与Python qnm0.4.4从Schwarzschild连续跟踪的双精度种子匹配。
+n=8的Python标准Schwarzschild构建失败，异常原文保留于python_qnm_seeds.jsonl。
+8_0和8_1改从已公布的a=0.5锚点双精度连续跟踪到0.4与0.9，均匹配本次高精度根。
+这些锚点见Forteza-Mourier arXiv:2107.11829及本机既有GSN qnm_references.jl的标签说明。
+另向a=0延拓作标签诊断：8_0在a约0.018、8_1在a约0.022时连分式达到99999项，
+误差未达到1e-12阈值。该步及后续原始轨迹不接受，不据此确证Schwarzschild极限。
+qnm_schwarzschild_limit_diagnostic.jsonl为按收敛条件截断的诊断；*_raw.jsonl只保留失败证据。
+这不影响0.4和0.9处的独立高精度频率认证。
+
+原始日志放在raw目录；其中qnm_smoke*和热启动结果均不是正式参考数据。
+本包不修改GSN仓库或测试，没有提交或推送。

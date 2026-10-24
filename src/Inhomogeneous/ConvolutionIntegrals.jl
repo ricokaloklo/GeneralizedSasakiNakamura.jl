@@ -22,13 +22,116 @@ function horizon_factor(ω, a, m)
     return ω / (κ * (2 * rp)^3 * (κ^2 + 4 * ϵ0^2) * 64pi)
 end
 
-const _INHOMOGENEOUS_RESONANCE_TOL = 1e-12
-
 @inline _omega_horizon(a, m) = m * a / (2 * (1 + sqrt(1 - a^2)))
-@inline _skip_infinity_mode(ω; tol = _INHOMOGENEOUS_RESONANCE_TOL) = abs(ω) < tol
-@inline _skip_horizon_mode(a, m, ω; tol = _INHOMOGENEOUS_RESONANCE_TOL) = abs(ω - _omega_horizon(a, m)) < tol
-@inline _skip_radiative_mode(s, a, m, ω; tol = _INHOMOGENEOUS_RESONANCE_TOL) =
-    (s == -2 && _skip_infinity_mode(ω; tol = tol)) || (s == 2 && _skip_horizon_mode(a, m, ω; tol = tol))
+@inline _skip_infinity_mode(ω) = iszero(ω)
+@inline _skip_horizon_mode(a, m, ω) = iszero(ω - _omega_horizon(a, m))
+@inline _skip_radiative_mode(s, a, m, ω) =
+    (s == -2 && _skip_infinity_mode(ω)) || (s == 2 && _skip_horizon_mode(a, m, ω))
+
+# A high-l mode whose flux is negligible on analytic grounds, so it is not computed. With |omega| r_max < l / 2
+# the whole orbit lies inside the mode's centrifugal barrier (near zone): the amplitude at infinity carries
+# (omega r)^(l+1) / (2l+1)!! and the horizon one the tidal factor (r_+ / r)^(l+1), so the energy flux is bounded by
+# [(|omega| r_max)^(l+1) / (2l+1)!!]^2 (s = -2) or (r_+ / r_min)^(2(l-1)) (s = 2) times O(1). Below 1e-40 the mode is
+# skipped (recorded as zero, counted with the near-static zeros); the bound is taken relative to that of the l = 2 mode at
+# omega = 2 Omega_phi, so that a weak-field orbit, whose fluxes are all small, keeps its leading modes. For retrograde orbits omega crosses zero at m ~ 0.66 n
+# on the positive-m side, which the walk must pass at every n; at (a, p, e) = (0.999, 12.0, 0.633) the
+# (l, m, n) = (29, 27, 41) horizon mode (|omega| r_max = 3.2) alone took 30 s. Spherical and generic orbits use it too
+# (r_max = p / (1 - e), r_min = p / (1 + e)): at (a, p, x) = (0.998, 8.4e6, 0.77) the near-static (l, m, k) = (12, -5, 5)
+# horizon mode (omega ~ 1e-10 Omega_phi) came out as L = -95 (the true horizon L flux is -1e-41) without any error.
+const NEGLIGIBLE_LOW_FREQUENCY_BOUND = 1e-40
+# A mode that still fails after the coverage retry is zeroed without a warning (counted with the near-static zeros, not
+# as failed) when this bound puts it below 1e-20 of the leading mode: at (a, p, x) = (0.998, 3.7e4, 0.004) the
+# (l, m, k) = (9, -9, 4) and (8, -8, 5) infinity modes (|omega| r ~ 0.03, bound ~ 1e-35) lost the ISEM recurrence.
+const NEGLIGIBLE_FAILED_MODE_BOUND = 1e-20
+function _negligible_low_frequency_mode(s::Int, l::Int, ω::Real, Ωφ::Real, a::Real, p::Real, e::Real; bound::Real = NEGLIGIBLE_LOW_FREQUENCY_BOUND)
+    rmax = p / (1 - e)
+    x = abs(ω) * rmax
+    x < l / 2 || return false
+    log_bound = if s == -2
+        _log10_near_zone_bound(l, x) - _log10_near_zone_bound(2, min(2 * abs(Ωφ) * rmax, 1.0))
+    else
+        2 * (l - 2) * log10((1 + sqrt(1 - a^2)) / (p / (1 + e)))
+    end
+    return log_bound < log10(bound)
+end
+# log10 [x^(l+1) / (2l+1)!!]^2
+function _log10_near_zone_bound(l::Int, x::Real)
+    log_double_factorial = (_lgamma_int(2l + 2) - l * log(2) - _lgamma_int(l + 1)) / log(10)
+    return 2 * ((l + 1) * log10(max(x, floatmin(Float64))) - log_double_factorial)
+end
+_lgamma_int(n::Int) = sum(log, 1:(n - 1); init = 0.0)   # log Gamma(n) = log (n-1)!
+
+# Near-static modes (|omega| <= NEAR_STATIC_RATIO |Omega_phi|) whose radial matching overflows Float64: at
+# omega ~ 1e-16 the incidence amplitude grows like |omega|^-(l+1), and the flux of such a mode is far below any
+# cutoff (the l = 2 nodal mode of (a, p, x) = (0.948, 195382, 0.478) carries 3e-75). Only the ISEM nonfinite
+# solver error ("ISEM ...", "nonfinite ISEM ..." or "MST ...": at p ~ 1e7 the near-static modes of a ~ 1 also lose
+# the MST handoff, the recurrence or the MST residual check), or a non-finite flux (omega ~ 1e-24 at p ~ 2.6e7 gives NaN without an error), on a
+# near-static mode counts; every other error still propagates.
+const NEAR_STATIC_RATIO = 1e-6
+function _near_static_overflow(err, ω, Ωφ)
+    abs(ω) <= NEAR_STATIC_RATIO * abs(Ωφ) || return false
+    (err isa ErrorException || err isa ISEM.ManoSuzukiTakasugiInfinity.ManoSuzukiTakasugiCertificateError) || return false
+    msg = err isa ErrorException ? err.msg : err.message
+    return startswith(msg, "nonfinite ISEM") || startswith(msg, "ISEM ") || startswith(msg, "MST ") ||
+        startswith(msg, "Non-finite flux for mode")
+end
+
+# A non-finite mode flux would turn every later cutoff into NaN, so that no walk can stop; fail on the mode instead.
+function _check_finite_mode_flux(res, s, l, m, n, k)
+    all(isfinite, (res["EnergyFlux"], res["AngularMomentumFlux"], res["CarterConstantFlux"])) && return res
+    error("Non-finite flux for mode (s, l, m, n, k) = ($s, $l, $m, $n, $k), omega = $(res["omega"]): " *
+        "E = $(res["EnergyFlux"]), L = $(res["AngularMomentumFlux"]), Q = $(res["CarterConstantFlux"])")
+end
+
+# A radial basis that does not cover the source radius (ISEM's small-frequency UP route can leave a gap between its
+# marched patches and the MST out-sum, e.g. x = 0.92..0.94 at a ~ 0.95) used to end a multi-hour run. Such a mode is
+# retried with the small-frequency expansion off; if that fails too it is recorded as a failed mode (zero flux,
+# FailedMode = true, counted in reached) with a warning. The coverage error is recognized by its message: ISEM keeps
+# it an ErrorException because its complex-frequency paths catch that type. Interrupts always propagate.
+const _FORCE_ORDINARY_KEY = :GSN_FORCE_ORDINARY_Y
+_is_basis_coverage_error(err) = (err isa ErrorException &&
+    (occursin("basis does not cover", err.msg) || occursin("basis has no patch for", err.msg))) ||
+    # The MST certificate can reject a sum just above its residual tolerance (1.0e-13 to 1.3e-13 for modes at
+    # p ~ 1e7, a ~ 0.998); the retry takes the ordinary route.
+    err isa ISEM.ManoSuzukiTakasugiInfinity.ManoSuzukiTakasugiCertificateError ||
+    (err isa ErrorException && startswith(err.msg, "ISEM radial self-check failed"))
+
+# A low-frequency, high-l mode whose matching overflows: the flux scales like (omega r)^(2l), and with
+# (|omega| r_max)^(2(l - 1)) < 1e-100 it is far below any cutoff ((l, m, n) = (68, -67, 84) at
+# (a, p, e) = (0.036, 16.7, 0.9) with omega = 8.1e-5 and r_max = 167, reached at tol = 1e-10, gives 1e-250).
+_negligible_overflow(err, ω, l, rmax) = rmax !== nothing && ω !== nothing && err isa ErrorException &&
+    startswith(err.msg, "nonfinite ISEM GSN matching") && 2 * (l - 1) * log10(abs(ω) * rmax) < -100
+
+function _with_coverage_retry(f, s, l, m, n, k; omega = nothing, Ωφ = nothing, rmax = nothing, negligible_if_failed::Bool = false)
+    try
+        return f()
+    catch err
+        err isa InterruptException && rethrow()
+        if (omega !== nothing && _near_static_overflow(err, omega, Ωφ)) || _negligible_overflow(err, omega, l, rmax)
+            res = _zero_radiative_mode(omega, nothing; reason = "near_static_overflow")
+            res["NearStaticOverflow"] = true
+            return res
+        end
+        if !_is_basis_coverage_error(err)
+            @error "Mode (s, l, m, n, k) = ($s, $l, $m, $n, $k), omega = $(omega) failed" exception = sprint(showerror, err)
+            rethrow()
+        end
+    end
+    try
+        return task_local_storage(f, _FORCE_ORDINARY_KEY, true)
+    catch err
+        err isa InterruptException && rethrow()
+        if negligible_if_failed
+            res = _zero_radiative_mode(omega === nothing ? 0.0 : omega, nothing; reason = "negligible_failed_mode")
+            res["NearStaticOverflow"] = true
+            return res
+        end
+        @warn "Mode (s, l, m, n, k) = ($s, $l, $m, $n, $k) failed after a retry without the small-frequency expansion; recorded as a failed mode with zero flux." exception = sprint(showerror, err)
+        res = _zero_radiative_mode(0.0, nothing; reason = "failed_mode")
+        res["FailedMode"] = true
+        return res
+    end
+end
 
 function _zero_radiative_mode(ω, trajectory; reason = "")
     return Dict(
@@ -45,28 +148,14 @@ function _zero_radiative_mode(ω, trajectory; reason = "")
     )
 end
 
-const _generic_trapezoidal_cache = Dict{Tuple, Any}()
-const _eccentric_trapezoidal_cache = Dict{Tuple, Any}()
-const _inclined_trapezoidal_cache = Dict{Tuple, Any}()
-const _generic_trapezoidal_last_key = Ref{Any}(nothing)
-const _generic_trapezoidal_last_result = Ref{Any}(nothing)
-const _generic_levin_last_key = Ref{Any}(nothing)
-const _generic_levin_last_result = Ref{Any}(nothing)
-const _eccentric_levin_last_key = Ref{Any}(nothing)
-const _eccentric_levin_last_result = Ref{Any}(nothing)
-const _inclined_levin_last_key = Ref{Any}(nothing)
-const _inclined_levin_last_result = Ref{Any}(nothing)
-const _Y_RADIAL_INFO = Ref(false)
 
+# Run f() with the task-local flag :GSN_Y_RADIAL_INFO set to `info`. No radial solver reads this flag, so the
+# `info` keyword of Teukolsky_pointparticle_flux has no effect.
 function with_y_radial_info(f, info::Bool)
-    old_info = _Y_RADIAL_INFO[]
-    _Y_RADIAL_INFO[] = info
-    try
-        return f()
-    finally
-        _Y_RADIAL_INFO[] = old_info
-    end
+    return task_local_storage(f, :GSN_Y_RADIAL_INFO, info)
 end
+
+include("SubmissionGeometry.jl")
 
 mutable struct EccentricFluxCache
     samples::Dict{Int, Dict}
@@ -75,19 +164,63 @@ mutable struct EccentricFluxCache
     phase_vectors::Dict{Tuple{Int, Int, Int, UInt64}, Any}
     levin_phase_factors::Dict{Tuple{Int, Int, Int, Int, UInt64}, Any}
     levin_factored_phase_factors::Dict{Tuple{Int, Int, Int, Int, UInt64}, Any}
+    geometry_owner::Union{Nothing, EccentricGeometryOwner}
 end
 
 mutable struct InclinedFluxCache
     samples::Dict{Int, Dict}
+    geometry_owner::Union{Nothing, InclinedGeometryOwner}
 end
+
+# The positional constructors build a cache without a geometry owner. The owner-based constructors build a
+# submission-aware cache that owns only its private dictionaries and borrows read-only owner data.
+EccentricFluxCache(samples, levin_samples, adaptive_segments, phase_vectors, phase_factors, factored_factors) =
+    EccentricFluxCache(samples, levin_samples, adaptive_segments, phase_vectors, phase_factors, factored_factors, nothing)
+InclinedFluxCache(samples::Dict{Int, Dict}) = InclinedFluxCache(samples, nothing)
+function EccentricFluxCache(owner::EccentricGeometryOwner)
+    check_submission_geometry(owner, owner.master)
+    cache = EccentricFluxCache()
+    cache.geometry_owner = owner
+    return cache
+end
+function InclinedFluxCache(owner::InclinedGeometryOwner)
+    check_submission_geometry(owner, owner.master)
+    cache = InclinedFluxCache()
+    cache.geometry_owner = owner
+    return cache
+end
+
+function _check_mode_geometry(cache, master::Dict)
+    cache === nothing && return nothing
+    hasproperty(cache, :geometry_owner) || return nothing
+    owner = cache.geometry_owner
+    owner === nothing || check_submission_geometry(owner, master)
+    return nothing
+end
+
+function _clear_private_mode_cache!(cache)
+    for field in fieldnames(typeof(cache))
+        value = getfield(cache, field)
+        value isa AbstractDict && empty!(value)
+    end
+    cache.geometry_owner = nothing
+    return nothing
+end
+clear_eccentric_mode_cache!(cache::EccentricFluxCache) = _clear_private_mode_cache!(cache)
+clear_inclined_mode_cache!(cache::InclinedFluxCache) = _clear_private_mode_cache!(cache)
 
 EccentricFluxCache() = EccentricFluxCache(Dict{Int, Dict}(), Dict{Int, Dict}(), Dict{Tuple{Int, Int, Int}, Any}(), Dict{Tuple{Int, Int, Int, UInt64}, Any}(), Dict{Tuple{Int, Int, Int, Int, UInt64}, Any}(), Dict{Tuple{Int, Int, Int, Int, UInt64}, Any}())
 EccentricFluxCache(samples::Dict{Int, Dict}) = EccentricFluxCache(samples, Dict{Int, Dict}(), Dict{Tuple{Int, Int, Int}, Any}(), Dict{Tuple{Int, Int, Int, UInt64}, Any}(), Dict{Tuple{Int, Int, Int, Int, UInt64}, Any}(), Dict{Tuple{Int, Int, Int, Int, UInt64}, Any}())
 InclinedFluxCache() = InclinedFluxCache(Dict{Int, Dict}())
 
 function _cached_eccentric_sample!(cache::EccentricFluxCache, KG_master::Dict, N::Int)
+    _check_mode_geometry(cache, KG_master)
     return get!(cache.samples, N) do
-        subsample_eccentric_sample(KG_master, N)
+        owner = cache.geometry_owner
+        owner === nothing && return subsample_eccentric_sample(KG_master, N)
+        _submission_geometry_lookup!(owner, :samples, N, KG_master) do
+            subsample_eccentric_sample(KG_master, N)
+        end
     end
 end
 
@@ -109,13 +242,18 @@ function _kg_from_presampled_master(KG_sample::Dict)
         "InitialPhases" => KG_sample["InitialPhases"],
     )
     haskey(KG_sample, "e") && (kg["e"] = KG_sample["e"])
-    haskey(KG_sample, "x") && (kg["x"] = KG_sample["x"])
+    haskey(KG_sample, "x") && (kg["Cosθ_inc"] = KG_sample["x"])
     return kg
 end
 
 function _cached_eccentric_cheby_sample!(cache::EccentricFluxCache, KG_master::Dict, N::Int)
+    _check_mode_geometry(cache, KG_master)
     return get!(cache.levin_samples, N) do
-        kerr_geo_eccentric_sample_cheby(_kg_from_presampled_master(KG_master), N)
+        owner = cache.geometry_owner
+        owner === nothing && return kerr_geo_eccentric_sample_cheby(_kg_from_presampled_master(KG_master), N)
+        _submission_geometry_lookup!(owner, :cheby_samples, N, KG_master) do
+            kerr_geo_eccentric_sample_cheby(_kg_from_presampled_master(KG_master), N)
+        end
     end
 end
 
@@ -140,80 +278,71 @@ function prewarm_eccentric_levin_samples!(cache::EccentricFluxCache, KG_master::
 end
 
 function _cached_inclined_sample!(cache::InclinedFluxCache, KG_master::Dict, K::Int)
+    _check_mode_geometry(cache, KG_master)
     return get!(cache.samples, K) do
-        subsample_inclined_sample(KG_master, K)
+        owner = cache.geometry_owner
+        owner === nothing && return subsample_inclined_sample(KG_master, K)
+        _submission_geometry_lookup!(owner, :samples, K, KG_master) do
+            subsample_inclined_sample(KG_master, K)
+        end
     end
 end
 
 function _generic_trapezoidal_context(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
-    key = (a, p, e, x, s, l, m, n, k, N_sample, K_sample)
-    return get!(_generic_trapezoidal_cache, key) do
-        KG = kerr_geo_orbit(a, p, e, x)
-        Frequencies = KG["Frequencies"]
-        Γ = Frequencies["ϒt"]
-        ϒr = Frequencies["ϒr"]
-        ϒθ = Frequencies["ϒθ"]
-        ϒφ = Frequencies["ϒϕ"]
-        omega = (m * ϒφ + n * ϒr + k * ϒθ) / Γ
-        KG_samp = kerr_geo_generic_sample(KG, N_sample, K_sample)
-        SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
-        Ysol = _isem_y_solution(s, l, m, a, omega)
-        Ysamp = s == 2 ? y_sample_p2_isem(Ysol, KG_samp) : y_sample_m2_isem(Ysol, KG_samp)
-        SHsamp = swsh_sample(SH, KG_samp)
-        carter_samp = carter_ingredients_sample(KG_samp, a, m, omega)
-        carter_factor = trapezoidal_1d_integral(carter_samp)
-        return (KG = KG, KG_samp = KG_samp, omega = omega, Γ = Γ, ϒθ = ϒθ,
-                Ysol = Ysol, Ysamp = Ysamp, SH = SH, SHsamp = SHsamp,
-                carter_factor = carter_factor)
-    end
-end
-
-function _eccentric_trapezoidal_context(a, p, e, s, l, m, n, N_sample)
-    key = (a, p, e, s, l, m, n, N_sample)
-    return get!(_eccentric_trapezoidal_cache, key) do
-        KG = kerr_geo_orbit(a, p, e, 1.0)
-        Frequencies = KG["Frequencies"]
-        Γ = Frequencies["ϒt"]
-        ϒθ = Frequencies["ϒθ"]
-        ϒφ = Frequencies["ϒϕ"]
-        ϒr = Frequencies["ϒr"]
-        omega = (m * ϒφ + n * ϒr) / Γ
-        KG_samp = kerr_geo_eccentric_sample(KG, N_sample)
-        SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
-        Ysol = _isem_y_solution(s, l, m, a, omega)
-        Ysamp = s == 2 ? y_sample_p2_isem(Ysol, KG_samp) : y_sample_m2_isem(Ysol, KG_samp)
-        SHsamp = swsh_sample(SH, KG_samp)
-        return (KG = KG, KG_samp = KG_samp, omega = omega, Γ = Γ, ϒθ = ϒθ, Ysol = Ysol, Ysamp = Ysamp, SH = SH, SHsamp = SHsamp)
-    end
+    KG = kerr_geo_orbit(a, p, e, x)
+    Frequencies = KG["Frequencies"]
+    Γ = Frequencies["ϒt"]
+    ϒr = Frequencies["ϒr"]
+    ϒθ = Frequencies["ϒθ"]
+    ϒφ = Frequencies["ϒϕ"]
+    omega = (m * ϒφ + n * ϒr + k * ϒθ) / Γ
+    KG_samp = kerr_geo_generic_sample(KG, N_sample, K_sample)
+    SH = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
+    Ysol = _isem_y_solution(s, l, m, a, omega; lambda = SH.lambda)
+    Ysamp = s == 2 ? y_sample_p2_isem(Ysol, KG_samp) : y_sample_m2_isem(Ysol, KG_samp)
+    SHsamp = swsh_sample(SH, KG_samp)
+    carter_samp = carter_ingredients_sample(KG_samp, a, m, omega)
+    carter_factor = trapezoidal_1d_integral(carter_samp)
+    return (KG = KG, KG_samp = KG_samp, omega = omega, Γ = Γ, ϒθ = ϒθ,
+            Ysol = Ysol, Ysamp = Ysamp, SH = SH, SHsamp = SHsamp,
+            carter_factor = carter_factor)
 end
 
 function _inclined_trapezoidal_context(KG_sample::Dict, s::Int, l::Int, m::Int, k::Int, K_interval::Int64, cache = nothing)
-    key = (KG_sample["a"], KG_sample["p"], KG_sample["x"], s, l, m, k, K_interval)
-    return get!(_inclined_trapezoidal_cache, key) do
-        Frequencies = KG_sample["Frequencies"]
-        Γ = Frequencies["ϒt"]
-        ϒθ = Frequencies["ϒθ"]
-        ϒφ = Frequencies["ϒϕ"]
-        a = KG_sample["a"]
-        ω = (m * ϒφ + k * ϒθ) / Γ
-        KG_samp = cache isa InclinedFluxCache ? _cached_inclined_sample!(cache, KG_sample, K_interval) : subsample_inclined_sample(KG_sample, K_interval)
-        Ysol = _isem_y_solution(s, l, m, a, ω)
-        SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
-        Y, Yp, X, _ = Ysol.Y_solution(KG_sample["p"])
-        Ydic = Dict(
-            "params" => (s = s, l = l, m = m, a = a, omega = ω, lambda = SH.lambda),
-            (s == 2 ? "Cinc" : "Binc") => GridSampling._isem_gsn_incidence_amplitude(Ysol),
-            "Y" => Y,
-            "Yp" => Yp,
-            "X" => X,
-        )
-        SHsamp = swsh_sample(SH, KG_samp)
-        return (KG_samp = KG_samp, Ysol = Ysol, Ydic = Ydic, SH = SH, SHsamp = SHsamp, omega = ω, a = a, m = m, Trajectory = KG_sample["Trajectory"])
-    end
+    Frequencies = KG_sample["Frequencies"]
+    Γ = Frequencies["ϒt"]
+    ϒθ = Frequencies["ϒθ"]
+    ϒφ = Frequencies["ϒϕ"]
+    a = KG_sample["a"]
+    ω = (m * ϒφ + k * ϒθ) / Γ
+    KG_samp = cache isa InclinedFluxCache ? _cached_inclined_sample!(cache, KG_sample, K_interval) : subsample_inclined_sample(KG_sample, K_interval)
+    SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
+    Ysol = _isem_y_solution(s, l, m, a, ω; lambda = SH.lambda, check_radii = _orbit_check_radii(KG_sample))
+    Y, Yp, X, _ = Ysol.Y_solution(KG_sample["p"])
+    Ydic = Dict(
+        "params" => (s = s, l = l, m = m, a = a, omega = ω, lambda = SH.lambda),
+        (s == 2 ? "Cinc" : "Binc") => GridSampling._isem_gsn_incidence_amplitude(Ysol),
+        "Y" => Y,
+        "Yp" => Yp,
+        "X" => X,
+    )
+    SHsamp = swsh_sample(SH, KG_samp)
+    return (KG_samp = KG_samp, Ysol = Ysol, Ydic = Ydic, SH = SH, SHsamp = SHsamp, omega = ω, a = a, m = m, Trajectory = KG_sample["Trajectory"])
+end
+
+# Carter factor of a spherical orbit, m <Lz cot^2θ> - a^2 ω E <cos^2θ> over the polar Mino cycle.
+# <Lz / sin^2θ> = ϒφ + a E - Φr is exact. A trapezoid of Lz cot^2θ is not: near the pole it is a spike of width ~x,
+# and the trapezoid overshoots by about coth(K x), so nearly polar orbits never converged in K.
+function _inclined_carter_factor(KG_samp::Dict, a, p, ϒφ, m, ω)
+    E = KG_samp["E"]
+    Lz = KG_samp["Lz"]
+    Φr = a * ((p^2 + a^2) * E - a * Lz) / (p^2 - 2p + a^2)
+    lz_cot2 = ϒφ + a * E - Φr - Lz
+    return m * lz_cot2 + trapezoidal_1d_integral(carter_ingredients_sample(KG_samp, a, 0, ω))
 end
 
 function _inclined_flux_from_sample(KG_samp::Dict, Ysol, Ydic::Dict, SH_samp::Dict, s::Int, a, ω, m, k::Int)
-    carter_factor = trapezoidal_1d_integral(carter_ingredients_sample(KG_samp, a, m, ω))
+    carter_factor = _inclined_carter_factor(KG_samp, a, KG_samp["p"], KG_samp["Frequencies"]["ϒϕ"], m, ω)
     if s == 2
         inte = integrand_inclined_sample_p2(KG_samp, Ydic, SH_samp, k)
         integral = trapezoidal_1d_integral(inte)
@@ -247,18 +376,12 @@ function _inclined_flux_from_sample(KG_samp::Dict, Ysol, Ydic::Dict, SH_samp::Di
 end
 
 function convolution_integral_generic_trapezoidal_isem(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
-    key = (a, p, e, x, s, l, m, n, k, N_sample, K_sample)
-    if _generic_trapezoidal_last_key[] === key
-        return _generic_trapezoidal_last_result[]
-    end
     KG = kerr_geo_orbit(a, p, e, x)
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
     omega = (m * Frequencies["ϒϕ"] + n * Frequencies["ϒr"] + k * Frequencies["ϒθ"]) / Γ
     if _skip_radiative_mode(s, a, m, omega)
         result = _zero_radiative_mode(omega, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
-        _generic_trapezoidal_last_key[] = key
-        _generic_trapezoidal_last_result[] = result
         return result
     end
     ctx = _generic_trapezoidal_context(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
@@ -293,16 +416,10 @@ function convolution_integral_generic_trapezoidal_isem(a, p, e, x, s, l, m, n, k
     else
         error("Spin weight s must be either 2 or -2.")
     end
-    _generic_trapezoidal_last_key[] = key
-    _generic_trapezoidal_last_result[] = result
     return result
 end
 
 function convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sample, K_sample)
-    key = (a, p, e, x, s, l, m, n, k, N_sample, K_sample)
-    if _generic_levin_last_key[] === key
-        return _generic_levin_last_result[]
-    end
     KG = kerr_geo_orbit(a, p, e, x)
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -312,8 +429,6 @@ function convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sa
     omega = (m * ϒφ + n * ϒr + k * ϒθ) / Γ
     if _skip_radiative_mode(s, a, m, omega)
         result = _zero_radiative_mode(omega, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
-        _generic_levin_last_key[] = key
-        _generic_levin_last_result[] = result
         return result
     end
     KG_samp = kerr_geo_generic_sample_cheby(KG, N_sample, K_sample)
@@ -324,7 +439,8 @@ function convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sa
     result = if s == 2
         SH_p2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
         SH_p2_samp = swsh_sample(SH_p2, KG_samp)
-        Yup_soln = _isem_y_solution(s, l, m, a, omega)
+        Yup_soln = _isem_y_solution(s, l, m, a, omega;
+            lambda = SH_p2.lambda)
         Yup_samp = y_sample_p2_isem(Yup_soln, KG_samp)
         rphase = _radial_phase_vector(KG_samp, omega, m, n)
         θphase = _polar_phase_vector(KG_samp, omega, m, k)
@@ -347,7 +463,8 @@ function convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sa
         )
     elseif s == -2
         SH_m2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
-        Yin_soln = _isem_y_solution(s, l, m, a, omega)
+        Yin_soln = _isem_y_solution(s, l, m, a, omega;
+            lambda = SH_m2.lambda)
         Yin_samp = y_sample_m2_isem(Yin_soln, KG_samp)
         SH_m2_samp = swsh_sample(SH_m2, KG_samp)
         rphase = _radial_phase_vector(KG_samp, omega, m, n)
@@ -371,30 +488,107 @@ function convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sa
     else
         error("Spin weight s must be either 2 or -2.")
     end
-    _generic_levin_last_key[] = key
-    _generic_levin_last_result[] = result
     return result
 end
 
-@inline function _isem_y_solution(s, l, m, a, omega)
-    if s == -2
-        return Y_radial(s, l, m, a, omega, IN; info = _Y_RADIAL_INFO[])
-    elseif s == 2
-        return Y_radial(s, l, m, a, omega, UP; info = _Y_RADIAL_INFO[])
-    else
-        error("ISEM Y interfaces currently support only s = -2 and s = 2.")
-    end
+const _INHOMOGENEOUS_ORDINARY_MIN_OMEGA = 0.05
+const _INHOMOGENEOUS_ORDINARY_MAX_L = 4
+
+# Small-frequency-expansion control for the ISEM Y solve: off for real, low-l (l <= 4) modes with
+# |omega| >= 0.05 and |a| <= 0.95, otherwise left to ISEM (:auto).
+@inline function _inhomogeneous_small_frequency_expansion_control(l, a, omega)
+    get(task_local_storage(), _FORCE_ORDINARY_KEY, false) && return false
+    regular_low_mode = isreal(omega) &&
+        abs(omega) >= _INHOMOGENEOUS_ORDINARY_MIN_OMEGA &&
+        l <= _INHOMOGENEOUS_ORDINARY_MAX_L && abs(a) <= 0.95
+    return regular_low_mode ? false : :auto
 end
 
-@inline function _generic_isem_y_solution(s, l, m, a, omega)
-    return _isem_y_solution(s, l, m, a, omega)
+# Wronskian self-check of the ISEM radial solutions that took the small-frequency route (real
+# 0 < |omega| <= ISEM_WRONSKIAN_CHECK_MAX_OMEGA, l >= ISEM_WRONSKIAN_CHECK_MIN_L): Delta^(s+1) (R_in R_up' - R_in' R_up)
+# must not depend on r. That route returned wrong UP solutions without an error at high l and near-extremal spin
+# (|W(r) / W(3) - 1| = 5e86 at (a, l, omega) = (0.997, 28, 0.072), 3e43 at (0.99, 40, 0.05); correct solutions give
+# 1e-12..3e-9). A spread above ISEM_WRONSKIAN_CHECK_TOL over radii spanning the orbit raises "ISEM radial self-check
+# failed", which _with_coverage_retry treats like a coverage error (retry on the ordinary route, then a failed mode).
+# Wrong solutions were only seen from l = 18 on; checking every mode of that route from l = 12 on cost 30 % of the
+# time of the FEWv2 validation set without finding one.
+const ISEM_WRONSKIAN_CHECK_MIN_L = 16
+const ISEM_WRONSKIAN_CHECK_MAX_OMEGA = 0.15
+const ISEM_WRONSKIAN_CHECK_TOL = 1e-6
+
+# Radii spanning the orbit of a sample (min, geometric mean and max of r; 0.8 p, p, 1.25 p for a fixed radius).
+function _orbit_check_radii(KG)
+    if haskey(KG, "r")
+        rs = Float64.(KG["r"])
+        rmin, rmax = minimum(rs), maximum(rs)
+        rmax > 1.01 * rmin && return (rmin, sqrt(rmin * rmax), rmax)
+        return (0.8 * rmin, rmin, 1.25 * rmax)
+    end
+    haskey(KG, "p") || return nothing
+    p = Float64(KG["p"])
+    return (0.8 * p, p, 1.25 * p)
+end
+
+# `route` (optional) is the Y route already built for this mode (IN for s = -2, UP for s = +2); its Teukolsky
+# solution stands in for that branch, so only the other branch is solved here.
+function _isem_wronskian_check(s, l, m, a, omega, radii; route = nothing)
+    radii === nothing && return nothing
+    (isreal(omega) && 0 < abs(omega) <= ISEM_WRONSKIAN_CHECK_MAX_OMEGA && l >= ISEM_WRONSKIAN_CHECK_MIN_L) || return nothing
+    control = _inhomogeneous_small_frequency_expansion_control(l, a, omega)
+    sfe = control === :auto ? nothing : control
+    root = parentmodule(@__MODULE__)
+    teukolsky_radial = getfield(root, :Teukolsky_radial)
+    solve(bc) = teukolsky_radial(s, l, m, a, real(omega), bc; method = "ISEM", sfe = sfe)
+    own = route === nothing ? nothing : ISEM.teukolsky_radial_function(route)
+    Rin = own !== nothing && s == -2 ? own : solve(getfield(root, :IN))
+    Rup = own !== nothing && s == 2 ? own : solve(getfield(root, :UP))
+    ws = ComplexF64[]
+    for r in radii
+        w = try
+            pin = Rin.Teukolsky_solution.pair_value(r)
+            pup = Rup.Teukolsky_solution.pair_value(r)
+            (r^2 - 2r + a^2)^(s + 1) * (pin[1] * pup[2] - pin[2] * pup[1])
+        catch err
+            err isa InterruptException && rethrow()
+            continue
+        end
+        push!(ws, ComplexF64(w))
+    end
+    length(ws) >= 2 || return nothing
+    spread = maximum(abs(w / ws[1] - 1) for w in ws)
+    (isfinite(spread) && spread <= ISEM_WRONSKIAN_CHECK_TOL) ||
+        error("ISEM radial self-check failed: the Wronskian varies by $(spread) over r = $(radii) for (s, l, m, omega) = ($s, $l, $m, $omega)")
+    return spread
+end
+
+# ISEM Y radial function for the source integrals: IN branch for s = -2, UP branch for s = +2. With check_radii
+# (radii spanning the orbit) the Wronskian self-check runs first.
+@inline function _isem_y_solution(s, l, m, a, omega; lambda = nothing, check_radii = nothing)
+    branch = s == -2 ? :IN : s == 2 ? :UP :
+        error("ISEM Y interfaces currently support only s = -2 and s = 2.")
+    route = ISEM.radial_route(s, l, m, a, omega, branch;
+        lambda = lambda,
+        small_frequency_expansion = _inhomogeneous_small_frequency_expansion_control(l, a, omega),
+        large_frequency_expansion = :auto)
+    hasproperty(route, :controls) && route.controls.small_frequency_expansion &&
+        _isem_wronskian_check(s, l, m, a, omega, check_radii; route = route)
+    return ISEM.y_radial_function(route)
+end
+
+@inline function _generic_isem_y_solution(s, l, m, a, omega;
+        lambda = nothing, check_radii = nothing)
+    return _isem_y_solution(s, l, m, a, omega; lambda = lambda, check_radii = check_radii)
 end
 
 function _generic_flux_from_sample(KG_samp::Dict, Y_samp::Dict, SH_samp::Dict, s::Int, l::Int, m::Int, n::Int, k::Int, a::Float64, ω::Float64, ϒθ::Float64)
-    carter_factor = trapezoidal_1d_integral(carter_ingredients_sample(KG_samp, a, m, ω))
+    carter_factor = if length(KG_samp["θ"]) - 1 < GENERIC_CARTER_MIN_INTERVALS
+        _generic_carter_factor_min_grid(KG_samp, m, ω)
+    else
+        trapezoidal_1d_integral(carter_ingredients_sample(KG_samp, a, m, ω))
+    end
     if s == 2
-        inte = GridSampling._generic_integrand_sample_p2_fast(KG_samp, Y_samp, SH_samp, n, k)
-        integral = trapezoidal_2d_integral(inte)
+        integral = GridSampling._generic_integral_sample_p2_fast(
+            KG_samp, Y_samp, SH_samp, n, k)
         hf = horizon_factor(ω, a, m)
         return Dict(
             "Amplitude" => integral,
@@ -407,8 +601,8 @@ function _generic_flux_from_sample(KG_samp::Dict, Y_samp::Dict, SH_samp::Dict, s
             "SWSH" => SH_samp,
         )
     elseif s == -2
-        inte = GridSampling._generic_integrand_sample_m2_fast(KG_samp, Y_samp, SH_samp, n, k)
-        integral = trapezoidal_2d_integral(inte)
+        integral = GridSampling._generic_integral_sample_m2_fast(
+            KG_samp, Y_samp, SH_samp, n, k)
         return Dict(
             "Amplitude" => integral,
             "omega" => ω,
@@ -429,7 +623,7 @@ function _generic_flux_from_cheby_sample(KG_samp::Dict, Y_samp::Dict, SH_samp::D
     K_sample = KG_samp["K_sample"]::Int
     phase_key = (s, N_sample, K_sample, m, n, k)
     if s == 2
-        Jpp, Jpm, Jmp, Jmm, drphase, dθphase, _, _, _, _, prefactor = integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n, k)
+        Jpp, Jpm, Jmp, Jmm, drphase, dθphase, _, _, _, _, prefactor = integrand_generic_sample_cheby_p2(KG_samp, Y_samp, SH_samp, n, k; geometry = _generic_geometry_for_sample(cache, KG_samp))
         basis_plus = _glevin_basis!(cache, KG_samp, s, Float64(a), 1)
         basis_minus = _glevin_basis!(cache, KG_samp, s, Float64(a), -1)
         radial_factor_vec = _cached_generic_levin_phase_factor!(cache, (:internal_radial_factor, phase_key)) do
@@ -466,7 +660,7 @@ function _generic_flux_from_cheby_sample(KG_samp::Dict, Y_samp::Dict, SH_samp::D
             "SWSH" => SH_samp,
         )
     elseif s == -2
-        Jpp, Jpm, Jmp, Jmm, drphase, dθphase, _, _, _, _, prefactor = integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n, k)
+        Jpp, Jpm, Jmp, Jmm, drphase, dθphase, _, _, _, _, prefactor = integrand_generic_sample_cheby_m2(KG_samp, Y_samp, SH_samp, n, k; geometry = _generic_geometry_for_sample(cache, KG_samp))
         basis_plus = _glevin_basis!(cache, KG_samp, s, Float64(a), 1)
         basis_minus = _glevin_basis!(cache, KG_samp, s, Float64(a), -1)
         radial_factor_vec = _cached_generic_levin_phase_factor!(cache, (:internal_radial_factor, phase_key)) do
@@ -515,7 +709,19 @@ mutable struct GenericM2FluxCache
     adaptive_levin_segments::Dict{Tuple, Dict}
     adaptive_levin_phase_bases::Dict{Tuple, Any}
     adaptive_levin_weights::Dict{Tuple, Vector{Float64}}
+    geometry_owner::Union{Nothing, GenericGeometryOwner}
 end
+
+GenericM2FluxCache(samples, mcaches, levin_samples, phase_factors, phase_bases, segments, adaptive_bases, weights) =
+    GenericM2FluxCache(samples, mcaches, levin_samples, phase_factors, phase_bases, segments, adaptive_bases, weights, nothing)
+function GenericM2FluxCache(owner::GenericGeometryOwner)
+    check_submission_geometry(owner, owner.master)
+    cache = GenericM2FluxCache()
+    cache.geometry_owner = owner
+    return cache
+end
+GenericFluxCache(owner::GenericGeometryOwner) = GenericM2FluxCache(owner)
+clear_generic_mode_cache!(cache::GenericM2FluxCache) = _clear_private_mode_cache!(cache)
 
 GenericM2FluxCache() = GenericM2FluxCache(
     Dict{Tuple{Int, Int}, Dict}(),
@@ -609,16 +815,26 @@ function _trap_weights_1d(N::Int, dq::Float64)
 end
 
 function _cached_generic_sample!(cache::GenericM2FluxCache, KG_master::Dict, N::Int, K::Int)
+    _check_mode_geometry(cache, KG_master)
     key = (N, K)
     return get!(cache.samples, key) do
-        GridSampling.subsample_generic_sample(KG_master, N, K)
+        owner = cache.geometry_owner
+        owner === nothing && return GridSampling.subsample_generic_sample(KG_master, N, K)
+        _submission_geometry_lookup!(owner, :trap_samples, key, KG_master) do
+            GridSampling.subsample_generic_sample(KG_master, N, K)
+        end
     end
 end
 
 function _cached_generic_cheby_sample!(cache::GenericM2FluxCache, KG_master::Dict, N::Int, K::Int)
+    _check_mode_geometry(cache, KG_master)
     key = (N, K)
     return get!(cache.levin_samples, key) do
-        kerr_geo_generic_sample_cheby(_kg_from_presampled_master(KG_master), N, K)
+        owner = cache.geometry_owner
+        owner === nothing && return kerr_geo_generic_sample_cheby(_kg_from_presampled_master(KG_master), N, K)
+        _submission_geometry_lookup!(owner, :cheby_samples, key, KG_master) do
+            kerr_geo_generic_sample_cheby(_kg_from_presampled_master(KG_master), N, K)
+        end
     end
 end
 
@@ -645,8 +861,8 @@ function _glevin_basis_build(KG_samp::Dict, s::Int, a::Float64, sign::Int)
     rp = 1.0 + κ
     rm = 1.0 - κ
     log_term = log.((r .- rp) ./ (r .- rm))
-    σrs = s == -2 ? 1.0 : -1.0
-    σlog = s == -2 ? -1.0 : 1.0
+    σrs = 1.0
+    σlog = -1.0
     radial_base = sign .* KG_samp["Δtr"] .+ σrs .* rs
     return GenericLevinPhaseBasis(
         Ω.Ωφ .* KG_samp["Δtθ"] .- KG_samp["Δφθ"],
@@ -792,18 +1008,15 @@ function _generic_adaptive_segment_sample_cheby(KG_in::Dict, key::GenericAdaptiv
 
     qr_vals = _generic_adaptive_cheby_nodes(nr, qr_lo, qr_hi)
     qθ_vals = _generic_adaptive_cheby_nodes(nt, qθ_lo, qθ_hi)
-    rq(qr) = r((qr - qr0) / ϒr)
-    θq(qθ) = θ((qθ - qθ0) / ϒθ)
-    urq(qr) = (r((qr - qr0) / ϒr)^2 + a^2 * cos(θ((qr - qr0) / ϒr))^2) * ur((qr - qr0) / ϒr)
-    uθq(qθ) = (r((qθ - qθ0) / ϒθ)^2 + a^2 * cos(θ((qθ - qθ0) / ϒθ))^2) * uθ((qθ - qθ0) / ϒθ)
     theta_odd(f, q) = q >= π / 2 ? f(q) : -f(π - q)
     theta_odd_derivative(f, q) = q >= π / 2 ? f(q) : f(π - q)
-    theta_even(f, q) = q >= π / 2 ? f(q) : f(π - q)
 
-    r_vals = [rq(q) for q in qr_vals]
-    θ_vals = [θq(q) for q in qθ_vals]
-    ur_fwd = [urq(q) for q in qr_vals]
-    uθ_fwd = [theta_even(uθq, q) for q in qθ_vals]
+    r_vals = GridSampling._phase_values(r, qr_vals, qr0, ϒr)
+    θ_vals = GridSampling._polar_values(θ, qθ_vals, qθ0, ϒθ)
+    ur_fwd = GridSampling._radial_phase_rates(ur, θ, qr_vals, r_vals, a, qr0, ϒr; constants = GridSampling._theta_constants(KG_in))
+    qθ_rates = map(q -> q >= π / 2 ? q : π - q, qθ_vals)
+    θ_rates = GridSampling._polar_values(θ, qθ_rates, qθ0, ϒθ)
+    uθ_fwd = GridSampling._polar_phase_rates(uθ, r, qθ_rates, θ_rates, a, qθ0, ϒθ; constants = GridSampling._theta_constants(KG_in))
 
     return Dict{String, Any}(
         "qr" => qr_vals,
@@ -811,13 +1024,13 @@ function _generic_adaptive_segment_sample_cheby(KG_in::Dict, key::GenericAdaptiv
         "r" => r_vals,
         "rs" => rstar_from_r.(a, r_vals),
         "θ" => θ_vals,
-        "Δtr" => [Δtr(q) for q in qr_vals],
+        "Δtr" => map(Δtr, qr_vals),
         "Δtθ" => [theta_odd(Δtθ, q) for q in qθ_vals],
-        "Δφr" => [Δφr(q) for q in qr_vals],
+        "Δφr" => map(Δφr, qr_vals),
         "Δφθ" => [theta_odd(Δφθ, q) for q in qθ_vals],
-        "dtr" => [dtr(q) for q in qr_vals],
+        "dtr" => map(dtr, qr_vals),
         "dtθ" => [theta_odd_derivative(dtθ, q) for q in qθ_vals],
-        "dφr" => [dφr(q) for q in qr_vals],
+        "dφr" => map(dφr, qr_vals),
         "dφθ" => [theta_odd_derivative(dφθ, q) for q in qθ_vals],
         "ur_fwd" => ur_fwd,
         "ur_rev" => -ur_fwd,
@@ -828,7 +1041,7 @@ function _generic_adaptive_segment_sample_cheby(KG_in::Dict, key::GenericAdaptiv
         "a" => a,
         "p" => get(KG, "p", NaN),
         "e" => get(KG, "e", NaN),
-        "x" => get(KG, "x", NaN),
+        "x" => KG["Cosθ_inc"],
         "E" => KG["Energy"],
         "Lz" => KG["AngularMomentum"],
         "Γ" => Γ,
@@ -844,7 +1057,12 @@ end
 
 function _generic_adaptive_segment_sample!(cache::GenericM2FluxCache, KG::Dict, key::GenericAdaptiveLevin2DKey, nr::Int, nt::Int)
     return get!(cache.adaptive_levin_segments, (key.level_r, key.level_theta, key.ib, key.jb, nr, nt)) do
-        _generic_adaptive_segment_sample_cheby(KG, key, nr, nt)
+        owner = cache.geometry_owner
+        owner === nothing && return _generic_adaptive_segment_sample_cheby(KG, key, nr, nt)
+        _submission_geometry_lookup!(owner, :adaptive_segments,
+                (key.level_r, key.level_theta, key.ib, key.jb, nr, nt), KG) do
+            _generic_adaptive_segment_sample_cheby(KG, key, nr, nt)
+        end
     end
 end
 
@@ -858,8 +1076,8 @@ function _generic_adaptive_phase_basis_build(KG_samp::Dict, s::Int, a::Float64, 
     rp = 1.0 + κ
     rm = 1.0 - κ
     log_term = log.((r .- rp) ./ (r .- rm))
-    σrs = s == -2 ? 1.0 : -1.0
-    σlog = s == -2 ? -1.0 : 1.0
+    σrs = 1.0
+    σlog = -1.0
     radial_base = sign .* KG_samp["Δtr"] .+ σrs .* rs
     return GenericLevinPhaseBasis(
         Ω.Ωφ .* KG_samp["Δtθ"] .- KG_samp["Δφθ"],
@@ -882,15 +1100,20 @@ function _generic_adaptive_phase_basis!(cache::GenericM2FluxCache, KG_samp::Dict
     end
 end
 
-@inline function _generic_adaptive_effective_theta_intervals(local_theta_intervals::Int, k::Int)
-    required = 2 ^ ceil(Int, log2(max(1, 2 * abs(k) + 1)))
+@inline function _generic_adaptive_effective_theta_intervals(local_theta_intervals::Int, k::Int, l::Int = 0)
+    required = nextpow(2, 2 * (l + abs(k)) + 1)
     return max(local_theta_intervals, required)
 end
 
 function _generic_adaptive_theta_weights!(cache::GenericM2FluxCache, key::GenericAdaptiveLevin2DKey, nt::Int)
     _, _, qθ_lo, qθ_hi = _generic_adaptive_segment_bounds(key)
     return get!(cache.adaptive_levin_weights, (:theta_cc, key.level_theta, key.jb, nt)) do
-        _generic_adaptive_cc_weights(nt, qθ_lo, qθ_hi)
+        owner = cache.geometry_owner
+        owner === nothing && return _generic_adaptive_cc_weights(nt, qθ_lo, qθ_hi)
+        _submission_geometry_lookup!(owner, :adaptive_weights,
+                (:theta_cc, key.level_theta, key.jb, nt), owner.master) do
+            _generic_adaptive_cc_weights(nt, qθ_lo, qθ_hi)
+        end
     end
 end
 
@@ -905,14 +1128,9 @@ function _generic_adaptive_radial_levin_theta_cc(
     size(f2) == (nr, nt) || throw(ArgumentError("paired radial Levin inputs must have matching size"))
     length(theta_weights) == nt || throw(ArgumentError("theta weights length mismatch"))
     length(theta_phase) == nt || throw(ArgumentError("theta phase length mismatch"))
-    out1 = zero(ComplexF64)
-    out2 = zero(ComplexF64)
-    @inbounds for j in 1:nt
-        phasej = exp(1im * theta_phase[j])
-        out1 += theta_weights[j] * phasej * _levin_1d_integral_local_phase_factored(collect(@view f1[:, j]), radial_factor1)
-        out2 += theta_weights[j] * phasej * _levin_1d_integral_local_phase_factored(collect(@view f2[:, j]), radial_factor2)
-    end
-    return out1, out2
+    weights = theta_weights .* exp.(1im .* theta_phase)
+    return transpose(_levin_1d_columns_factored(f1, radial_factor1)) * weights,
+           transpose(_levin_1d_columns_factored(f2, radial_factor2)) * weights
 end
 
 @inline function _generic_adaptive_energy_from_amp(amp::ComplexF64, s::Int, a::Float64, m::Int, ω::Float64)
@@ -925,28 +1143,39 @@ end
     end
 end
 
-function _generic_adaptive_segment_amplitude!(cache::GenericM2FluxCache, KG::Dict, Ysol, SH, s::Int, a::Float64, ω::Float64, m::Int, n::Int, k::Int, key::GenericAdaptiveLevin2DKey, nr::Int, nt::Int; threaded_sampling::Bool = false)
+function _generic_adaptive_radial_gprime(KG_samp::Dict, key::GenericAdaptiveLevin2DKey, s::Int, a::Float64, ω::Float64, m::Int, n::Int, sign::Int)
+    qr_lo, qr_hi, _, _ = _generic_adaptive_segment_bounds(key)
+    r = Float64.(KG_samp["r"])
+    drdq = Float64.(KG_samp["ur_fwd"]) ./ KG_samp["Frequencies"]["ϒr"]
+    Δ = r .^ 2 .- 2.0 .* r .+ a^2
+    σ = 1.0
+    gq = sign .* (ω .* KG_samp["dtr"] .- m .* KG_samp["dφr"] .+ n) .+ σ .* (ω .* (r .^ 2 .+ a^2) .- a * m) ./ Δ .* drdq
+    return gq .* ((qr_hi - qr_lo) / π)
+end
+
+function _generic_adaptive_segment_amplitude!(cache::GenericM2FluxCache, KG::Dict, Ysol, SH, s::Int, a::Float64, ω::Float64, m::Int, n::Int, k::Int, key::GenericAdaptiveLevin2DKey, nr::Int, nt::Int; threaded_sampling::Bool = false, sh_cache = nothing)
     KG_samp = _generic_adaptive_segment_sample!(cache, KG, key, nr, nt)
     Ysamp = if s == -2
         threaded_sampling ? GridSampling.y_sample_m2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_m2_isem(Ysol, KG_samp)
     else
         threaded_sampling ? GridSampling.y_sample_p2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_p2_isem(Ysol, KG_samp)
     end
-    SHsamp = threaded_sampling ? GridSampling.swsh_sample_threaded(SH, KG_samp) : GridSampling.swsh_sample(SH, KG_samp)
+    swsh_eval = () -> threaded_sampling ? GridSampling.swsh_sample_threaded(SH, KG_samp) : GridSampling.swsh_sample(SH, KG_samp)
+    SHsamp = sh_cache === nothing ? swsh_eval() : get!(swsh_eval, sh_cache, (key.level_theta, key.jb, nt))
     Jpp, Jpm, Jmp, Jmm, _, _, _, _, _, _, prefactor = if s == -2
-        integrand_generic_sample_cheby_m2(KG_samp, Ysamp, SHsamp, n, k)
+        integrand_generic_sample_cheby_m2(KG_samp, Ysamp, SHsamp, n, k; geometry = _generic_geometry_for_sample(cache, KG_samp))
     else
-        integrand_generic_sample_cheby_p2(KG_samp, Ysamp, SHsamp, n, k)
+        integrand_generic_sample_cheby_p2(KG_samp, Ysamp, SHsamp, n, k; geometry = _generic_geometry_for_sample(cache, KG_samp))
     end
 
     basis_plus = _generic_adaptive_phase_basis!(cache, KG_samp, key, s, a, 1)
     basis_minus = _generic_adaptive_phase_basis!(cache, KG_samp, key, s, a, -1)
     radial_internal = reshape(exp.(1im .* _internal_radial_phase(KG_samp, s, a, ω, m).phase_values), :, 1)
     rfactor_plus = _cached_generic_levin_phase_factor!(cache, (:adaptive_radial, key.level_r, key.ib, s, m, n, k, 1, nr)) do
-        _levin_1d_local_phase_factor_from_values(_glevin_radial(basis_plus, m, n, k); local_order = nr)
+        _levin_1d_local_phase_factor(_generic_adaptive_radial_gprime(KG_samp, key, s, a, ω, m, n, 1), _glevin_radial(basis_plus, m, n, k); local_order = nr)
     end
     rfactor_minus = _cached_generic_levin_phase_factor!(cache, (:adaptive_radial, key.level_r, key.ib, s, m, n, k, -1, nr)) do
-        _levin_1d_local_phase_factor_from_values(_glevin_radial(basis_minus, m, n, k); local_order = nr)
+        _levin_1d_local_phase_factor(_generic_adaptive_radial_gprime(KG_samp, key, s, a, ω, m, n, -1), _glevin_radial(basis_minus, m, n, k); local_order = nr)
     end
     theta_weights = _generic_adaptive_theta_weights!(cache, key, nt)
     theta_phase = _glevin_theta(basis_plus, m, n, k).phase
@@ -976,106 +1205,62 @@ function prewarm_generic_adaptive_levin_segments!(cache::GenericM2FluxCache, KG_
     return cache
 end
 
-function _generic_m2_m_cache(KG_samp::Dict, m::Int)
-    r = KG_samp["r"]::Vector{Float64}
-    rs = KG_samp["rs"]::Vector{Float64}
-    theta = KG_samp["θ"]::Vector{Float64}
-    N = KG_samp["N_sample"]::Int
-    K = KG_samp["K_sample"]::Int
-    a = KG_samp["a"]::Float64
-    E = KG_samp["E"]::Float64
-    Lz = KG_samp["Lz"]::Float64
-    dqr = pi / (N - 1)
-    dqtheta = pi / (K - 1)
-    wr = _trap_weights_1d(N, dqr)
-    wtheta = _trap_weights_1d(K, dqtheta)
-    qr = [(i - 1) * dqr for i in 1:N]
-    qtheta = [(j - 1) * dqtheta for j in 1:K]
+# Per-m cache for the generic trapezoidal integrand: the azimuthal phases exp(-i m Δφ) on the radial and polar
+# grids, the horizon log-phase exp(-i a m log((r-r+)/(r-r-))/(2κ)) and per-mode scratch vectors, layered on the
+# m-independent orbit geometry (shared through the geometry owner when one is attached, see _cached_m2_mcache!).
+function _generic_m2_m_cache(KG_samp::Dict, m::Int, geometry::GenericM2Geometry = _generic_m2_geometry(KG_samp))
+    r = geometry.r
+    N = geometry.N
+    K = geometry.K
+    a = geometry.a
     rp = 1.0 + sqrt(1.0 - a^2)
     rm = 1.0 - sqrt(1.0 - a^2)
     inv2kappa = 1.0 / (2.0 * sqrt(1.0 - a^2))
-    dphir = KG_samp["Δφr"]::Vector{Float64}
-    dphitheta = KG_samp["Δφθ"]::Vector{Float64}
+    dphir = geometry.dphir
+    dphitheta = geometry.dphitheta
     m_phase_r = Vector{ComplexF64}(undef, N)
     m_log_phase = Vector{ComplexF64}(undef, N)
-    Np = Vector{Float64}(undef, N)
-    Nm = Vector{Float64}(undef, N)
-    Np2 = Vector{Float64}(undef, N)
-    Nm2 = Vector{Float64}(undef, N)
-    Lp = Vector{Float64}(undef, N)
-    Lm = Vector{Float64}(undef, N)
-    Lp2 = Vector{Float64}(undef, N)
-    Lm2 = Vector{Float64}(undef, N)
-    urp = KG_samp["ur_fwd"]::Vector{Float64}
-    urm = KG_samp["ur_rev"]::Vector{Float64}
     @inbounds for i in 1:N
         ri = r[i]
-        r2 = ri * ri
-        Delta = r2 - 2.0 * ri + a^2
         m_phase_r[i] = exp(-im * m * dphir[i])
         m_log_phase[i] = exp(-im * a * m * log((ri - rp) / (ri - rm)) * inv2kappa)
-        numer = E * (r2 + a^2) - a * Lz
-        Np[i] = (numer + urp[i]) / Delta
-        Nm[i] = (numer + urm[i]) / Delta
-        Np2[i] = Np[i] * Np[i]
-        Nm2[i] = Nm[i] * Nm[i]
-        Lp[i] = (numer - urp[i]) / Delta
-        Lm[i] = (numer - urm[i]) / Delta
-        Lp2[i] = Lp[i] * Lp[i]
-        Lm2[i] = Lm[i] * Lm[i]
     end
     m_phase_theta = Vector{ComplexF64}(undef, K)
-    st = Vector{Float64}(undef, K)
-    ct = Vector{Float64}(undef, K)
-    invst = Vector{Float64}(undef, K)
-    invst2 = Vector{Float64}(undef, K)
-    termM = Vector{ComplexF64}(undef, K)
-    uthetap = KG_samp["uθ_fwd"]::Vector{Float64}
-    uthetam = KG_samp["uθ_rev"]::Vector{Float64}
     @inbounds for j in 1:K
-        stj = sin(theta[j])
-        ctj = cos(theta[j])
-        invstj = 1.0 / stj
-        invst2j = invstj * invstj
         m_phase_theta[j] = exp(-im * m * dphitheta[j])
-        st[j] = stj
-        ct[j] = ctj
-        invst[j] = invstj
-        invst2[j] = invst2j
-        termM[j] = im * stj * (a * E - Lz * invst2j)
-    end
-    rho = Matrix{ComplexF64}(undef, N, K)
-    rhobar = Matrix{ComplexF64}(undef, N, K)
-    invrho = Matrix{ComplexF64}(undef, N, K)
-    rho_minus = Matrix{ComplexF64}(undef, N, K)
-    rho_plus = Matrix{ComplexF64}(undef, N, K)
-    @inbounds for j in 1:K
-        ctj = ct[j]
-        for i in 1:N
-            rhoij = -1.0 / (r[i] - im * a * ctj)
-            rhobarij = -1.0 / (r[i] + im * a * ctj)
-            rho[i, j] = rhoij
-            rhobar[i, j] = rhobarij
-            invrho[i, j] = 1.0 / rhoij
-            rho_minus[i, j] = rhoij - rhobarij
-            rho_plus[i, j] = rhoij + rhobarij
-        end
     end
     radial_phase = Vector{ComplexF64}(undef, N)
     radial_tortoise = Vector{ComplexF64}(undef, N)
     theta_phase = Vector{ComplexF64}(undef, K)
     partial = Vector{ComplexF64}(undef, Threads.maxthreadid())
-    return GenericM2MCache(r, rs, theta, KG_samp["Δtr"], KG_samp["Δtθ"], dphir, dphitheta,
-        KG_samp["CrossFunction"], KG_samp["initialPhases"], wr, wtheta, qr, qtheta,
-        m_phase_r, m_phase_theta, m_log_phase, Np, Nm, Np2, Nm2, Lp, Lm, Lp2, Lm2, st, ct, invst, invst2,
-        termM, uthetap, uthetam, rho, rhobar, invrho, rho_minus, rho_plus,
-        radial_phase, radial_tortoise, theta_phase, partial, N, K, KG_samp["Γ"], E, Lz, a, m)
+    return GenericM2MCache(geometry.r, geometry.rs, geometry.theta, geometry.dtr, geometry.dttheta,
+        geometry.dphir, geometry.dphitheta, geometry.cross, geometry.initial_phases,
+        geometry.wr, geometry.wtheta, geometry.qr, geometry.qtheta,
+        m_phase_r, m_phase_theta, m_log_phase, geometry.Np, geometry.Nm, geometry.Np2, geometry.Nm2,
+        geometry.Lp, geometry.Lm, geometry.Lp2, geometry.Lm2, geometry.st, geometry.ct,
+        geometry.invst, geometry.invst2, geometry.termM, geometry.uthetap, geometry.uthetam,
+        geometry.rho, geometry.rhobar, geometry.invrho, geometry.rho_minus, geometry.rho_plus,
+        radial_phase, radial_tortoise, theta_phase, partial,
+        N, K, geometry.Gamma, geometry.E, geometry.Lz, a, m)
+end
+
+function _generic_geometry_for_sample(cache, KG_samp::Dict)
+    cache isa GenericM2FluxCache || return nothing
+    owner = cache.geometry_owner
+    owner === nothing && return nothing
+    return _submission_geometry_lookup!(owner, :geometries, KG_samp, owner.master) do
+        KG_samp["Trajectory"] === owner.master["Trajectory"] &&
+            KG_samp["Frequencies"] === owner.master["Frequencies"] ||
+            throw(ArgumentError("Geometry sample belongs to another orbit"))
+        _generic_m2_geometry(KG_samp)
+    end
 end
 
 function _cached_m2_mcache!(cache::GenericM2FluxCache, KG_samp::Dict, m::Int)
     key = (m, KG_samp["N_sample"], KG_samp["K_sample"])
     return get!(cache.mcaches, key) do
-        _generic_m2_m_cache(KG_samp, m)
+        geometry = _generic_geometry_for_sample(cache, KG_samp)
+        geometry === nothing ? _generic_m2_m_cache(KG_samp, m) : _generic_m2_m_cache(KG_samp, m, geometry)
     end
 end
 
@@ -1131,6 +1316,105 @@ end
     return min(target, max_stop)
 end
 
+# Fewest radial trapezoidal intervals that resolve the integrand's phase: the largest rate, per unit
+# q_r on [0, pi], of n q_r + omega Delta t_r - m Delta phi_r plus that of the carrier omega r_*, read off
+# the dense master grid. 4|n| alone misses the Delta phi_r term near periapsis: at (a, p, e) = (0.9, 8, 0.95)
+# the counter-rotating mode (n, m, l) = (101, -18, 18) needs 1063 intervals, and at N = 256 and 512 it
+# settled on an aliased 4.1e-7 instead of 6e-25.
+# max over the derivative pairs of |n + omega dt - m dphi|: the linear part peaks at the support point of the
+# direction (omega, -m) and is lowest at that of (-omega, m); each is read from the four stored directions
+# around it.
+function _support_phase_rate(dt::Vector{Float64}, dφ::Vector{Float64}, ω::Float64, m::Float64, n::Float64)
+    (ω == 0.0 && m == 0.0) && return abs(n)
+    K = length(dt)
+    function support(vx, vy)
+        θ = mod(atan(vy, vx), 2π)
+        k0 = floor(Int, θ / (2π) * K)
+        best = -Inf
+        @inbounds for j in k0 - 1:k0 + 2
+            i = mod(j, K) + 1
+            best = max(best, vx * dt[i] + vy * dφ[i])
+        end
+        return best
+    end
+    high = support(ω, -m)
+    low = -support(-ω, m)
+    return max(abs(high + n), abs(low + n))
+end
+
+function _radial_phase_min_sample(KG_master::Dict, ω, m::Integer, n::Integer, min_stop::Int, max_stop::Int)
+    data = get(KG_master, "radial_phase_rate", nothing)
+    if data !== nothing
+        # dense masters carry the support points of the derivative pairs (GridSampling._radial_phase_rate_data)
+        needed = _support_phase_rate(data.dt, data.dφ, Float64(ω), Float64(m), Float64(n)) + abs(ω) * data.max_drs
+        isfinite(needed) || return max_stop
+        return min(max(min_stop, nextpow(2, max(1, ceil(Int, needed)))), max_stop)
+    end
+    Δt = KG_master["Δtr"]
+    Δφ = KG_master["Δφr"]
+    rs = KG_master["rs"]
+    intervals = length(Δt) - 1
+    intervals > 0 || return min_stop
+    h = π / intervals
+    rate = 0.0
+    carrier = 0.0
+    @inbounds for i in 1:intervals
+        rate = max(rate, abs((ω * (Δt[i + 1] - Δt[i]) - m * (Δφ[i + 1] - Δφ[i])) / h + n))
+        carrier = max(carrier, abs(ω * (rs[i + 1] - rs[i]) / h))
+    end
+    needed = rate + carrier
+    isfinite(needed) || return max_stop
+    return min(max(min_stop, nextpow(2, max(1, ceil(Int, needed)))), max_stop)
+end
+
+# The Carter average has its own polar resolution, independent of the mode grid.
+const GENERIC_CARTER_MIN_INTERVALS = 64
+
+# <Lz cot^2 theta> over the polar Mino cycle of a generic orbit, exactly: the polar part of Upsilon_phi is
+# <Lz / sin^2 theta> - a E, so <Lz / sin^2 theta> = Upsilon_phi + a E - <Phi_r>_r with
+# Phi_r = a (E (r^2 + a^2) - a Lz) / Delta averaged over the smooth radial cycle. A trapezoid of Lz cot^2 theta
+# misses the spike of width ~x near the pole of a nearly polar orbit. Cached in the sample Dict.
+function _generic_lz_cot2_average(KG_samp::Dict)
+    cached = get(KG_samp, "LzCot2Average", nothing)
+    cached === nothing || return cached
+    a = KG_samp["a"]
+    E = KG_samp["E"]
+    Lz = KG_samp["Lz"]
+    value = if iszero(Lz)
+        0.0
+    else
+        F = KG_samp["Frequencies"]
+        r_of = KG_samp["Trajectory"][2]
+        qr0 = KG_samp["InitialPhases"][2]
+        qr = range(0, pi; length = 257)
+        Φr = map(qr) do q
+            r = r_of((q - qr0) / F["ϒr"])
+            a * (E * (r^2 + a^2) - a * Lz) / (r^2 - 2r + a^2)
+        end
+        Φr_mean = (sum(Φr) - (first(Φr) + last(Φr)) / 2) / (length(Φr) - 1)
+        F["ϒϕ"] + a * E - Φr_mean - Lz
+    end
+    KG_samp["LzCot2Average"] = value
+    return value
+end
+
+function _generic_carter_factor_min_grid(KG_samp::Dict, m::Int, omega::Float64)
+    lz_cot2 = _generic_lz_cot2_average(KG_samp)
+    if length(KG_samp["θ"]) - 1 >= GENERIC_CARTER_MIN_INTERVALS
+        return _generic_carter_factor_sample(KG_samp, m, omega; lz_cot2)
+    end
+    theta = KG_samp["Trajectory"][3]
+    theta_phase = KG_samp["InitialPhases"][3]
+    theta_frequency = KG_samp["Frequencies"]["ϒθ"]
+    qtheta = collect(range(0, pi; length = GENERIC_CARTER_MIN_INTERVALS + 1))
+    theta_values = GridSampling._polar_values(theta, qtheta, theta_phase, theta_frequency)
+    carter_sample = Dict(
+        "a" => KG_samp["a"], "E" => KG_samp["E"], "Lz" => KG_samp["Lz"],
+        "θ" => theta_values,
+    )
+    return _generic_carter_factor_sample(carter_sample, m, omega; lz_cot2)
+end
+
 function _phase_vector_exp!(out::Vector{ComplexF64}, base_omega::Float64, freq_vec::Vector{Float64}, mode_index::Int, q_vec::Vector{Float64}, fixed_phase::Vector{ComplexF64})
     @inbounds for i in eachindex(q_vec)
         out[i] = exp(im * (base_omega * freq_vec[i] + mode_index * q_vec[i])) * fixed_phase[i]
@@ -1148,18 +1432,18 @@ function _phase_vector_recurrence!(out::Vector{ComplexF64}, base_omega::Float64,
     return out
 end
 
-@inline function _generic_carter_factor(cache::GenericM2MCache, omega::Float64)
+# m <Lz cot^2 theta> (exact, from _generic_lz_cot2_average) - a^2 omega E <cos^2 theta> (trapezoid, smooth).
+@inline function _generic_carter_factor(cache::GenericM2MCache, omega::Float64, lz_cot2::Float64)
     total = 0.0
     a2ωE = cache.a * cache.a * omega * cache.E
-    mLz = cache.m * cache.Lz
     @inbounds for j in 1:cache.K
         ct2 = cache.ct[j] * cache.ct[j]
-        total += cache.wtheta[j] * (mLz * ct2 * cache.invst2[j] - a2ωE * ct2) / pi
+        total -= cache.wtheta[j] * a2ωE * ct2 / pi
     end
-    return total
+    return total + cache.m * lz_cot2
 end
 
-@inline function _generic_carter_factor_sample(KG_samp::Dict, m::Int, omega::Float64)
+@inline function _generic_carter_factor_sample(KG_samp::Dict, m::Int, omega::Float64; lz_cot2 = _generic_lz_cot2_average(KG_samp))
     theta = KG_samp["θ"]::Vector{Float64}
     K = length(theta)
     K <= 1 && return 0.0
@@ -1174,12 +1458,12 @@ end
         st = sin(theta[j])
         ct = cos(theta[j])
         weight = (j == 1 || j == K) ? 0.5 * dθ : dθ
-        total += weight * (mLz * ct * ct / (st * st) - a2ωE * ct * ct) / pi
+        total -= weight * a2ωE * ct * ct / pi
     end
-    return total
+    return total + m * lz_cot2
 end
 
-function _generic_m2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_samp::Dict, omega::Float64, n::Int, k::Int; recurrence_phase::Bool = true)
+function _generic_m2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_samp::Dict, omega::Float64, n::Int, k::Int; recurrence_phase::Bool = true, new_only::Bool = false)
     N = cache.N
     K = cache.K
     a = cache.a
@@ -1234,7 +1518,7 @@ function _generic_m2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_
         Mmj = cache.termM[j] + cache.uthetam[j]
         Mp2 = Mpj * Mpj
         Mm2 = Mmj * Mmj
-        @inbounds for i in 1:N
+        @inbounds for i in (new_only ? (2:2:N) : (1:N))
             r = cache.r[i]
             r2 = r * r
             rhoi = cache.rho[i, j]
@@ -1268,7 +1552,7 @@ function _generic_m2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_
     return prefactor * total
 end
 
-function _generic_p2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_samp::Dict, omega::Float64, lambda::Float64, n::Int, k::Int; recurrence_phase::Bool = true)
+function _generic_p2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_samp::Dict, omega::Float64, lambda::Float64, n::Int, k::Int; recurrence_phase::Bool = true, new_only::Bool = false)
     N = cache.N
     K = cache.K
     a = cache.a
@@ -1335,7 +1619,7 @@ function _generic_p2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_
         Mmj = -cache.termM[j] + cache.uthetam[j]
         Mp2 = Mpj * Mpj
         Mm2 = Mmj * Mmj
-        @inbounds for i in 1:N
+        @inbounds for i in (new_only ? (2:2:N) : (1:N))
             r = cache.r[i]
             r2 = r * r
             rhoi = cache.rho[i, j]
@@ -1367,19 +1651,22 @@ function _generic_p2_integral_threaded(cache::GenericM2MCache, Y_samp::Dict, SH_
     return prefactor * total
 end
 
-function _generic_m2_integral_cached!(cache::GenericM2FluxCache, KG_master::Dict, Y_samp::Dict, SH_samp::Dict, omega::Float64, m::Int, n::Int, k::Int, N::Int, K::Int)
+function _generic_m2_integral_cached!(cache::GenericM2FluxCache, KG_master::Dict, Y_samp::Dict, SH_samp::Dict, omega::Float64, m::Int, n::Int, k::Int, N::Int, K::Int; new_only::Bool = false)
     KG_samp = _cached_generic_sample!(cache, KG_master, N, K)
     mcache = _cached_m2_mcache!(cache, KG_samp, m)
-    return _generic_m2_integral_threaded(mcache, Y_samp, SH_samp, omega, n, k)
+    return _generic_m2_integral_threaded(mcache, Y_samp, SH_samp, omega, n, k; new_only)
 end
 
-function _generic_p2_integral_cached!(cache::GenericM2FluxCache, KG_master::Dict, Y_samp::Dict, SH_samp::Dict, omega::Float64, lambda::Float64, m::Int, n::Int, k::Int, N::Int, K::Int)
+function _generic_p2_integral_cached!(cache::GenericM2FluxCache, KG_master::Dict, Y_samp::Dict, SH_samp::Dict, omega::Float64, lambda::Float64, m::Int, n::Int, k::Int, N::Int, K::Int; new_only::Bool = false)
     KG_samp = _cached_generic_sample!(cache, KG_master, N, K)
     mcache = _cached_m2_mcache!(cache, KG_samp, m)
-    return _generic_p2_integral_threaded(mcache, Y_samp, SH_samp, omega, lambda, n, k)
+    return _generic_p2_integral_threaded(mcache, Y_samp, SH_samp, omega, lambda, n, k; new_only)
 end
 
+# Generic-orbit mode flux by nested trapezoidal refinement on subsamples of the dense master grid, doubling
+# N (and K when the polar band looks under-resolved) until the energy flux converges to sample_tol.
 function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_master::Dict, s::Int, l::Int, m::Int, n::Int, k::Int; N0::Int = 64, K0::Int = 16, Nmax::Int = 2^14, Kmax::Int = 2^12, sample_tol::Float64 = 1e-3, tol::Float64 = 1e-8, max_flux::Float64 = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false)
+    _check_mode_geometry(cache, KG_master)
     if !(s == -2 || s == 2)
         error("Spin weight s must be either 2 or -2.")
     end
@@ -1406,34 +1693,74 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         return res
     end
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
-    Ysol = _generic_isem_y_solution(s, l, m, a, ω)
+    Ysol = _generic_isem_y_solution(s, l, m, a, ω; lambda = SH.lambda, check_radii = _orbit_check_radii(KG_master))
 
+    # Resolve the polar harmonic band independently of the radial grid.
+    K_band = min(max(K0, nextpow(2, l + abs(k) + 1)), Kmax)
     N = N0
-    K = K0
+    K = K_band
     KG_samp = _cached_generic_sample!(cache, KG_master, N, K)
-    Ysamp = if s == -2
+    radii = KG_samp["r"]
+    phase_extent = abs(ω) * (maximum(KG_samp["rs"]) - minimum(KG_samp["rs"]))
+    # Build a checked table only when it replaces at least as many direct Y calls.
+    # The three independent self-check calls count towards this work comparison.
+    table_calls = GridSampling._generic_y_initial_points(Float64(phase_extent)) +
+        length(GridSampling.YINTERP_CHECK_FRACTIONS)
+    y_attempted = length(radii) >= table_calls
+    ycheck = y_attempted ? GridSampling._checked_generic_y_table(
+        Ysol, Float64(minimum(radii)), Float64(maximum(radii)), Float64(phase_extent)) :
+        (table=nothing, points=0, doublings=0, fallback=false, self_check_error=NaN)
+    ytab = ycheck.table
+    Ysamp = if ytab !== nothing
+        GridSampling.y_sample_from_table(Ysol, ytab, KG_samp, s == -2 ? "Binc" : "Cinc")
+    elseif s == -2
         threaded_sampling ? GridSampling.y_sample_m2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_m2_isem(Ysol, KG_samp)
     else
         threaded_sampling ? GridSampling.y_sample_p2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_p2_isem(Ysol, KG_samp)
     end
     SHsamp = threaded_sampling ? GridSampling.swsh_sample_threaded(SH, KG_samp) : GridSampling.swsh_sample(SH, KG_samp)
-    lambda = (Ysamp["params"]).lambda
+    lambda = Float64((Ysamp["params"]).lambda)   # some SpinWeightedSpheroidalHarmonics versions return an Int at a = 0
     integral = s == -2 ? _generic_m2_integral_cached!(cache, KG_master, Ysamp, SHsamp, ω, m, n, k, N, K) : _generic_p2_integral_cached!(cache, KG_master, Ysamp, SHsamp, ω, lambda, m, n, k, N, K)
     hf = s == 2 ? horizon_factor(ω, a, m) : 0.0
     energy = s == -2 ? abs2(integral) / (4.0pi * ω^2) : hf * abs2(integral)
     flux_scale = max(max_flux, eps(Float64))
     effective_sample_tol = min(sample_tol, 3.0 * sqrt(tol))
-    min_stop_N = min(max(4N0, 256), Nmax)
-    min_stop_K = min(max(4K0, 64), Kmax)
+    min_stop_N = _radial_phase_min_sample(KG_master, ω, m, n,
+        _eccentric_fourier_min_sample(min(max(4N0, 256), Nmax), Nmax, n), Nmax)
+    min_stop_K = K_band
 
     while N < Nmax || K < Kmax
+        # Coarse radial grids can alias; assess polar suspicion after the n-aware floor.
+        need_K = N >= min_stop_N && max_flux > 100 * eps(Float64) &&
+            K < _suspect_min_sample(min_stop_K, Kmax, abs(energy) / flux_scale, 256, 512, 512)
         N2 = min(2N, Nmax)
-        K2 = min(2K, Kmax)
+        K2 = need_K ? min(2K, Kmax) : K
+        (N2 == N && K2 == K) && break
         next_sample = _cached_generic_sample!(cache, KG_master, N2, K2)
-        next_Ysamp = threaded_sampling ? GridSampling.refine_generic_y_sample_threaded(Ysol, Ysamp, next_sample) : GridSampling.refine_generic_y_sample(Ysol, Ysamp, next_sample)
+        if !y_attempted && N2 - N >= table_calls
+            ycheck = GridSampling._checked_generic_y_table(
+                Ysol, Float64(minimum(radii)), Float64(maximum(radii)), Float64(phase_extent))
+            ytab = ycheck.table
+            y_attempted = true
+        end
+        next_Ysamp = if ytab !== nothing
+            GridSampling.refine_generic_y_sample_from_table(
+                Ysol, ytab, Ysamp, next_sample, s == -2 ? "Binc" : "Cinc")
+        else
+            threaded_sampling ? GridSampling.refine_generic_y_sample_threaded(Ysol, Ysamp, next_sample) :
+                GridSampling.refine_generic_y_sample(Ysol, Ysamp, next_sample)
+        end
         next_SHsamp = threaded_sampling ? GridSampling.refine_generic_swsh_sample_threaded(SH, SHsamp, next_sample) : GridSampling.refine_generic_swsh_sample(SH, SHsamp, next_sample)
-        lambda = (next_Ysamp["params"]).lambda
-        integral2 = s == -2 ? _generic_m2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, m, n, k, N2, K2) : _generic_p2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, lambda, m, n, k, N2, K2)
+        lambda = Float64((next_Ysamp["params"]).lambda)
+        integral2 = if K2 == K && N2 == 2N
+            # Old nodes retain half their weight; evaluate only the inserted radial nodes.
+            0.5 * integral + (s == -2 ?
+                _generic_m2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, m, n, k, N2, K2; new_only=true) :
+                _generic_p2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, lambda, m, n, k, N2, K2; new_only=true))
+        else
+            s == -2 ? _generic_m2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, m, n, k, N2, K2) :
+                _generic_p2_integral_cached!(cache, KG_master, next_Ysamp, next_SHsamp, ω, lambda, m, n, k, N2, K2)
+        end
         energy2 = s == -2 ? abs2(integral2) / (4.0pi * ω^2) : hf * abs2(integral2)
         N = N2
         K = K2
@@ -1441,6 +1768,7 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
         low_flux_cutoff = _low_flux_cutoff(max_flux, tol)
         relE = _relative_energy_change(energy2, energy)
+        previous_energy = energy
         KG_samp = next_sample
         Ysamp = next_Ysamp
         SHsamp = next_SHsamp
@@ -1449,9 +1777,10 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         significant_for_alias = abs(energy2) > low_flux_cutoff
         allow_stop = (N2 >= min_stop_N && K2 >= min_stop_K) || !significant_for_alias
         has_flux_reference = max_flux > 100 * eps(Float64)
-        low_flux_done = mode_abs_floor > 0.0 && abs(energy2) < mode_abs_floor
+        # a mode is negligible only when two consecutive refinement levels are below the floor
+        low_flux_done = mode_abs_floor > 0.0 && abs(energy2) < mode_abs_floor && abs(previous_energy) < mode_abs_floor
         suspect_min_N = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_N, Nmax, excess, 1024, 2048, 4096) : min_stop_N
-        suspect_min_K = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_K, Kmax, excess, 256, 512, 512) : min_stop_K
+        suspect_min_K = min_stop_K
         suspect_needs_extra = has_flux_reference && !low_flux_done && (N2 < suspect_min_N || K2 < suspect_min_K)
         if relE == 0.0
             if allow_stop && !suspect_needs_extra
@@ -1459,7 +1788,7 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
             end
             continue
         end
-        if allow_stop && !suspect_needs_extra && (factor * relE <= effective_sample_tol || abs(energy2) < low_flux_cutoff || low_flux_done)
+        if allow_stop && !suspect_needs_extra && (factor * relE <= effective_sample_tol || (abs(energy2) < low_flux_cutoff && abs(previous_energy) < low_flux_cutoff) || low_flux_done)
                 if zero_low_flux && mode_abs_floor > 0.0 && abs(energy) < mode_abs_floor
                     integral = 0.0 + 0.0im
                     energy = 0.0
@@ -1468,7 +1797,11 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         end
     end
 
-    carter_factor = _generic_carter_factor(_cached_m2_mcache!(cache, KG_samp, m), ω)
+    carter_factor = if K < GENERIC_CARTER_MIN_INTERVALS
+        _generic_carter_factor_min_grid(KG_samp, m, ω)
+    else
+        _generic_carter_factor(_cached_m2_mcache!(cache, KG_samp, m), ω, _generic_lz_cot2_average(KG_samp))
+    end
     res = Dict(
         "Amplitude" => integral,
         "omega" => ω,
@@ -1482,6 +1815,11 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
         "K_sample_requested" => K0,
         "N_sample" => N,
         "K_sample" => K,
+        "YInterpolationPoints" => ycheck.points,
+        "YInterpolationDoublings" => ycheck.doublings,
+        "YInterpolationFallback" => ycheck.fallback,
+        "YInterpolationSelfCheckError" => ycheck.self_check_error,
+        "YInterpolationDeferred" => !y_attempted,
     )
     if zero_low_flux && mode_abs_floor > 0.0 && energy == 0.0
         res["LowFluxZeroed"] = true
@@ -1490,6 +1828,7 @@ function generic_mode_flux_from_master_cached!(cache::GenericM2FluxCache, KG_mas
 end
 
 function generic_mode_flux_from_master_cached_levin!(cache::GenericM2FluxCache, KG_master::Dict, s::Int, l::Int, m::Int, n::Int, k::Int; N0::Int = 256, K0::Int = 64, Nmax::Int = DEFAULT_LEVIN_NMAX, Kmax::Int = DEFAULT_LEVIN_KMAX, sample_tol::Float64 = 1e-3, tol::Float64 = 1e-8, max_flux::Float64 = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, confirm_low_flux::Bool = true)
+    _check_mode_geometry(cache, KG_master)
     if !(s == -2 || s == 2)
         error("Spin weight s must be either 2 or -2.")
     end
@@ -1518,7 +1857,7 @@ function generic_mode_flux_from_master_cached_levin!(cache::GenericM2FluxCache, 
     end
 
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
-    Ysol = _generic_isem_y_solution(s, l, m, a, ω)
+    Ysol = _generic_isem_y_solution(s, l, m, a, ω; lambda = SH.lambda, check_radii = _orbit_check_radii(KG_master))
     flux_scale = max(max_flux, eps(Float64))
     effective_sample_tol = min(sample_tol, 3.0 * sqrt(tol))
     low_flux_budget = _levin_low_flux_budget(Float64(max_flux), Float64(tol), mode_abs_floor)
@@ -1540,10 +1879,8 @@ function generic_mode_flux_from_master_cached_levin!(cache::GenericM2FluxCache, 
         res2 = _generic_flux_from_cheby_sample(KG_cheby, Ysamp, SHsamp, s, l, m, n, k, a, ω, ϒθ, carter_factor, cache)
         absE = abs(res2["EnergyFlux"])
         if res === nothing
+            # As in the eccentric route, a value below the floor needs the next refinement to confirm it.
             res = res2
-            if mode_abs_floor > 0.0 && absE < mode_abs_floor
-                break
-            end
             if !confirm_low_flux && absE < low_flux_budget
                 break
             end
@@ -1553,8 +1890,9 @@ function generic_mode_flux_from_master_cached_levin!(cache::GenericM2FluxCache, 
             excess = abs(res2["EnergyFlux"]) / flux_scale
             factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
             low_flux_confirmed = absE < low_flux_budget && (!confirm_low_flux || (pending_low_flux_check && _same_order_or_smaller(res2["EnergyFlux"], res["EnergyFlux"], mode_abs_floor)))
+            below_floor = mode_abs_floor > 0.0 && absE < mode_abs_floor && abs(res["EnergyFlux"]) < mode_abs_floor
             res = res2
-            if (mode_abs_floor > 0.0 && absE < mode_abs_floor) || low_flux_confirmed || factor * relE <= effective_sample_tol
+            if below_floor || low_flux_confirmed || factor * relE <= effective_sample_tol
                 break
             end
             pending_low_flux_check = absE < low_flux_budget
@@ -1579,6 +1917,12 @@ function generic_mode_flux_from_master_cached_levin!(cache::GenericM2FluxCache, 
     return res
 end
 
+const GENERIC_LEVIN_LOCAL_MIN_LEVEL = 3
+const GENERIC_LEVIN_LOCAL_BUDGET_FRACTION = 0.1
+const GENERIC_LEVIN_TOL_MULTIPLIER = 3.0
+
+# Generic-orbit mode flux with adaptive Levin quadrature in the radial phase (bisection of qr segments) and
+# Clenshaw-Curtis quadrature in the polar phase; stops when the energy flux converges or all leaves are low-flux.
 function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2FluxCache, KG_master::Dict, s::Int, l::Int, m::Int, n::Int, k::Int;
         sample_tol::Float64 = DEFAULT_ADAPTIVE_LEVIN_TOL0,
         tol::Float64 = 1e-8,
@@ -1592,6 +1936,8 @@ function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2Fl
         min_depth::Int = DEFAULT_ADAPTIVE_LEVIN_MIN_DEPTH,
         max_depth::Int = 8,
         depth_tol_max::Float64 = DEFAULT_ADAPTIVE_LEVIN_TOL_MAX)
+    _check_mode_geometry(cache, KG_master)
+    sample_tol = min(sample_tol, GENERIC_LEVIN_TOL_MULTIPLIER * sqrt(tol))
     if !(s == -2 || s == 2)
         error("Spin weight s must be either 2 or -2.")
     end
@@ -1609,7 +1955,7 @@ function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2Fl
     if _skip_radiative_mode(s, a, m, ω)
         res = _zero_radiative_mode(ω, KG_master; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
         res["N_sample_requested"] = local_r_intervals + 1
-        effective_local_theta_intervals = _generic_adaptive_effective_theta_intervals(local_theta_intervals, k)
+        effective_local_theta_intervals = _generic_adaptive_effective_theta_intervals(local_theta_intervals, k, l)
         res["K_sample_requested"] = effective_local_theta_intervals + 1
         res["N_sample"] = local_r_intervals + 1
         res["K_sample"] = effective_local_theta_intervals + 1
@@ -1618,36 +1964,16 @@ function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2Fl
     end
 
     nr = local_r_intervals + 1
-    effective_local_theta_intervals = _generic_adaptive_effective_theta_intervals(local_theta_intervals, k)
+    effective_local_theta_intervals = _generic_adaptive_effective_theta_intervals(local_theta_intervals, k, l)
     nt = effective_local_theta_intervals + 1
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
-    Ysol = _generic_isem_y_solution(s, l, m, a, ω)
+    Ysol = _generic_isem_y_solution(s, l, m, a, ω; lambda = SH.lambda, check_radii = _orbit_check_radii(KG_master))
     root_key = GenericAdaptiveLevin2DKey(0, 0, 0, 0)
-    root = _generic_adaptive_segment_amplitude!(cache, KG_master, Ysol, SH, s, a, ω, m, n, k, root_key, nr, nt; threaded_sampling = threaded_sampling)
-    root_energy = abs(_generic_adaptive_energy_from_amp(root, s, a, m, ω))
+    sh_cache = Dict{NTuple{3, Int}, Any}()
+    root = _generic_adaptive_segment_amplitude!(cache, KG_master, Ysol, SH, s, a, ω, m, n, k, root_key, nr, nt; threaded_sampling = threaded_sampling, sh_cache = sh_cache)
     segment_evaluations = 1
-    if mode_abs_floor > 0.0 && root_energy < mode_abs_floor
-        amp = zero_low_flux ? 0.0 + 0.0im : root
-        carter_factor = _generic_carter_factor_sample(KG_master, m, ω)
-        res = _generic_adaptive_levin_result(amp, KG_master, Ysol, SH, s, a, m, ω, ϒθ, k, carter_factor)
-        res["Quadrature"] = "adaptive_levin_radial_theta_cc"
-        res["AdaptiveLevin"] = true
-        res["AdaptiveLevinStopReason"] = "low_flux_root"
-        res["AdaptiveLevinSegmentEvaluations"] = segment_evaluations
-        res["N_sample_requested"] = nr
-        res["K_sample_requested"] = nt
-        res["N_sample"] = nr
-        res["K_sample"] = nt
-        res["AdaptiveLevinMaxDepth"] = max_depth
-        res["AdaptiveLevinMaxLeafDepth"] = 0
-        res["AdaptiveLevinEffectiveRIntervals"] = local_r_intervals
-        res["AdaptiveLevinEffectiveThetaIntervals"] = effective_local_theta_intervals
-        res["AdaptiveLevinLocalThetaIntervals"] = effective_local_theta_intervals
-        res["AdaptiveLevinRequestedLocalThetaIntervals"] = local_theta_intervals
-        zero_low_flux && (res["LowFluxZeroed"] = true)
-        return res
-    end
-
+    # As in the eccentric route: a low-flux verdict needs two consecutive radial levels below the floor,
+    # the later at least min_depth, since the root segment can miss a narrow radial burst.
     leaves = GenericAdaptiveLevin2DLeaf[GenericAdaptiveLevin2DLeaf(root_key, root, true)]
     previous_total = root
     split_count = 0
@@ -1662,12 +1988,23 @@ function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2Fl
                 continue
             end
             child_amp = zero(ComplexF64)
+            children = GenericAdaptiveLevin2DLeaf[]
+            leaf_energy = abs(_generic_adaptive_energy_from_amp(leaf.amp, s, a, m, ω))
             for child in _generic_adaptive_radial_children(leaf.key)
-                amp = _generic_adaptive_segment_amplitude!(cache, KG_master, Ysol, SH, s, a, ω, m, n, k, child, nr, nt; threaded_sampling = threaded_sampling)
+                amp = _generic_adaptive_segment_amplitude!(cache, KG_master, Ysol, SH, s, a, ω, m, n, k, child, nr, nt; threaded_sampling = threaded_sampling, sh_cache = sh_cache)
                 segment_evaluations += 1
                 child_amp += amp
                 child_energy = abs(_generic_adaptive_energy_from_amp(amp, s, a, m, ω))
-                push!(new_leaves, GenericAdaptiveLevin2DLeaf(child, amp, !(mode_abs_floor > 0.0 && child_energy < mode_abs_floor)))
+                low_flux = mode_abs_floor > 0.0 && child.level_r >= min_depth &&
+                    child_energy < mode_abs_floor && leaf_energy < mode_abs_floor
+                push!(children, GenericAdaptiveLevin2DLeaf(child, amp, !low_flux))
+            end
+            child_level = leaf.key.level_r + 1
+            local_ok = child_level >= max(min_depth, GENERIC_LEVIN_LOCAL_MIN_LEVEL) &&
+                abs(child_amp - leaf.amp) <= GENERIC_LEVIN_LOCAL_BUDGET_FRACTION * sample_tol *
+                    abs(previous_total) * 2.0^(-child_level)
+            for child in children
+                push!(new_leaves, local_ok ? GenericAdaptiveLevin2DLeaf(child.key, child.amp, false) : child)
             end
             changed = true
             split_count += 1
@@ -1677,7 +2014,9 @@ function generic_mode_flux_from_master_cached_adaptive_levin!(cache::GenericM2Fl
         current_energy = abs(_generic_adaptive_energy_from_amp(current_total, s, a, m, ω))
         previous_energy = abs(_generic_adaptive_energy_from_amp(previous_total, s, a, m, ω))
         leaves = new_leaves
-        if mode_abs_floor > 0.0 && current_energy < mode_abs_floor
+        level = maximum((leaf.key.level_r for leaf in leaves); init = 0)
+        if mode_abs_floor > 0.0 && level >= min_depth &&
+                current_energy < mode_abs_floor && previous_energy < mode_abs_floor
             stop_reason = "low_flux"
             break
         elseif !changed
@@ -1766,6 +2105,7 @@ function _generic_adaptive_levin_result(amp::ComplexF64, KG_master::Dict, Ysol, 
 end
 
 function convolution_integral_generic_levin_isem(KG_master::Dict, s, l, m, n, k, N_sample::Int64, K_sample::Int64; Nmax::Int = DEFAULT_LEVIN_NMAX, Kmax::Int = DEFAULT_LEVIN_KMAX, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, cache = nothing, confirm_low_flux::Bool = true, adaptive::Bool = true, adaptive_local_r_intervals::Int = DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, adaptive_local_theta_intervals::Int = DEFAULT_ADAPTIVE_LEVIN_LOCAL_N, adaptive_min_depth::Int = DEFAULT_ADAPTIVE_LEVIN_MIN_DEPTH, adaptive_max_depth::Int = 8, adaptive_tol_max::Float64 = DEFAULT_ADAPTIVE_LEVIN_TOL_MAX)
+    _check_mode_geometry(cache, KG_master)
     levin_cache = cache isa GenericM2FluxCache ? cache : GenericFluxCache()
     if adaptive
         return generic_mode_flux_from_master_cached_adaptive_levin!(
@@ -1821,20 +2161,26 @@ function convolution_integral_generic_adaptive_levin_isem(KG_master::Dict, s, l,
     return convolution_integral_generic_levin_isem(KG_master, s, l, m, n, k, N_sample, K_sample; adaptive = true, kwargs...)
 end
 
-function convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sample::Int64, K_sample::Int64; Nmax::Int = DEFAULT_LEVIN_NMAX, Kmax::Int = DEFAULT_LEVIN_KMAX, kwargs...)
-    KG = kerr_geo_orbit(a, p, e, x)
-    if typeof(KG) == Vector{String}
-        return KG
-    end
-    KG_master = GridSampling.kerr_geo_generic_sample_dense(KG, Nmax, Kmax)
-    return convolution_integral_generic_levin_isem(KG_master, s, l, m, n, k, N_sample, K_sample; Nmax = Nmax, Kmax = Kmax, kwargs...)
+function convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sample::Int64, K_sample::Int64; Nmax::Int = DEFAULT_LEVIN_NMAX, Kmax::Int = DEFAULT_LEVIN_KMAX, cache=nothing, trajectory=nothing, geometry_owner=nothing, kwargs...)
+    route = _submission_public_route(a, p, e, x, cache, trajectory, geometry_owner)
+    KG_master = route.master
+    KG_master === nothing && (KG_master = GridSampling.kerr_geo_generic_sample_dense(route.KG, Nmax, Kmax))
+    return convolution_integral_generic_levin_isem(KG_master, s, l, m, n, k, N_sample, K_sample; Nmax = Nmax, Kmax = Kmax, cache=route.cache, kwargs...)
 end
 
 function convolution_integral_generic_adaptive_levin_isem(a, p, e, x, s, l, m, n, k, N_sample::Int64 = 128, K_sample::Int64 = 32; kwargs...)
     return convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N_sample, K_sample; adaptive = true, kwargs...)
 end
 
-function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, n::Int, k::Int; N0::Int = 64, K0::Int = 16, Nmax::Int = 2^14, Kmax::Int = 2^12, sample_tol::Float64 = 1e-3, tol::Float64 = 1e-8, max_flux::Float64 = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false)
+function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, n::Int, k::Int; N0::Int = 64, K0::Int = 16, Nmax::Int = 2^14, Kmax::Int = 2^12, sample_tol::Float64 = 1e-3, tol::Float64 = 1e-8, max_flux::Float64 = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, cache=nothing, geometry_owner=nothing)
+    if cache !== nothing
+        cache = _submission_public_cache(cache, geometry_owner, :generic)
+        return generic_mode_flux_from_master_cached!(cache, KG_master, s, l, m, n, k;
+            N0=N0, K0=K0, Nmax=Nmax, Kmax=Kmax, sample_tol=sample_tol, tol=tol,
+            max_flux=max_flux, mode_abs_floor=mode_abs_floor, zero_low_flux=zero_low_flux,
+            threaded_sampling=threaded_sampling)
+    end
+    geometry_owner === nothing || check_submission_geometry(geometry_owner, KG_master)
     ispow2(N0) || throw(ArgumentError("N0 must be a power of 2"))
     ispow2(K0) || throw(ArgumentError("K0 must be a power of 2"))
     ispow2(Nmax) || throw(ArgumentError("Nmax must be a power of 2"))
@@ -1858,11 +2204,11 @@ function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, 
         return res
     end
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
-    Ysol = _generic_isem_y_solution(s, l, m, a, ω)
+    Ysol = _generic_isem_y_solution(s, l, m, a, ω; lambda = SH.lambda, check_radii = _orbit_check_radii(KG_master))
 
     N = N0
     K = K0
-    KG_samp = GridSampling.subsample_generic_sample(KG_master, N, K)
+    KG_samp = _generic_submission_trap_sample(geometry_owner, KG_master, N, K)
     Ysamp = if s == 2
         threaded_sampling ? GridSampling.y_sample_p2_isem_threaded(Ysol, KG_samp) : GridSampling.y_sample_p2_isem(Ysol, KG_samp)
     else
@@ -1872,12 +2218,13 @@ function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, 
     res = _generic_flux_from_sample(KG_samp, Ysamp, SHsamp, s, l, m, n, k, a, ω, ϒθ)
     flux_scale = max(max_flux, eps(Float64))
     effective_sample_tol = min(sample_tol, 3.0 * sqrt(tol))
-    min_stop_N = min(max(4N0, 256), Nmax)
+    min_stop_N = _radial_phase_min_sample(KG_master, ω, m, n,
+        _eccentric_fourier_min_sample(min(max(4N0, 256), Nmax), Nmax, n), Nmax)
     min_stop_K = min(max(4K0, 64), Kmax)
     while N < Nmax || K < Kmax
         N2 = min(2N, Nmax)
         K2 = min(2K, Kmax)
-        next_sample = GridSampling.subsample_generic_sample(KG_master, N2, K2)
+        next_sample = _generic_submission_trap_sample(geometry_owner, KG_master, N2, K2)
         next_Ysamp = threaded_sampling ? GridSampling.refine_generic_y_sample_threaded(Ysol, Ysamp, next_sample) : GridSampling.refine_generic_y_sample(Ysol, Ysamp, next_sample)
         next_SHsamp = threaded_sampling ? GridSampling.refine_generic_swsh_sample_threaded(SH, SHsamp, next_sample) : GridSampling.refine_generic_swsh_sample(SH, SHsamp, next_sample)
         res2 = _generic_flux_from_sample(next_sample, next_Ysamp, next_SHsamp, s, l, m, n, k, a, ω, ϒθ)
@@ -1887,7 +2234,8 @@ function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, 
         factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
         low_flux_cutoff = _low_flux_cutoff(max_flux, tol)
         relE = _relative_energy_change(res2["EnergyFlux"], res["EnergyFlux"])
-        low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor
+        # a mode is negligible only when two consecutive refinement levels are below the floor
+        low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor && abs(res["EnergyFlux"]) < mode_abs_floor
         significant_for_alias = abs(res2["EnergyFlux"]) > low_flux_cutoff
         allow_stop = (N >= min_stop_N && K >= min_stop_K) || !significant_for_alias
         has_flux_reference = max_flux > 100 * eps(Float64)
@@ -1908,7 +2256,7 @@ function generic_mode_flux_from_master(KG_master::Dict, s::Int, l::Int, m::Int, 
         Ysamp = next_Ysamp
         SHsamp = next_SHsamp
         res = res2
-        if allow_stop && !suspect_needs_extra && (factor * relE <= effective_sample_tol || abs(res2["EnergyFlux"]) < low_flux_cutoff || low_flux_done)
+        if allow_stop && !suspect_needs_extra && (factor * relE <= effective_sample_tol || (abs(res2["EnergyFlux"]) < low_flux_cutoff && abs(res["EnergyFlux"]) < low_flux_cutoff) || low_flux_done)
             if zero_low_flux && low_flux_done
                 res["Amplitude"] = 0.0 + 0.0im
                 res["EnergyFlux"] = 0.0
@@ -1929,9 +2277,6 @@ end
 
 function generic_mode_flux(a, p, e, x, s::Int, l::Int, m::Int, n::Int, k::Int; N0::Int = 64, K0::Int = 16, Nmax::Int = 2^14, Kmax::Int = 2^12, sample_tol::Float64 = 1e-3, tol::Float64 = 1e-8, max_flux::Float64 = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false)
     KG = kerr_geo_orbit(a, p, e, x)
-    if typeof(KG) == Vector{String}
-        return KG
-    end
     KG_master = GridSampling.kerr_geo_generic_sample_dense(KG, Nmax, Kmax)
     return generic_mode_flux_from_master(KG_master, s, l, m, n, k; N0 = N0, K0 = K0, Nmax = Nmax, Kmax = Kmax, sample_tol = sample_tol, tol = tol, max_flux = max_flux, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
 end
@@ -2095,6 +2440,8 @@ function _phase_values_from_derivative(x::Vector{Float64}, gprime_vals::Vector{<
     return g
 end
 
+# Piecewise (local) Levin quadrature: the Chebyshev nodes on [0, π] are sorted ascending and split into short
+# overlapping segments, each with its own differentiation matrix; factors cache the QR solve per phase.
 struct Levin1DLocalSegmentPlan
     idx::UnitRange{Int}
     D::Matrix{Float64}
@@ -2129,29 +2476,26 @@ const DEFAULT_ADAPTIVE_LEVIN_LOCAL_N = 16
 const DEFAULT_ADAPTIVE_LEVIN_TOL0 = 1e-6
 const DEFAULT_ADAPTIVE_LEVIN_MIN_DEPTH = 2
 const DEFAULT_ADAPTIVE_LEVIN_TOL_MAX = 1e-2
-const _levin_1d_local_plan_cache = Dict{Tuple{Int, Int}, Levin1DLocalPlan}()
 
 function _levin_1d_local_plan(n::Int, local_order::Int)
     p = min(max(local_order, 4), n)
-    return get!(_levin_1d_local_plan_cache, (n, p)) do
-        x_ref = [cos(π * k / (n - 1)) for k in 0:n-1]
-        x_phys = π .* (x_ref .+ 1.0) ./ 2.0
-        perm = sortperm(x_phys)
-        x = Float64.(x_phys[perm])
-        segments = Levin1DLocalSegmentPlan[]
-        start = 1
-        while start < n
-            stop = min(start + p - 1, n)
-            if 0 < n - stop < 3
-                stop = n
-            end
-            idx = start:stop
-            push!(segments, Levin1DLocalSegmentPlan(idx, _diff_matrix_arbitrary_nodes(collect(x[idx]))))
-            stop == n && break
-            start = stop
+    x_ref = [cos(π * k / (n - 1)) for k in 0:n-1]
+    x_phys = π .* (x_ref .+ 1.0) ./ 2.0
+    perm = sortperm(x_phys)
+    x = Float64.(x_phys[perm])
+    segments = Levin1DLocalSegmentPlan[]
+    start = 1
+    while start < n
+        stop = min(start + p - 1, n)
+        if 0 < n - stop < 3
+            stop = n
         end
-        Levin1DLocalPlan(perm, x, segments)
+        idx = start:stop
+        push!(segments, Levin1DLocalSegmentPlan(idx, _diff_matrix_arbitrary_nodes(collect(x[idx]))))
+        stop == n && break
+        start = stop
     end
+    return Levin1DLocalPlan(perm, x, segments)
 end
 
 function _levin_1d_local_segment(f_vals::Vector{<:Number}, gprime_vals::Vector{<:Number}, g_left::Number, g_right::Number, x::Vector{Float64}, D::Matrix{Float64} = _diff_matrix_arbitrary_nodes(x))
@@ -2287,6 +2631,7 @@ function levin_1d_integral_local_phase(f_vals::Vector{<:Number}, gprime_vals::Ve
     n = length(f_vals)
     @assert length(gprime_vals) == n "gprime length must match f ($(length(gprime_vals)) ≠ $n)"
     @assert length(g_vals) == n "phase length must match f ($(length(g_vals)) ≠ $n)"
+    # g_vals follow the Chebyshev node order, which starts at q = π.
     n <= 2 && return levin_1d_integral(f_vals, gprime_vals, g_vals[end], g_vals[1])
     plan = _levin_1d_local_plan(n, local_order)
     x = plan.x
@@ -2374,6 +2719,26 @@ function _conjugate_levin_1d_local_phase_factor(factor::Levin1DLocalPhaseFactor)
         ))
     end
     return Levin1DLocalPhaseFactor(factor.perm, factors)
+end
+
+function _levin_1d_columns_factored(F::AbstractMatrix{<:Number}, factor::Levin1DLocalPhaseFactor)
+    nr, nc = size(F)
+    Fp = F[factor.perm, :]
+    total = zeros(ComplexF64, nc)
+    for segment in factor.segments
+        segment.rank == 0 && continue
+        Y = segment.qadj * @view Fp[segment.idx, :]
+        Sol = UpperTriangular(segment.r) \ Y
+        @inbounds for row in 1:segment.rank
+            pidx = segment.piv[row]
+            if pidx == 1
+                @views total .-= Sol[row, :] .* segment.exp_left
+            elseif pidx == segment.n
+                @views total .+= Sol[row, :] .* segment.exp_right
+            end
+        end
+    end
+    return total
 end
 
 function _levin_1d_integral_local_phase_factored(f_vals::Vector{<:Number}, factor::Levin1DLocalPhaseFactor)
@@ -2777,8 +3142,8 @@ function convolution_integral_generic_levin(a, p, e, x, s, l, m, n, k, N_sample,
     end
 end
 
-function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sample)
-    KG = kerr_geo_orbit(a, p, e, 1.0)  # Assume this handles equatorial case
+function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sample; x=1.0)
+    KG = kerr_geo_orbit(a, p, e, x)
     
     # Extract frequencies and compute omega (radial-only mode)
     Frequencies = KG["Frequencies"]
@@ -2796,8 +3161,7 @@ function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sampl
         Yup_soln = Y_solution(s, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
         SH_p2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
         Yup_samp = y_sample_p2(Yup_soln, KG_samp)
-        S0_p2 = SH_p2(π/2, 0.0)      
-        S1_p2 = SH_p2(π/2, 0.0; theta_derivative=1)
+        S0_p2, S1_p2 = value_and_theta_derivative(SH_p2, π/2, 0.0)
         S2_p2 = (m^2 + (a * omega)^2 - 2 - 2 * a * omega * m - SH_p2.lambda) * S0_p2
         inte_samp_p2 = integrand_eccentric_sample_p2(KG_samp, Yup_samp, (S0_p2, S1_p2, S2_p2), n)
         integral_p2 = trapezoidal_1d_integral(inte_samp_p2)
@@ -2816,8 +3180,7 @@ function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sampl
         Yin_soln = Y_solution(s, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
         SH_m2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")  # θ-fixed harmonics
         Yin_samp = y_sample_m2(Yin_soln, KG_samp) 
-        S0_m2 = SH_m2(π/2, 0.0)      
-        S1_m2 = SH_m2(π/2, 0.0; theta_derivative=1)
+        S0_m2, S1_m2 = value_and_theta_derivative(SH_m2, π/2, 0.0)
         S2_m2 = (m^2 + (a * omega)^2 + 2 - 2 * a * omega * m - SH_m2.lambda) * S0_m2
         inte_samp_m2 = integrand_eccentric_sample_m2(KG_samp, Yin_samp, (S0_m2, S1_m2, S2_m2), n)
         integral_m2 = trapezoidal_1d_integral(inte_samp_m2)
@@ -2836,9 +3199,9 @@ function convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N_sampl
     end
 end
 
-function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample)
+function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample; x=1.0)
 
-    KG = kerr_geo_orbit(a, p, e, 1.0)
+    KG = kerr_geo_orbit(a, p, e, x)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -2846,10 +3209,7 @@ function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample)
     ϒφ = Frequencies["ϒϕ"]
     omega = (m * ϒφ + n * ϒr) / Γ
     if _skip_radiative_mode(s, a, m, omega)
-        result = _zero_radiative_mode(omega, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
-        _eccentric_levin_last_key[] = key
-        _eccentric_levin_last_result[] = result
-        return result
+        return _zero_radiative_mode(omega, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
     end
     rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(500.0, 10pi / abs(omega))
@@ -2859,8 +3219,7 @@ function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample)
         Yup_soln = Y_solution(s, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
         SH_p2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
         Yup_samp = y_sample_p2(Yup_soln, KG_samp)
-        S0_p2 = SH_p2(π/2, 0.0)      
-        S1_p2 = SH_p2(π/2, 0.0; theta_derivative=1)
+        S0_p2, S1_p2 = value_and_theta_derivative(SH_p2, π/2, 0.0)
         S2_p2 = (m^2 + (a * omega)^2 - 2 - 2 * a * omega * m - SH_p2.lambda) * S0_p2
         Jp_up, Jm_up, drphase_up, rphaseL_up, rphaseR_up, prefactor_up = integrand_eccentric_sample_cheby_p2(KG_samp, Yup_samp, (S0_p2, S1_p2, S2_p2), n)
         integralp_p2 = levin_1d_integral(Jp_up, drphase_up, rphaseL_up, rphaseR_up)
@@ -2881,8 +3240,7 @@ function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample)
         Yin_soln = Y_solution(s, l, m, a, omega, IN; rsin = rsin, rsout = rsout)
         SH_m2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
         Yin_samp = y_sample_m2(Yin_soln, KG_samp)   
-        S0_m2 = SH_m2(π/2, 0.0)      
-        S1_m2 = SH_m2(π/2, 0.0; theta_derivative=1)
+        S0_m2, S1_m2 = value_and_theta_derivative(SH_m2, π/2, 0.0)
         S2_m2 = (m^2 + (a * omega)^2 + 2 - 2 * a * omega * m - SH_m2.lambda) * S0_m2
         Jp_in, Jm_in, drphase_in, rphaseL_in, rphaseR_in, prefactor_in = integrand_eccentric_sample_cheby_m2(KG_samp, Yin_samp, (S0_m2, S1_m2, S2_m2), n)
         integralp_m2 = levin_1d_integral(Jp_in, drphase_in, rphaseL_in, rphaseR_in)
@@ -2904,7 +3262,7 @@ function convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N_sample)
 end
 
 function convolution_integral_inclined_trapezoidal(a, p, x, s, l, m, k, K_sample)
-    KG = kerr_geo_orbit(a, p, 0.0, x)  # Assume this handles radial-fixed case
+    KG = kerr_geo_orbit(a, p, 0.0, x)  # e = 0: only the polar motion is sampled
     
     # Extract frequencies and compute omega (polar-only mode)
     Frequencies = KG["Frequencies"]
@@ -2917,8 +3275,7 @@ function convolution_integral_inclined_trapezoidal(a, p, x, s, l, m, k, K_sample
     rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(200.0, 10pi / abs(omega))
     KG_samp = kerr_geo_inclined_sample(KG, K_sample)
-    carter_samp = carter_ingredients_sample(KG_samp, a, m, omega)
-    carter_factor = trapezoidal_1d_integral(carter_samp)
+    carter_factor = _inclined_carter_factor(KG_samp, a, p, KG["Frequencies"]["ϒϕ"], m, omega)
 
     if s == 2
         Yup_soln = Y_solution(s, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
@@ -2981,8 +3338,7 @@ function convolution_integral_inclined_levin(a, p, x, s, l, m, k, K_sample)
     rsout = max(200.0, 10pi / abs(omega))
     KG_samp = kerr_geo_inclined_sample_cheby(KG, K_sample)
     KG_trap = kerr_geo_inclined_sample(KG, K_sample)
-    carter_samp = carter_ingredients_sample(KG_trap, a, m, omega)
-    carter_factor = trapezoidal_1d_integral(carter_samp)
+    carter_factor = _inclined_carter_factor(KG_trap, a, p, KG["Frequencies"]["ϒϕ"], m, omega)
 
     if s == 2
         Yup_soln = Y_solution(s, l, m, a, omega, UP; rsin = rsin, rsout = rsout)
@@ -3036,9 +3392,9 @@ function convolution_integral_inclined_levin(a, p, x, s, l, m, k, K_sample)
     end
 end
 
-function convolution_integral_circular_equatorial_m2(a, p, l, m)
+function convolution_integral_circular_equatorial_m2(a, p, l, m; x=1.0)
 
-    KG = kerr_geo_orbit(a, p, 0.0, 1.0)
+    KG = kerr_geo_orbit(a, p, 0.0, x)
     E = KG["Energy"]
     Lz = KG["AngularMomentum"]
     Γ = KG["Frequencies"]["ϒt"]
@@ -3062,8 +3418,7 @@ function convolution_integral_circular_equatorial_m2(a, p, l, m)
 
     c = a * ω
     SH = spin_weighted_spheroidal_harmonic(-2, l, m, c)
-    S0 = SH(θ, 0.0)
-    S1 = SH(θ, 0.0; theta_derivative=1)
+    S0, S1 = value_and_theta_derivative(SH, θ, 0.0)
     λ = SH.lambda
     S2 = (m^2 + c^2 + 2 - 2c*m - λ) * S0
 
@@ -3116,9 +3471,9 @@ function convolution_integral_circular_equatorial_m2(a, p, l, m)
     )
 end
 
-function convolution_integral_circular_equatorial_p2(a, p, l, m)
+function convolution_integral_circular_equatorial_p2(a, p, l, m; x=1.0)
 
-    KG = kerr_geo_orbit(a, p, 0.0, 1.0)
+    KG = kerr_geo_orbit(a, p, 0.0, x)
     E = KG["Energy"]
     Lz = KG["AngularMomentum"]
     Γ = KG["Frequencies"]["ϒt"]
@@ -3142,8 +3497,7 @@ function convolution_integral_circular_equatorial_p2(a, p, l, m)
 
     c = a * ω
     SH = spin_weighted_spheroidal_harmonic(2, l, m, c)
-    S0 = SH(θ, 0.0)
-    S1 = SH(θ, 0.0; theta_derivative=1)
+    S0, S1 = value_and_theta_derivative(SH, θ, 0.0)
     λ = SH.lambda
     S2 = (m^2 + c^2 - 2 - 2c*m - λ) * S0
 
@@ -3204,11 +3558,11 @@ function convolution_integral_circular_equatorial_p2(a, p, l, m)
     )
 end
 
-function convolution_integral_circular_equatorial(a, p, s, l, m)
+function convolution_integral_circular_equatorial(a, p, s, l, m; x=1.0)
     if s == 2
-        return convolution_integral_circular_equatorial_p2(a, p, l, m)
+        return convolution_integral_circular_equatorial_p2(a, p, l, m; x)
     elseif s == -2
-        return convolution_integral_circular_equatorial_m2(a, p, l, m)
+        return convolution_integral_circular_equatorial_m2(a, p, l, m; x)
     else
         error("Spin weight s must be either 2 or -2.")
     end
@@ -3216,9 +3570,6 @@ end
 
 function convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N = 256, K = 64)
     KG = kerr_geo_orbit(a, p, e, x)
-    if typeof(KG) == Vector{String}
-        return KG
-    end
     if m == 0 && n == 0 && k == 0
         return Dict("Amplitude" => 0.0 + 0.0im, "omega" => 0.0, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
     end
@@ -3235,7 +3586,7 @@ function convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N = 256, K 
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_circular_equatorial(a, p, s, l, m)
+        return convolution_integral_circular_equatorial(a, p, s, l, m; x)
     elseif isapprox(e, 0.0; atol=1e-12) && !isapprox(abs(x), 1.0; atol=1e-12)
         if n != 0
             return Dict(
@@ -3263,7 +3614,7 @@ function convolution_integral_trapezoidal(a, p, e, x, s, l, m, n, k; N = 256, K 
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N)
+        return convolution_integral_eccentric_trapezoidal(a, p, e, s, l, m, n, N; x)
     else
         return convolution_integral_generic_trapezoidal(a, p, e, x, s, l, m, n, k, N, K)
     end
@@ -3271,9 +3622,6 @@ end
 
 function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
     KG = kerr_geo_orbit(a, p, e, x)
-    if typeof(KG) == Vector{String}
-        return KG
-    end
     if m == 0 && n == 0 && k == 0
         return Dict("Amplitude" => 0.0 + 0.0im, "omega" => 0.0, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
     end
@@ -3290,7 +3638,7 @@ function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_circular_equatorial(a, p, s, l, m)
+        return convolution_integral_circular_equatorial(a, p, s, l, m; x)
     elseif isapprox(e, 0.0; atol=1e-12) && !isapprox(abs(x), 1.0; atol=1e-12)
         if n != 0
             return Dict(
@@ -3318,14 +3666,23 @@ function convolution_integral_levin(a, p, e, x, s, l, m, n, k; N = 256, K = 32)
                     "SWSH" => nothing
                     )
         end
-        return convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N)
+        return convolution_integral_eccentric_levin(a, p, e, s, l, m, n, N; x)
     else
         return convolution_integral_generic_levin(a, p, e, x, s, l, m, n, k, N, K)
     end
 end
 
-function convolution_integral_circular_equatorial_isem(a, p, s, l, m)
-    KG = kerr_geo_orbit(a, p, 0.0, 1.0)
+"""
+    convolution_integral_circular_equatorial_isem(a, p, s, l, m; x = 1.0, trajectory = nothing)
+
+Closed-form flux of the (s, l, m) mode of a circular equatorial orbit (x = ±1) using the ISEM radial solution.
+Returns a `Dict` with "Amplitude", "omega", "EnergyFlux", "AngularMomentumFlux", "CarterConstantFlux" (always 0),
+"Trajectory", "YSolution" and "SWSH"; a mode whose frequency is static at the relevant boundary is returned as a
+zero-flux `Dict` with "SkippedMode" => true. `trajectory` supplies a precomputed `kerr_geo_orbit` result for the
+same (a, p, 0, x) and is checked against those parameters.
+"""
+function convolution_integral_circular_equatorial_isem(a, p, s, l, m; x=1.0, trajectory=nothing)
+    KG = _submission_public_trajectory(a, p, 0.0, x, trajectory)
     E = KG["Energy"]
     Lz = KG["AngularMomentum"]
     Γ = KG["Frequencies"]["ϒt"]
@@ -3342,14 +3699,12 @@ function convolution_integral_circular_equatorial_isem(a, p, s, l, m)
     rp = 1.0 + sqrt(1.0 - a^2)
     rm = 1.0 - sqrt(1.0 - a^2)
 
-    Y_soln = _isem_y_solution(s, l, m, a, ω)
-    Y, Yp, X, _ = Y_soln.Y_solution(r)
-    A = Y_soln.mode.lambda
-
     c = a * ω
     SH = spin_weighted_spheroidal_harmonic(s, l, m, c)
-    S0 = SH(θ, 0.0)
-    S1 = SH(θ, 0.0; theta_derivative = 1)
+    Y_soln = _isem_y_solution(s, l, m, a, ω; lambda = SH.lambda)
+    Y, Yp, X, _ = Y_soln.Y_solution(r)
+    A = Y_soln.mode.lambda
+    S0, S1 = value_and_theta_derivative(SH, θ, 0.0)
     S2 = s == -2 ? (m^2 + c^2 + 2 - 2c*m - A) * S0 : (m^2 + c^2 - 2 - 2c*m - A) * S0
 
     ρ = -1.0 / r
@@ -3441,13 +3796,17 @@ function convolution_integral_circular_equatorial_isem(a, p, s, l, m)
     end
 end
 
-function convolution_integral_eccentric_trapezoidal_isem(a, p, e, s, l, m, n, N_sample; Nmax::Int = 2^14, kwargs...)
-    KG = kerr_geo_orbit(a, p, e, 1.0)
-    KG_sample = kerr_geo_eccentric_sample_dense(KG, Nmax)
-    return convolution_integral_eccentric_trapezoidal_isem(KG_sample, s, l, m, n, N_sample; Nmax = Nmax, kwargs...)
+# Standalone entry point that builds the dense eccentric master itself; the mode-summation path calls the
+# `KG_sample::Dict` method directly.
+function convolution_integral_eccentric_trapezoidal_isem(a, p, e, s, l, m, n, N_sample; x=1.0, Nmax::Int = 2^14, cache=nothing, trajectory=nothing, geometry_owner=nothing, kwargs...)
+    route = _submission_public_route(a, p, e, x, cache, trajectory, geometry_owner)
+    KG_sample = route.master
+    KG_sample === nothing && (KG_sample = kerr_geo_eccentric_sample_dense(route.KG, Nmax))
+    return convolution_integral_eccentric_trapezoidal_isem(KG_sample, s, l, m, n, N_sample; Nmax = Nmax, cache=route.cache, kwargs...)
 end
 
 function convolution_integral_eccentric_levin_isem(KG_sample::Dict, s, l, m, n, N_sample::Int64; Nmax::Int = DEFAULT_LEVIN_NMAX, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, cache = nothing)
+    _check_mode_geometry(cache, KG_sample)
     ispow2(N_sample) || throw(ArgumentError("N_sample must be a power of 2"))
     ispow2(Nmax) || throw(ArgumentError("Nmax must be a power of 2"))
     N_sample <= Nmax || throw(ArgumentError("N_sample must not exceed Nmax"))
@@ -3465,7 +3824,7 @@ function convolution_integral_eccentric_levin_isem(KG_sample::Dict, s, l, m, n, 
         return res
     end
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
-    Ysol = _isem_y_solution(s, l, m, a, ω)
+    Ysol = _isem_y_solution(s, l, m, a, ω; lambda = SH.lambda, check_radii = _orbit_check_radii(KG_sample))
     levin_cache = cache isa EccentricFluxCache ? cache : EccentricFluxCache()
     flux_scale = max(Float64(max_flux), eps(Float64))
     effective_sample_tol = min(sample_tol, 3.0 * sqrt(Float64(tol)))
@@ -3484,18 +3843,18 @@ function convolution_integral_eccentric_levin_isem(KG_sample::Dict, s, l, m, n, 
         res2 = _eccentric_flux_from_cheby_sample(KG_cheby, Ysamp, SH, s, a, ω, m, n; cache = levin_cache)
         absE = abs(res2["EnergyFlux"])
         if res === nothing
+            # The first grid can miss a narrow periapsis burst; a value below the floor is only accepted
+            # when the next refinement confirms it.
             res = res2
-            if mode_abs_floor > 0.0 && absE < mode_abs_floor
-                break
-            end
             pending_low_flux_check = absE < low_flux_budget
         else
             relE = _relative_energy_change(res2["EnergyFlux"], res["EnergyFlux"])
             excess = abs(res2["EnergyFlux"]) / flux_scale
             factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
             low_flux_confirmed = pending_low_flux_check && absE < low_flux_budget && _levin_low_flux_stable(res2["EnergyFlux"], res["EnergyFlux"], mode_abs_floor)
+            below_floor = mode_abs_floor > 0.0 && absE < mode_abs_floor && abs(res["EnergyFlux"]) < mode_abs_floor
             res = res2
-            if (mode_abs_floor > 0.0 && absE < mode_abs_floor) || low_flux_confirmed || factor * relE <= effective_sample_tol
+            if below_floor || low_flux_confirmed || factor * relE <= effective_sample_tol
                 break
             end
             pending_low_flux_check = absE < low_flux_budget
@@ -3527,11 +3886,10 @@ end
 
 function _eccentric_flux_from_sample(KG_samp::Dict, Ysamp::Dict, SH, s, a, ω, m, n)
     if s == 2
-        S0 = SH(π/2, 0.0)
-        S1 = SH(π/2, 0.0; theta_derivative = 1)
+        S0, S1 = value_and_theta_derivative(SH, π/2, 0.0)
         S2 = (m^2 + (a * ω)^2 - 2 - 2 * a * ω * m - SH.lambda) * S0
-        inte_samp = integrand_eccentric_sample_p2(KG_samp, Ysamp, (S0, S1, S2), n)
-        integral = trapezoidal_1d_integral(inte_samp)
+        integral = GridSampling._eccentric_integral_sample_p2_fast(
+            KG_samp, Ysamp, (S0, S1, S2), n)
         hf = horizon_factor(ω, a, m)
         return Dict(
             "Amplitude" => integral,
@@ -3544,11 +3902,10 @@ function _eccentric_flux_from_sample(KG_samp::Dict, Ysamp::Dict, SH, s, a, ω, m
             "SWSH" => SH
         )
     elseif s == -2
-        S0 = SH(π/2, 0.0)
-        S1 = SH(π/2, 0.0; theta_derivative = 1)
+        S0, S1 = value_and_theta_derivative(SH, π/2, 0.0)
         S2 = (m^2 + (a * ω)^2 + 2 - 2 * a * ω * m - SH.lambda) * S0
-        inte_samp = integrand_eccentric_sample_m2(KG_samp, Ysamp, (S0, S1, S2), n)
-        integral = trapezoidal_1d_integral(inte_samp)
+        integral = GridSampling._eccentric_integral_sample_m2_fast(
+            KG_samp, Ysamp, (S0, S1, S2), n)
         return Dict(
             "Amplitude" => integral,
             "omega" => ω,
@@ -3568,27 +3925,6 @@ end
     return reinterpret(UInt64, Float64(ω))
 end
 
-function _cached_eccentric_levin_factor!(cache::EccentricFluxCache, N::Int, m::Int, n::Int, ω, sign::Int, gprime_vals::Vector{<:Number}, g_vals::Vector{<:Number})
-    key_pos = (N, m, n, 1, _omega_key(ω))
-    positive_factor = get!(cache.levin_phase_factors, key_pos) do
-        _levin_1d_local_phase_factor(gprime_vals, g_vals)
-    end
-    sign == 1 && return positive_factor
-
-    key_neg = (N, m, n, -1, _omega_key(ω))
-    return get!(cache.levin_phase_factors, key_neg) do
-        _conjugate_levin_1d_local_phase_factor(positive_factor)
-    end
-end
-
-function _eccentric_levin_integral(f_vals::Vector{<:Number}, gprime_vals::Vector{<:Number}, g_vals::Vector{<:Number}, cache, N::Int, m::Int, n::Int, ω, sign::Int)
-    if cache isa EccentricFluxCache
-        factor = _cached_eccentric_levin_factor!(cache, N, m, n, ω, sign, gprime_vals, g_vals)
-        return _levin_1d_integral_local_phase_factored(f_vals, factor)
-    end
-    return sign == 1 ? levin_1d_integral_local_phase(f_vals, gprime_vals, g_vals) : levin_1d_integral_local_phase(f_vals, -gprime_vals, -g_vals)
-end
-
 function _internal_radial_phase(KG_samp::Dict, s::Int, a, ω, m)
     r = KG_samp["r"]
     rs = KG_samp["rs"]
@@ -3596,8 +3932,7 @@ function _internal_radial_phase(KG_samp::Dict, s::Int, a, ω, m)
     rp = 1.0 + κ
     rm = 1.0 - κ
     log_term = log.((r .- rp) ./ (r .- rm))
-    ψ = s == -2 ? ω .* rs .- a .* m .* log_term ./ (2.0κ) :
-                  .-ω .* rs .+ a .* m .* log_term ./ (2.0κ)
+    ψ = ω .* rs .- a .* m .* log_term ./ (2.0κ)
     return (phase_values = ψ, phase_factor = exp.(1im .* ψ))
 end
 
@@ -3621,8 +3956,7 @@ end
 function _eccentric_flux_from_cheby_sample(KG_samp::Dict, Ysamp::Dict, SH, s, a, ω, m, n; cache = nothing)
     N = KG_samp["N_sample"]::Int
     if s == 2
-        S0 = SH(π/2, 0.0)
-        S1 = SH(π/2, 0.0; theta_derivative = 1)
+        S0, S1 = value_and_theta_derivative(SH, π/2, 0.0)
         S2 = (m^2 + (a * ω)^2 - 2 - 2 * a * ω * m - SH.lambda) * S0
         Jp, Jm, _, _, _, prefactor = integrand_eccentric_sample_cheby_p2(KG_samp, Ysamp, (S0, S1, S2), n)
         phase = _eccentric_radial_phase(KG_samp, cache, m, n, ω)
@@ -3642,8 +3976,7 @@ function _eccentric_flux_from_cheby_sample(KG_samp::Dict, Ysamp::Dict, SH, s, a,
             "SWSH" => SH
         )
     elseif s == -2
-        S0 = SH(π/2, 0.0)
-        S1 = SH(π/2, 0.0; theta_derivative = 1)
+        S0, S1 = value_and_theta_derivative(SH, π/2, 0.0)
         S2 = (m^2 + (a * ω)^2 + 2 - 2 * a * ω * m - SH.lambda) * S0
         Jp, Jm, _, _, _, prefactor = integrand_eccentric_sample_cheby_m2(KG_samp, Ysamp, (S0, S1, S2), n)
         phase = _eccentric_radial_phase(KG_samp, cache, m, n, ω)
@@ -3671,7 +4004,33 @@ struct AdaptiveEccentricLevinLeaf
     bin::Int
     amp::ComplexF64
     active::Bool
+    tail::Float64
 end
+
+# Resolution of a segment's samples on its Chebyshev-Lobatto nodes x_k = cos(pi k / (n - 1)): the last two
+# Chebyshev coefficients over the largest one. Small when the n nodes resolve the function on the segment;
+# Inf (unresolved) for fewer than 4 nodes or non-finite samples.
+function _cheb_tail(v::AbstractVector)
+    n = length(v)
+    n < 4 && return Inf
+    all(isfinite, v) || return Inf
+    N = n - 1
+    cmax = 0.0
+    tail = 0.0
+    for j in 0:N
+        c = zero(ComplexF64)
+        for k in 0:N
+            w = (k == 0 || k == N) ? 0.5 : 1.0
+            c += w * v[k+1] * cospi(j * k / N)
+        end
+        c = abs(c) * ((j == 0 || j == N) ? 1.0 : 2.0) / N
+        cmax = max(cmax, c)
+        j >= N - 1 && (tail += c)
+    end
+    return cmax > 0 ? tail / cmax : 0.0
+end
+
+_cheb_tail(vs::Vararg{AbstractVector}) = maximum(_cheb_tail(v) for v in vs)
 
 @inline function _adaptive_levin_depth_alpha(tol0::Float64, min_depth::Int, max_depth::Int, tol_max::Float64)
     if !(tol0 > 0.0) || !(tol_max > tol0) || max_depth <= min_depth
@@ -3689,10 +4048,20 @@ end
 function _cached_adaptive_eccentric_segment_bundle!(cache, KG::Dict, local_n::Int, level::Int, bin::Int)
     if cache isa EccentricFluxCache
         return get!(cache.adaptive_levin_segments, (local_n, level, bin)) do
-            nbin = 2^level
-            qlo = π * bin / nbin
-            qhi = π * (bin + 1) / nbin
-            eccentric_segment_sample_bundle_cheby(KG, qlo, qhi, local_n)
+            build = function()
+                nbin = 2^level
+                qlo = π * bin / nbin
+                qhi = π * (bin + 1) / nbin
+                eccentric_segment_sample_bundle_cheby(KG, qlo, qhi, local_n)
+            end
+            owner = cache.geometry_owner
+            owner === nothing && return build()
+            _submission_geometry_lookup!(owner, :adaptive_segments, (local_n, level, bin), owner.master) do
+                KG["Trajectory"] === owner.master["Trajectory"] &&
+                    KG["Frequencies"] === owner.master["Frequencies"] ||
+                    throw(ArgumentError("Adaptive segment belongs to another orbit"))
+                build()
+            end
         end
     end
     nbin = 2^level
@@ -3718,13 +4087,11 @@ end
 function _adaptive_eccentric_factored_segment(bundle::Dict, Ysamp::Dict, SH, s::Int, a, ω, m::Int, n::Int)
     KG_samp = bundle["sample"]
     if s == -2
-        S0 = SH(π/2, 0.0)
-        S1 = SH(π/2, 0.0; theta_derivative = 1)
+        S0, S1 = value_and_theta_derivative(SH, π/2, 0.0)
         S2 = (m^2 + (a * ω)^2 + 2 - 2 * a * ω * m - SH.lambda) * S0
         return integrand_eccentric_factored_segment_cheby_m2(KG_samp, bundle["geometry"], bundle["phase_basis"], Ysamp, (S0, S1, S2), m, n, a, ω)
     elseif s == 2
-        S0 = SH(π/2, 0.0)
-        S1 = SH(π/2, 0.0; theta_derivative = 1)
+        S0, S1 = value_and_theta_derivative(SH, π/2, 0.0)
         S2 = (m^2 + (a * ω)^2 - 2 - 2 * a * ω * m - SH.lambda) * S0
         Jp, Jm, _, _, _, prefactor = integrand_eccentric_sample_cheby_p2(KG_samp, Ysamp, (S0, S1, S2), n)
         phase = _eccentric_radial_phase(KG_samp, nothing, m, n, ω)
@@ -3741,9 +4108,108 @@ function _adaptive_eccentric_factored_segment(bundle::Dict, Ysamp::Dict, SH, s::
     end
 end
 
-function _adaptive_eccentric_segment_amplitude!(cache, KG::Dict, Ysol, SH, s::Int, a, ω, m::Int, n::Int, local_n::Int, level::Int, bin::Int; threaded_sampling::Bool = false)
+# Phase factorizations of an adaptive Levin segment. The phases depend on (s, m, n) and the segment only, so the
+# l walk of one (s, m, n) builds them once (they took about two thirds of a segment's cost at e = 0.95). Kept in the
+# geometry owner under its lock for the last LEVIN_PHASE_GROUPS (s, m, n) groups; no owner, no reuse.
+const LEVIN_PHASE_GROUPS = 1
+
+function _cached_levin_phase_factors!(build, cache, key::NTuple{7, Int})
+    owner = cache isa EccentricFluxCache ? cache.geometry_owner : nothing
+    owner === nothing && return build()
+    group = (key[1], key[2], key[3])
+    return lock(owner.lock) do
+        owner.closed && throw(ArgumentError("Submission geometry owner is closed"))
+        factors = owner.levin_phase_factors
+        haskey(factors, key) && return factors[key]
+        value = build()
+        if !(group in owner.levin_phase_groups)
+            push!(owner.levin_phase_groups, group)
+            while length(owner.levin_phase_groups) > LEVIN_PHASE_GROUPS
+                old = popfirst!(owner.levin_phase_groups)
+                filter!(entry -> (entry.first[1], entry.first[2], entry.first[3]) != old, factors)
+            end
+        end
+        factors[key] = value
+        return value
+    end
+end
+
+# Y of s = -2 IN split into its two waves at large r, Y = e^{-i phi} (A_in R_in + A_out R_out) / r^2 with the
+# Teukolsky series at infinity and the route's Teukolsky amplitudes (phi as in the Y definition). Y_out varies
+# slowly; Y_in carries e^{-2 i omega r*}. A single Levin phase leaves that factor in the "smooth" part, and at
+# e = 0.95 the adaptive refinement split the apoapsis half of the orbit down to its deepest level (about 200
+# leaves per tenth of the radial phase against 1 or 2 near periapsis).
+struct YTwoWave{O, F}
+    m::Int
+    a::Float64
+    omega::Float64
+    A_in::ComplexF64
+    A_out::ComplexF64
+    in_series::ISEM.RadialFunctions.TeukolskyInfinityInSeries
+    out_series::O
+    conversion::F
+    tolerance::Float64
+end
+
+const TWO_WAVE_TOL = 1e-12
+
+function _y_two_wave(Ysol, s::Int, l::Int, m::Int, a, ω)
+    (s == -2 && ω isa Real && ω > 0) || return nothing
+    Ysol isa ISEM.YRadialFunction || return nothing
+    A_in = ComplexF64(Ysol.incidence_amplitude)
+    A_out = ComplexF64(Ysol.reflection_amplitude)
+    (isfinite(A_in) && isfinite(A_out)) || return nothing
+    lambda = Ysol.mode.lambda
+    params = ISEM.gsn_parameters(s, l, m, a, ω; lambda = lambda)
+    RF = ISEM.RadialFunctions
+    return YTwoWave(m, Float64(a), Float64(ω), A_in, A_out,
+        RF.teukolsky_infinity_in_series(s, m, a, ω, lambda),
+        RF.teukolsky_infinity_series(params, 40, TWO_WAVE_TOL),
+        ISEM.TeukolskyTransformation._GSN_to_Y_coeffs_minus2_in(m, a, ω, lambda), TWO_WAVE_TOL)
+end
+
+# Samples of the two waves (dicts like y_sample_m2_isem's, with the given Binc) on the segment, or nothing if a
+# series misses its tolerance at any point.
+function _y_two_wave_samples(w::YTwoWave, KG_samp::Dict, Binc)
+    r_vals = KG_samp["r"]
+    N = length(r_vals)
+    Yi = Vector{ComplexF64}(undef, N); Ypi = similar(Yi); Xi = similar(Yi)
+    Yo = similar(Yi); Ypo = similar(Yi); Xo = similar(Yi)
+    a, ω, m = w.a, w.omega, w.m
+    κ = sqrt(1 - a^2)
+    rp, rm = 1 + κ, 1 - κ
+    @inbounds for i in 1:N
+        r = r_vals[i]
+        rs = rstar_from_r(a, r)
+        out = w.out_series(r)
+        out === nothing && return nothing
+        Rin, dRin, err = w.in_series(r, rs)
+        err <= w.tolerance || return nothing
+        phase = ω * rs - a * m / (rp - rm) * log((r - rp) / (r - rm))
+        e = exp(-im * phase)
+        Δ = r^2 - 2r + a^2
+        K = (r^2 + a^2) * ω - a * m
+        F11, F12, F21, F22 = w.conversion(r, rs)
+        det = F11 * F22 - F12 * F21
+        for (A, R, dR, Yv, Ypv, Xv) in ((w.A_in, Rin, dRin, Yi, Ypi, Xi), (w.A_out, out[1], out[2], Yo, Ypo, Xo))
+            Y = e * A * R / r^2
+            Yp = e * A * (dR / r^2 - 2R / r^3 - im * K / Δ * R / r^2)
+            Yv[i] = Y
+            Ypv[i] = Yp
+            Xv[i] = (F22 * Y - F12 * Yp) / det
+        end
+    end
+    return (in = Dict("Y" => Yi, "Yp" => Ypi, "X" => Xi, "Binc" => Binc),
+        out = Dict("Y" => Yo, "Yp" => Ypo, "X" => Xo, "Binc" => Binc))
+end
+
+function _adaptive_eccentric_segment_amplitude!(cache, KG::Dict, Ysol, SH, s::Int, a, ω, m::Int, n::Int, local_n::Int, level::Int, bin::Int; threaded_sampling::Bool = false, two_wave = nothing)
     bundle = _cached_adaptive_eccentric_segment_bundle!(cache, KG, local_n, level, bin)
     KG_samp = bundle["sample"]
+    if two_wave !== nothing
+        res = _two_wave_segment_amplitude!(cache, bundle, two_wave, Ysol, SH, s, a, ω, m, n, local_n, level, bin)
+        res === nothing || return res
+    end
     Ysamp = if s == 2
         threaded_sampling ? GridSampling.y_sample_p2_isem_threaded(Ysol, KG_samp) : y_sample_p2_isem(Ysol, KG_samp)
     else
@@ -3751,12 +4217,43 @@ function _adaptive_eccentric_segment_amplitude!(cache, KG::Dict, Ysol, SH, s::In
     end
     factored = _adaptive_eccentric_factored_segment(bundle, Ysamp, SH, s, a, ω, m, n)
     jac = (π / 2^level) / π
-    factor_p = _levin_1d_local_phase_factor_from_values(factored.phase_p; local_order = local_n)
-    factor_m = _levin_1d_local_phase_factor_from_values(factored.phase_m; local_order = local_n)
-    return ComplexF64((
+    factor_p, factor_m = _cached_levin_phase_factors!(cache, (s, m, n, local_n, level, bin, 0)) do
+        (_levin_1d_local_phase_factor_from_values(factored.phase_p; local_order = local_n),
+            _levin_1d_local_phase_factor_from_values(factored.phase_m; local_order = local_n))
+    end
+    amp = ComplexF64((
         _levin_1d_integral_local_phase_factored(jac .* factored.smooth_p, factor_p) +
         _levin_1d_integral_local_phase_factored(jac .* factored.smooth_m, factor_m)
     ) * factored.prefactor)
+    return amp, _cheb_tail(factored.smooth_p, factored.smooth_m, factored.phase_p, factored.phase_m)
+end
+
+function _two_wave_segment_amplitude!(cache, bundle, w::YTwoWave, Ysol, SH, s::Int, a, ω, m::Int, n::Int, local_n::Int, level::Int, bin::Int)
+    KG_samp = bundle["sample"]
+    parts = _y_two_wave_samples(w, KG_samp, GridSampling._isem_gsn_incidence_amplitude(Ysol))
+    parts === nothing && return nothing
+    jac = (π / 2^level) / π
+    out = _adaptive_eccentric_factored_segment(bundle, parts.out, SH, s, a, ω, m, n)
+    inn = _adaptive_eccentric_factored_segment(bundle, parts.in, SH, s, a, ω, m, n)
+    shift = 2ω .* KG_samp["rs"]
+    rotate = exp.(2im .* (ω .* KG_samp["rs"]))
+    factor_p, factor_m = _cached_levin_phase_factors!(cache, (s, m, n, local_n, level, bin, 0)) do
+        (_levin_1d_local_phase_factor_from_values(out.phase_p; local_order = local_n),
+            _levin_1d_local_phase_factor_from_values(out.phase_m; local_order = local_n))
+    end
+    in_factor_p, in_factor_m = _cached_levin_phase_factors!(cache, (s, m, n, local_n, level, bin, 1)) do
+        (_levin_1d_local_phase_factor_from_values(inn.phase_p .- shift; local_order = local_n),
+            _levin_1d_local_phase_factor_from_values(inn.phase_m .- shift; local_order = local_n))
+    end
+    in_p = inn.smooth_p .* rotate
+    in_m = inn.smooth_m .* rotate
+    amp = ComplexF64((
+        _levin_1d_integral_local_phase_factored(jac .* out.smooth_p, factor_p) +
+        _levin_1d_integral_local_phase_factored(jac .* out.smooth_m, factor_m) +
+        _levin_1d_integral_local_phase_factored(jac .* in_p, in_factor_p) +
+        _levin_1d_integral_local_phase_factored(jac .* in_m, in_factor_m)
+    ) * out.prefactor)
+    return amp, _cheb_tail(out.smooth_p, out.smooth_m, in_p, in_m, out.phase_p, out.phase_m)
 end
 
 function _adaptive_eccentric_levin_result(amp::ComplexF64, KG_sample::Dict, Ysol, SH, s::Int, a, ω, m::Int)
@@ -3797,9 +4294,11 @@ function convolution_integral_eccentric_adaptive_levin_isem(KG_sample::Dict, s, 
         depth_tol_max::Float64 = DEFAULT_ADAPTIVE_LEVIN_TOL_MAX,
         max_depth::Int = 8,
         mode_abs_floor::Float64 = 1e-16,
+        energy_abs_tol::Float64 = 0.0,
         zero_low_flux::Bool = false,
         threaded_sampling::Bool = false,
         cache = nothing)
+    _check_mode_geometry(cache, KG_sample)
     local_n >= 2 || throw(ArgumentError("local_n must be at least 2"))
     max_depth >= 0 || throw(ArgumentError("max_depth must be nonnegative"))
     adaptive_tol0 = sample_tol === nothing ? tol0 : Float64(sample_tol)
@@ -3824,29 +4323,19 @@ function convolution_integral_eccentric_adaptive_levin_isem(KG_sample::Dict, s, 
     KG = haskey(KG_sample, "Energy") ? KG_sample : _kg_from_presampled_master(KG_sample)
     levin_cache = cache isa EccentricFluxCache ? cache : EccentricFluxCache()
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
-    Ysol = _isem_y_solution(s, l, m, a, ω)
+    Ysol = _isem_y_solution(s, l, m, a, ω; lambda = SH.lambda, check_radii = _orbit_check_radii(KG_sample))
+    two_wave = _y_two_wave(Ysol, s, l, m, a, ω)
 
     segment_evaluations = 0
-    root = _adaptive_eccentric_segment_amplitude!(levin_cache, KG, Ysol, SH, s, a, ω, m, n, local_n, 0, 0; threaded_sampling = threaded_sampling)
+    root, root_tail = _adaptive_eccentric_segment_amplitude!(levin_cache, KG, Ysol, SH, s, a, ω, m, n, local_n, 0, 0; threaded_sampling = threaded_sampling, two_wave = two_wave)
     segment_evaluations += 1
-    root_energy = abs(_adaptive_eccentric_levin_result(root, KG_sample, Ysol, SH, s, a, ω, m)["EnergyFlux"])
-    if mode_abs_floor > 0.0 && root_energy < mode_abs_floor
-        res = _adaptive_eccentric_levin_result(root, KG_sample, Ysol, SH, s, a, ω, m)
-        res["N_sample_requested"] = local_n
-        res["N_sample"] = local_n
-        res["Quadrature"] = "adaptive_levin"
-        res["AdaptiveLevin"] = true
-        res["AdaptiveLevinSegmentEvaluations"] = segment_evaluations
-        res["AdaptiveLevinAcceptedSegments"] = 1
-        res["AdaptiveLevinMaxDepth"] = max_depth
-        res["AdaptiveLevinMaxLeafDepth"] = 0
-        res["AdaptiveLevinEffectiveIntervals"] = local_n
-        return res
-    end
-
-    leaves = AdaptiveEccentricLevinLeaf[AdaptiveEccentricLevinLeaf(0, 0, root, true)]
+    # A low-flux verdict needs two consecutive refinement levels below the floor, the later at least
+    # min_depth: the single-segment root (and the first split) can miss a narrow periapsis burst of a
+    # high-eccentricity orbit and come out orders of magnitude too small.
+    leaves = AdaptiveEccentricLevinLeaf[AdaptiveEccentricLevinLeaf(0, 0, root, true, root_tail)]
     previous_total = root
     split_count = 0
+    passed_once = false
     stop_reason = "max_depth"
     while true
         new_leaves = AdaptiveEccentricLevinLeaf[]
@@ -3859,14 +4348,16 @@ function convolution_integral_eccentric_adaptive_levin_isem(KG_sample::Dict, s, 
             child_level = leaf.level + 1
             left_bin = 2 * leaf.bin
             right_bin = left_bin + 1
-            left = _adaptive_eccentric_segment_amplitude!(levin_cache, KG, Ysol, SH, s, a, ω, m, n, local_n, child_level, left_bin; threaded_sampling = threaded_sampling)
-            right = _adaptive_eccentric_segment_amplitude!(levin_cache, KG, Ysol, SH, s, a, ω, m, n, local_n, child_level, right_bin; threaded_sampling = threaded_sampling)
+            left, left_tail = _adaptive_eccentric_segment_amplitude!(levin_cache, KG, Ysol, SH, s, a, ω, m, n, local_n, child_level, left_bin; threaded_sampling = threaded_sampling, two_wave = two_wave)
+            right, right_tail = _adaptive_eccentric_segment_amplitude!(levin_cache, KG, Ysol, SH, s, a, ω, m, n, local_n, child_level, right_bin; threaded_sampling = threaded_sampling, two_wave = two_wave)
             segment_evaluations += 2
             child_amp = left + right
             child_energy = abs(_adaptive_eccentric_levin_result(child_amp, KG_sample, Ysol, SH, s, a, ω, m)["EnergyFlux"])
-            low_flux = mode_abs_floor > 0.0 && child_energy < mode_abs_floor
-            push!(new_leaves, AdaptiveEccentricLevinLeaf(child_level, left_bin, left, !low_flux))
-            push!(new_leaves, AdaptiveEccentricLevinLeaf(child_level, right_bin, right, !low_flux))
+            leaf_energy = abs(_adaptive_eccentric_levin_result(leaf.amp, KG_sample, Ysol, SH, s, a, ω, m)["EnergyFlux"])
+            low_flux = mode_abs_floor > 0.0 && child_level >= min_depth &&
+                child_energy < mode_abs_floor && leaf_energy < mode_abs_floor
+            push!(new_leaves, AdaptiveEccentricLevinLeaf(child_level, left_bin, left, !low_flux, left_tail))
+            push!(new_leaves, AdaptiveEccentricLevinLeaf(child_level, right_bin, right, !low_flux, right_tail))
             changed = true
             split_count += 1
         end
@@ -3875,8 +4366,10 @@ function convolution_integral_eccentric_adaptive_levin_isem(KG_sample::Dict, s, 
         current_energy = abs(_adaptive_eccentric_levin_result(current_total, KG_sample, Ysol, SH, s, a, ω, m)["EnergyFlux"])
         previous_energy = abs(_adaptive_eccentric_levin_result(previous_total, KG_sample, Ysol, SH, s, a, ω, m)["EnergyFlux"])
         leaves = new_leaves
+        level = maximum((leaf.level for leaf in leaves); init = 0)
 
-        if mode_abs_floor > 0.0 && current_energy < mode_abs_floor
+        if mode_abs_floor > 0.0 && level >= min_depth &&
+                current_energy < mode_abs_floor && previous_energy < mode_abs_floor
             stop_reason = "low_flux"
             break
         elseif !changed
@@ -3887,9 +4380,18 @@ function convolution_integral_eccentric_adaptive_levin_isem(KG_sample::Dict, s, 
             global_relerr = abs(current_energy - previous_energy) / scale
             current_depth = maximum((leaf.level for leaf in leaves); init = 0)
             current_tol = _adaptive_levin_depth_tol(current_depth, adaptive_tol0, min_depth, max_depth, depth_tol_max)
-            if current_depth >= min_depth && global_relerr < current_tol
-                stop_reason = "global_converged"
-                break
+            if current_depth >= min_depth && global_relerr < current_tol &&
+                    (energy_abs_tol <= 0.0 || abs(current_energy - previous_energy) <= energy_abs_tol)
+                # Under-resolved levels can agree by chance: at (0.9, 8, 0.95, 1) (l, m, n) = (12, -11, 208) levels 1
+                # and 2 gave 2.1e-13 against a true 1.3e-34 (1.5e-8 of E_inf). A passing level is accepted at once when
+                # every active segment resolves its samples (Chebyshev tail <= tol), else a second passing level is
+                # required. Over the 27,678 Levin modes of (0.9, 8, 0.95, 1) up to n = 400 the single level saved 42%
+                # of the segment evaluations (442 s -> 271-319 s for the sum) and moved E_inf by 3e-11 relative.
+                worst_tail = maximum((leaf.tail for leaf in leaves if leaf.active); init = 0.0)
+                (passed_once || worst_tail <= tol) && (stop_reason = "global_converged"; break)
+                passed_once = true
+            else
+                passed_once = false
             end
         end
 
@@ -3930,7 +4432,11 @@ function convolution_integral_eccentric_adaptive_levin_isem(KG_sample::Dict, s, 
     return res
 end
 
+# Semi-latus rectum from which the eccentric trapezoid always refines to the phase-resolving grid (see below).
+const ALIAS_GUARD_P = 40.0
+
 function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, m, n, N_sample::Int64; Nmax::Int = 2^14, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, cache = nothing)
+    _check_mode_geometry(cache, KG_sample)
     ispow2(N_sample) || throw(ArgumentError("N_sample must be a power of 2"))
     ispow2(Nmax) || throw(ArgumentError("Nmax must be a power of 2"))
     N_sample <= Nmax || throw(ArgumentError("N_sample must not exceed Nmax"))
@@ -3947,7 +4453,7 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
         return res
     end
     SH = spin_weighted_spheroidal_harmonic(s, l, m, a * ω; method = "jacobi")
-    Ysol = _isem_y_solution(s, l, m, a, ω)
+    Ysol = _isem_y_solution(s, l, m, a, ω; lambda = SH.lambda, check_radii = _orbit_check_radii(KG_sample))
 
     N = N_sample
     KG_samp = cache isa EccentricFluxCache ? _cached_eccentric_sample!(cache, KG_sample, N) : subsample_eccentric_sample(KG_sample, N)
@@ -3959,20 +4465,44 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
     res = _eccentric_flux_from_sample(KG_samp, Ysamp, SH, s, a, ω, m, n)
     flux_scale = max(Float64(max_flux), eps(Float64))
     effective_sample_tol = min(sample_tol, 3.0 * sqrt(Float64(tol)))
-    min_stop_N = _eccentric_fourier_min_sample(min(max(4N_sample, 256), Nmax), Nmax, n)
+    min_stop_N = _radial_phase_min_sample(KG_sample, ω, m, n,
+        _eccentric_fourier_min_sample(min(max(4N_sample, 256), Nmax), Nmax, n), Nmax)
+    # Checked radial Y table, as for generic orbits: built only once a refinement inserts at least as
+    # many radii as the table and its three independent self-check calls cost.
+    r_master = KG_sample["r"]
+    rs_master = KG_sample["rs"]
+    y_phase_extent = Float64(abs(ω) * (maximum(rs_master) - minimum(rs_master)))
+    y_table_calls = GridSampling._generic_y_initial_points(y_phase_extent) + length(GridSampling.YINTERP_CHECK_FRACTIONS)
+    y_attempted = false
+    ycheck = (table = nothing, points = 0, doublings = 0, fallback = false, self_check_error = NaN)
 
     while N < Nmax
         N2 = min(2N, Nmax)
         KG_samp2 = cache isa EccentricFluxCache ? _cached_eccentric_sample!(cache, KG_sample, N2) : subsample_eccentric_sample(KG_sample, N2)
-        Ysamp2 = threaded_sampling ? GridSampling.refine_generic_y_sample_threaded(Ysol, Ysamp, KG_samp2) : refine_eccentric_y_sample(Ysol, Ysamp, KG_sample, N)
+        if !y_attempted && N2 - N >= y_table_calls
+            ycheck = GridSampling._checked_generic_y_table(
+                Ysol, Float64(minimum(r_master)), Float64(maximum(r_master)), y_phase_extent)
+            y_attempted = true
+        end
+        Ysamp2 = if ycheck.table !== nothing
+            GridSampling.refine_generic_y_sample_from_table(Ysol, ycheck.table, Ysamp, KG_samp2, s == -2 ? "Binc" : "Cinc")
+        else
+            threaded_sampling ? GridSampling.refine_generic_y_sample_threaded(Ysol, Ysamp, KG_samp2) : refine_eccentric_y_sample(Ysol, Ysamp, KG_sample, N)
+        end
         res2 = _eccentric_flux_from_sample(KG_samp2, Ysamp2, SH, s, a, ω, m, n)
         low_flux_cutoff = _low_flux_cutoff(Float64(max_flux), Float64(tol))
         relE = _relative_energy_change(res2["EnergyFlux"], res["EnergyFlux"])
         excess = abs(res2["EnergyFlux"]) / flux_scale
         factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
+        # For p >= ALIAS_GUARD_P every stop needs the grid that resolves the radial phase, also for a mode below the
+        # low-flux cutoff: on a coarser grid a counter-rotating high-n mode aliases to ~ the cutoff (at
+        # (a, p, e) = (0.574, 90.2, 0.816) the (n, m, l) = (116, -16, 17) mode came out 1e-17 instead of 6e-44), and
+        # thousands of such modes added 30..75 tol to the total. Below p = 40 the guard changed no sampled total by
+        # more than 4e-9 and cost 1.5x..2.4x, so there such a mode may still stop early.
         significant_for_alias = abs(res2["EnergyFlux"]) > low_flux_cutoff
-        allow_stop = (N2 >= min_stop_N) || !significant_for_alias
-        low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor
+        allow_stop = (N2 >= min_stop_N) || (!significant_for_alias && Float64(KG_sample["p"]) < ALIAS_GUARD_P)
+        # a mode is negligible only when two consecutive refinement levels are below the floor
+        low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor && abs(res["EnergyFlux"]) < mode_abs_floor
         has_flux_reference = Float64(max_flux) > 100 * eps(Float64)
         suspect_min_N = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_N, Nmax, excess, 1024, 2048, 4096) : min_stop_N
         suspect_needs_extra = has_flux_reference && !low_flux_done && N2 < suspect_min_N
@@ -3986,7 +4516,7 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
             end
             continue
         end
-        if allow_stop && !suspect_needs_extra && (factor * relE <= effective_sample_tol || abs(res2["EnergyFlux"]) < low_flux_cutoff || low_flux_done)
+        if allow_stop && !suspect_needs_extra && (factor * relE <= effective_sample_tol || (abs(res2["EnergyFlux"]) < low_flux_cutoff && abs(res["EnergyFlux"]) < low_flux_cutoff) || low_flux_done)
             if zero_low_flux && low_flux_done
                 res2["Amplitude"] = 0.0 + 0.0im
                 res2["EnergyFlux"] = 0.0
@@ -4006,80 +4536,25 @@ function convolution_integral_eccentric_trapezoidal_isem(KG_sample::Dict, s, l, 
 
     res["N_sample_requested"] = N_sample
     res["N_sample"] = N
+    res["YInterpolationPoints"] = ycheck.points
+    res["YInterpolationDoublings"] = ycheck.doublings
+    res["YInterpolationFallback"] = ycheck.fallback
+    res["YInterpolationSelfCheckError"] = ycheck.self_check_error
+    res["YInterpolationDeferred"] = !y_attempted
     return res
 end
 
-function convolution_integral_eccentric_levin_isem(a, p, e, s, l, m, n, N_sample)
-    key = (a, p, e, s, l, m, n, N_sample)
-    if _eccentric_levin_last_key[] === key
-        return _eccentric_levin_last_result[]
+function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m, k, K_sample::Int64; kwargs...)
+    F = KG_sample["Frequencies"]
+    ω = (m * F["ϒϕ"] + k * F["ϒθ"]) / F["ϒt"]
+    negligible = _negligible_low_frequency_mode(s, l, ω, F["ϒϕ"] / F["ϒt"], KG_sample["a"], KG_sample["p"], 0.0; bound = NEGLIGIBLE_FAILED_MODE_BOUND)
+    return _with_coverage_retry(s, l, m, 0, k; omega = ω, Ωφ = F["ϒϕ"] / F["ϒt"], negligible_if_failed = negligible) do
+        _inclined_trapezoidal_isem_once(KG_sample, s, l, m, k, K_sample; kwargs...)
     end
-
-    KG = kerr_geo_orbit(a, p, e, 1.0)
-
-    Frequencies = KG["Frequencies"]
-    Γ = Frequencies["ϒt"]
-    ϒr = Frequencies["ϒr"]
-    ϒφ = Frequencies["ϒϕ"]
-    omega = (m * ϒφ + n * ϒr) / Γ
-    rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
-    rsout = max(500.0, 10pi / abs(omega))
-    KG_samp = kerr_geo_eccentric_sample_cheby(KG, N_sample)
-
-    result = if s == 2
-        Yup_soln = _isem_y_solution(s, l, m, a, omega)
-        SH_p2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
-        Yup_samp = y_sample_p2_isem(Yup_soln, KG_samp)
-        S0_p2 = SH_p2(π/2, 0.0)
-        S1_p2 = SH_p2(π/2, 0.0; theta_derivative=1)
-        S2_p2 = (m^2 + (a * omega)^2 - 2 - 2 * a * omega * m - SH_p2.lambda) * S0_p2
-        rphase = _radial_phase_vector(KG_samp, omega, m, n)
-        Jp_up, Jm_up, drphase_up, rphaseL_up, rphaseR_up, prefactor_up = integrand_eccentric_sample_cheby_p2(KG_samp, Yup_samp, (S0_p2, S1_p2, S2_p2), n)
-        integralp_p2 = levin_1d_integral_local_phase(Jp_up, drphase_up, rphase)
-        integralm_p2 = levin_1d_integral_local_phase(Jm_up, -drphase_up, -rphase)
-        integral_p2 = (integralp_p2 + integralm_p2) * prefactor_up
-        hf = horizon_factor(omega, a, m)
-        Dict(
-            "Amplitude" => integral_p2,
-            "omega" => omega,
-            "EnergyFlux" => hf * abs2(integral_p2),
-            "AngularMomentumFlux" => hf * m * abs2(integral_p2) / omega,
-            "CarterConstantFlux" => 0.0,
-            "Trajectory" => KG,
-            "YSolution" => Yup_soln,
-            "SWSH" => SH_p2
-        )
-    elseif s == -2
-        Yin_soln = _isem_y_solution(s, l, m, a, omega)
-        SH_m2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
-        Yin_samp = y_sample_m2_isem(Yin_soln, KG_samp)
-        S0_m2 = SH_m2(π/2, 0.0)
-        S1_m2 = SH_m2(π/2, 0.0; theta_derivative=1)
-        S2_m2 = (m^2 + (a * omega)^2 + 2 - 2 * a * omega * m - SH_m2.lambda) * S0_m2
-        rphase = _radial_phase_vector(KG_samp, omega, m, n)
-        Jp_in, Jm_in, drphase_in, rphaseL_in, rphaseR_in, prefactor_in = integrand_eccentric_sample_cheby_m2(KG_samp, Yin_samp, (S0_m2, S1_m2, S2_m2), n)
-        integralp_m2 = levin_1d_integral_local_phase(Jp_in, drphase_in, rphase)
-        integralm_m2 = levin_1d_integral_local_phase(Jm_in, -drphase_in, -rphase)
-        integral_m2 = (integralp_m2 + integralm_m2) * prefactor_in
-        Dict(
-            "Amplitude" => integral_m2,
-            "omega" => omega,
-            "EnergyFlux" => abs2(integral_m2)/(4.0pi*omega^2),
-            "AngularMomentumFlux" => m * abs2(integral_m2) / (4.0pi * omega^3),
-            "CarterConstantFlux" => 0.0,
-            "Trajectory" => KG,
-            "YSolution" => Yin_soln,
-            "SWSH" => SH_m2
-        )
-    else
-        error("Spin weight s must be either 2 or -2.")
-    end
-    _eccentric_levin_last_key[] = key
-    _eccentric_levin_last_result[] = result
-    return result
 end
 
-function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m, k, K_sample::Int64; Kmax::Int = 2^12, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, cache = nothing)
+function _inclined_trapezoidal_isem_once(KG_sample::Dict, s, l, m, k, K_sample::Int64; Kmax::Int = 2^12, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, cache = nothing)
+    _check_mode_geometry(cache, KG_sample)
     ispow2(K_sample) || throw(ArgumentError("K_sample must be a power of 2"))
     ispow2(Kmax) || throw(ArgumentError("Kmax must be a power of 2"))
     K_sample <= Kmax || throw(ArgumentError("K_sample must not exceed Kmax"))
@@ -4094,7 +4569,23 @@ function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m
         res["K_sample"] = K_sample
         return res
     end
-    ctx = _inclined_trapezoidal_context(KG_sample, s, l, m, k, K_interval, cache)
+    if _negligible_low_frequency_mode(s, l, ω, Frequencies["ϒϕ"] / Γ, a, KG_sample["p"], 0.0)
+        res = _zero_radiative_mode(ω, KG_sample; reason = "negligible_low_frequency")
+        res["NearStaticOverflow"] = true
+        res["K_sample_requested"] = K_sample
+        res["K_sample"] = K_sample
+        return res
+    end
+    ctx = try
+        _inclined_trapezoidal_context(KG_sample, s, l, m, k, K_interval, cache)
+    catch err
+        _near_static_overflow(err, ω, Frequencies["ϒϕ"] / Γ) || rethrow()
+        res = _zero_radiative_mode(ω, KG_sample; reason = "near_static_overflow")
+        res["NearStaticOverflow"] = true
+        res["K_sample_requested"] = K_sample
+        res["K_sample"] = K_sample
+        return res
+    end
     SHsamp = threaded_sampling ? GridSampling.swsh_sample_threaded(ctx.SH, ctx.KG_samp) : ctx.SHsamp
     res = _inclined_flux_from_sample(ctx.KG_samp, ctx.Ysol, ctx.Ydic, SHsamp, s, ctx.a, ctx.omega, m, k)
     flux_scale = max(Float64(max_flux), eps(Float64))
@@ -4115,7 +4606,8 @@ function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m
         factor = excess <= 1.0 ? 1.0 : min(sqrt(excess), 50.0)
         significant_for_alias = abs(res2["EnergyFlux"]) > low_flux_cutoff
         allow_stop = (K2 >= min_stop_K) || !significant_for_alias
-        low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor
+        # a mode is negligible only when two consecutive refinement levels are below the floor
+        low_flux_done = mode_abs_floor > 0.0 && abs(res2["EnergyFlux"]) < mode_abs_floor && abs(res["EnergyFlux"]) < mode_abs_floor
         has_flux_reference = Float64(max_flux) > 100 * eps(Float64)
         suspect_min_K = has_flux_reference && !low_flux_done ? _suspect_min_sample(min_stop_K, Kmax, excess, 256, 512, 512) : min_stop_K
         suspect_needs_extra = has_flux_reference && !low_flux_done && K2 < suspect_min_K
@@ -4129,7 +4621,7 @@ function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m
             end
             continue
         end
-        if allow_stop && !suspect_needs_extra && (factor * rel <= effective_sample_tol || abs(res2["EnergyFlux"]) < low_flux_cutoff || low_flux_done)
+        if allow_stop && !suspect_needs_extra && (factor * rel <= effective_sample_tol || (abs(res2["EnergyFlux"]) < low_flux_cutoff && abs(res["EnergyFlux"]) < low_flux_cutoff) || low_flux_done)
             if zero_low_flux && low_flux_done
                 res2["Amplitude"] = 0.0 + 0.0im
                 res2["EnergyFlux"] = 0.0
@@ -4149,22 +4641,30 @@ function convolution_integral_inclined_trapezoidal_isem(KG_sample::Dict, s, l, m
 
     res["K_sample_requested"] = K_sample
     res["K_sample"] = K_interval
+    try
+        _check_finite_mode_flux(res, s, l, m, 0, k)
+    catch err
+        _near_static_overflow(err, ω, Frequencies["ϒϕ"] / Γ) || rethrow()
+        res = _zero_radiative_mode(ω, KG_sample; reason = "near_static_overflow")
+        res["NearStaticOverflow"] = true
+        res["K_sample_requested"] = K_sample
+        res["K_sample"] = K_interval
+    end
     return res
 end
 
-function convolution_integral_inclined_trapezoidal_isem(a, p, x, s, l, m, k, K_sample; Kmax::Int = 2^12, kwargs...)
-    KG = kerr_geo_orbit(a, p, 0.0, x)
-    KG_sample = kerr_geo_inclined_sample_dense(KG, x, Kmax)
-    return convolution_integral_inclined_trapezoidal_isem(KG_sample, s, l, m, k, K_sample; Kmax = Kmax, kwargs...)
+function convolution_integral_inclined_trapezoidal_isem(a, p, x, s, l, m, k, K_sample; Kmax::Int = 2^12, cache=nothing, trajectory=nothing, geometry_owner=nothing, kwargs...)
+    route = _submission_public_route(a, p, 0.0, x, cache, trajectory, geometry_owner)
+    KG_sample = route.master
+    KG_sample === nothing && (KG_sample = kerr_geo_inclined_sample_dense(route.KG, x, Kmax))
+    return convolution_integral_inclined_trapezoidal_isem(KG_sample, s, l, m, k, K_sample; Kmax = Kmax, cache=route.cache, kwargs...)
 end
 
-function convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K_sample)
-    key = (a, p, x, s, l, m, k, K_sample)
-    if _inclined_levin_last_key[] === key
-        return _inclined_levin_last_result[]
-    end
+function convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K_sample; cache=nothing, trajectory=nothing, geometry_owner=nothing)
 
-    KG = kerr_geo_orbit(a, p, 0.0, x)
+    cache = _submission_public_cache(cache, geometry_owner, :inclined)
+    KG = _submission_public_trajectory(a, p, 0.0, x, trajectory)
+    _submission_public_master(cache, KG)
 
     Frequencies = KG["Frequencies"]
     Γ = Frequencies["ϒt"]
@@ -4173,21 +4673,19 @@ function convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K_sample)
     omega = (m * ϒφ + k * ϒθ) / Γ
     if _skip_radiative_mode(s, a, m, omega)
         result = _zero_radiative_mode(omega, KG; reason = s == -2 ? "infinity_static_frequency" : "horizon_static_frequency")
-        _inclined_levin_last_key[] = key
-        _inclined_levin_last_result[] = result
         return result
     end
 
     rsin = rstar_from_r(a, 1+sqrt(1-a^2)+1e-4)
     rsout = max(200.0, 10pi / abs(omega))
-    KG_samp = kerr_geo_inclined_sample_cheby(KG, K_sample)
-    KG_trap = kerr_geo_inclined_sample(KG, K_sample)
-    carter_samp = carter_ingredients_sample(KG_trap, a, m, omega)
-    carter_factor = trapezoidal_1d_integral(carter_samp)
+    KG_samp = _inclined_levin_owner_sample(cache, KG, K_sample, true)
+    KG_trap = _inclined_levin_owner_sample(cache, KG, K_sample, false)
+    carter_factor = _inclined_carter_factor(KG_trap, a, p, KG["Frequencies"]["ϒϕ"], m, omega)
 
     result = if s == 2
-        Yup_soln = _isem_y_solution(s, l, m, a, omega)
         SH_p2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
+        Yup_soln = _isem_y_solution(s, l, m, a, omega;
+            lambda = SH_p2.lambda)
         Y, Yp, X, _ = Yup_soln.Y_solution(p)
         Yup = Dict("params" => (s=2, l=l, m=m, a=a, omega=omega, lambda=SH_p2.lambda),
             "Cinc" => GridSampling._isem_gsn_incidence_amplitude(Yup_soln),
@@ -4212,8 +4710,9 @@ function convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K_sample)
             "SWSH" => SH_p2
         )
     elseif s == -2
-        Yin_soln = _isem_y_solution(s, l, m, a, omega)
         SH_m2 = spin_weighted_spheroidal_harmonic(s, l, m, a * omega; method = "jacobi")
+        Yin_soln = _isem_y_solution(s, l, m, a, omega;
+            lambda = SH_m2.lambda)
         Y, Yp, X, _ = Yin_soln.Y_solution(p)
         Yin = Dict("params" => (s=-2, l=l, m=m, a=a, omega=omega, lambda=SH_m2.lambda),
             "Binc" => GridSampling._isem_gsn_incidence_amplitude(Yin_soln),
@@ -4239,16 +4738,24 @@ function convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K_sample)
     else
         error("Spin weight s must be either 2 or -2.")
     end
-    _inclined_levin_last_key[] = key
-    _inclined_levin_last_result[] = result
     return result
 end
 
-function convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 256, K = 64, Nmax::Int = 2^14, Kmax::Int = 2^12, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false)
-    KG = kerr_geo_orbit(a, p, e, x)
-    if typeof(KG) == Vector{String}
-        return KG
-    end
+"""
+    convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 256, K = 64, Nmax = 2^14, Kmax = 2^12,
+        tol = 1e-8, sample_tol = 1e-3, max_flux = 1.0, mode_abs_floor = 1e-16, zero_low_flux = false,
+        threaded_sampling = false, cache = nothing, trajectory = nothing, geometry_owner = nothing)
+
+Flux of the (s, l, m, n, k) mode of the bound Kerr geodesic (a, p, e, x) using the ISEM radial solution and
+trapezoidal quadrature refined from (N, K) up to (Nmax, Kmax). Dispatches to the circular-equatorial, inclined,
+eccentric or generic routine. Returns a `Dict` with "Amplitude", "omega", "EnergyFlux", "AngularMomentumFlux",
+"CarterConstantFlux", "Trajectory", "YSolution" and "SWSH", plus sampling diagnostics for the sampled routines.
+`cache`, `trajectory` and `geometry_owner` let a submission reuse a mode cache, a precomputed orbit and shared
+orbit geometry across modes.
+"""
+function convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 256, K = 64, Nmax::Int = 2^14, Kmax::Int = 2^12, tol = 1e-8, sample_tol::Float64 = 1e-3, max_flux = 1.0, mode_abs_floor::Float64 = 1e-16, zero_low_flux::Bool = false, threaded_sampling::Bool = false, cache=nothing, trajectory=nothing, geometry_owner=nothing)
+    route = _submission_public_route(a, p, e, x, cache, trajectory, geometry_owner)
+    KG = route.KG
     if m == 0 && n == 0 && k == 0
         return Dict("Amplitude" => 0.0 + 0.0im, "omega" => 0.0, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
     end
@@ -4256,22 +4763,58 @@ function convolution_integral_trapezoidal_isem(a, p, e, x, s, l, m, n, k; N = 25
         if n != 0 || k != 0
             return Dict("Amplitude" => 0.0 + 0.0im, "omega" => nothing, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
         end
-        return convolution_integral_circular_equatorial_isem(a, p, s, l, m)
+        return convolution_integral_circular_equatorial_isem(a, p, s, l, m; x, trajectory=isequal(e, 0.0) ? KG : nothing)
     elseif isapprox(e, 0.0; atol=1e-12) && !isapprox(abs(x), 1.0; atol=1e-12)
         if n != 0
             return Dict("Amplitude" => 0.0 + 0.0im, "omega" => nothing, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
         end
-        return convolution_integral_inclined_trapezoidal_isem(a, p, x, s, l, m, k, K; Kmax = Kmax, tol = tol, sample_tol = sample_tol, max_flux = max_flux, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
+        # For 0 < |e| <= 1e-12 the orbit is rebuilt with e = 0; sharing the submission geometry
+        # built for the raw e would use a different trajectory. Exact e = 0 shares the geometry.
+        if !isequal(e, 0.0)
+            return convolution_integral_inclined_trapezoidal_isem(a, p, x, s, l, m, k, K;
+                Kmax=Kmax, tol=tol, sample_tol=sample_tol, max_flux=max_flux,
+                mode_abs_floor=mode_abs_floor, zero_low_flux=zero_low_flux,
+                threaded_sampling=threaded_sampling)
+        end
+        master = route.master
+        master === nothing && (master = kerr_geo_inclined_sample_dense(KG, x, Kmax))
+        return convolution_integral_inclined_trapezoidal_isem(master, s, l, m, k, K; Kmax = Kmax, tol = tol, sample_tol = sample_tol, max_flux = max_flux, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, cache=route.cache)
     elseif !isapprox(e, 0.0; atol=1e-12) && isapprox(abs(x), 1.0; atol=1e-12)
         if k != 0
             return Dict("Amplitude" => 0.0 + 0.0im, "omega" => nothing, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
         end
-        return convolution_integral_eccentric_trapezoidal_isem(a, p, e, s, l, m, n, N; Nmax = Nmax, tol = tol, sample_tol = sample_tol, max_flux = max_flux, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
+        master = route.master
+        master === nothing && (master = kerr_geo_eccentric_sample_dense(KG, Nmax))
+        return convolution_integral_eccentric_trapezoidal_isem(master,
+            s, l, m, n, N; Nmax = Nmax, tol = tol,
+            sample_tol = sample_tol, max_flux = max_flux,
+            mode_abs_floor = mode_abs_floor,
+            zero_low_flux = zero_low_flux,
+            threaded_sampling = threaded_sampling, cache=route.cache)
     else
-        return generic_mode_flux(a, p, e, x, s, l, m, n, k; N0 = N, K0 = K, Nmax = Nmax, Kmax = Kmax, tol = tol, sample_tol = sample_tol, max_flux = max_flux, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling)
+        master = route.master
+        master === nothing && (master = GridSampling.kerr_geo_generic_sample_dense(KG, Nmax, Kmax))
+        return generic_mode_flux_from_master(master, s, l, m, n, k;
+            N0 = N, K0 = K, Nmax = Nmax, Kmax = Kmax, tol = tol,
+            sample_tol = sample_tol, max_flux = max_flux,
+            mode_abs_floor = mode_abs_floor,
+            zero_low_flux = zero_low_flux,
+            threaded_sampling = threaded_sampling, cache=route.cache)
     end
 end
 
+"""
+    convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k; N = 256, K = 32, Nmax = DEFAULT_LEVIN_NMAX,
+        Kmax = DEFAULT_LEVIN_KMAX, tol = 1e-8, sample_tol = 1e-3, max_flux = 1.0, mode_abs_floor = 1e-16,
+        zero_low_flux = false, threaded_sampling = false, adaptive = true, adaptive_local_n, adaptive_min_depth,
+        adaptive_max_depth = 8, adaptive_tol_max, cache = nothing, trajectory = nothing, geometry_owner = nothing)
+
+Flux of the (s, l, m, n, k) mode of the bound Kerr geodesic (a, p, e, x) using the ISEM radial solution and Levin
+quadrature (adaptive segment refinement by default for the eccentric and generic routines). Dispatches to the
+circular-equatorial, inclined, eccentric or generic routine and returns a `Dict` with the same flux entries as
+`convolution_integral_trapezoidal_isem`, plus quadrature diagnostics where applicable. `cache`, `trajectory` and
+`geometry_owner` let a submission reuse a mode cache, a precomputed orbit and shared orbit geometry across modes.
+"""
 function convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k;
         N = 256,
         K = 32,
@@ -4287,11 +4830,10 @@ function convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k;
         adaptive_local_n::Int = DEFAULT_ADAPTIVE_LEVIN_LOCAL_N,
         adaptive_min_depth::Int = DEFAULT_ADAPTIVE_LEVIN_MIN_DEPTH,
         adaptive_max_depth::Int = 8,
-        adaptive_tol_max::Float64 = DEFAULT_ADAPTIVE_LEVIN_TOL_MAX)
-    KG = kerr_geo_orbit(a, p, e, x)
-    if typeof(KG) == Vector{String}
-        return KG
-    end
+        adaptive_tol_max::Float64 = DEFAULT_ADAPTIVE_LEVIN_TOL_MAX,
+        cache=nothing, trajectory=nothing, geometry_owner=nothing)
+    route = _submission_public_route(a, p, e, x, cache, trajectory, geometry_owner)
+    KG = route.KG
     if m == 0 && n == 0 && k == 0
         return Dict("Amplitude" => 0.0 + 0.0im, "omega" => 0.0, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
     end
@@ -4299,19 +4841,22 @@ function convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k;
         if n != 0 || k != 0
             return Dict("Amplitude" => 0.0 + 0.0im, "omega" => nothing, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
         end
-        return convolution_integral_circular_equatorial_isem(a, p, s, l, m)
+        return convolution_integral_circular_equatorial_isem(a, p, s, l, m; x, trajectory=isequal(e, 0.0) ? KG : nothing)
     elseif isapprox(e, 0.0; atol=1e-12) && !isapprox(abs(x), 1.0; atol=1e-12)
         if n != 0
             return Dict("Amplitude" => 0.0 + 0.0im, "omega" => nothing, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
         end
-        return convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K)
+        if !isequal(e, 0.0)
+            return convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K)
+        end
+        return convolution_integral_inclined_levin_isem(a, p, x, s, l, m, k, K; cache=route.cache, trajectory=KG, geometry_owner=geometry_owner)
     elseif !isapprox(e, 0.0; atol=1e-12) && isapprox(abs(x), 1.0; atol=1e-12)
         if k != 0
             return Dict("Amplitude" => 0.0 + 0.0im, "omega" => nothing, "EnergyFlux" => 0.0, "AngularMomentumFlux" => 0.0, "CarterConstantFlux" => 0.0, "Trajectory" => KG, "YSolution" => nothing, "SWSH" => nothing)
         end
         if adaptive
             return convolution_integral_eccentric_adaptive_levin_isem(
-                KG, s, l, m, n;
+                route.master === nothing ? KG : route.master, s, l, m, n;
                 tol = tol,
                 tol0 = sample_tol,
                 local_n = adaptive_local_n,
@@ -4320,21 +4865,25 @@ function convolution_integral_levin_isem(a, p, e, x, s, l, m, n, k;
                 depth_tol_max = adaptive_tol_max,
                 mode_abs_floor = mode_abs_floor,
                 zero_low_flux = zero_low_flux,
-                threaded_sampling = threaded_sampling,
+                threaded_sampling = threaded_sampling, cache=route.cache,
             )
         end
+        master = route.master
+        master === nothing && (master = kerr_geo_eccentric_sample_dense(KG, Nmax))
         return convolution_integral_eccentric_levin_isem(
-            KG_sample, s, l, m, n, N;
+            master, s, l, m, n, N;
             Nmax = Nmax,
             tol = tol,
             sample_tol = sample_tol,
             max_flux = max_flux,
             mode_abs_floor = mode_abs_floor,
             zero_low_flux = zero_low_flux,
-            threaded_sampling = threaded_sampling,
+            threaded_sampling = threaded_sampling, cache=route.cache,
         )
     else
-        return convolution_integral_generic_levin_isem(a, p, e, x, s, l, m, n, k, N, K; Nmax = Nmax, Kmax = Kmax, tol = tol, sample_tol = sample_tol, max_flux = max_flux, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, adaptive = adaptive, adaptive_local_r_intervals = adaptive_local_n, adaptive_local_theta_intervals = adaptive_local_n, adaptive_min_depth = adaptive_min_depth, adaptive_max_depth = adaptive_max_depth, adaptive_tol_max = adaptive_tol_max)
+        master = route.master
+        master === nothing && (master = GridSampling.kerr_geo_generic_sample_dense(KG, Nmax, Kmax))
+        return convolution_integral_generic_levin_isem(master, s, l, m, n, k, N, K; Nmax = Nmax, Kmax = Kmax, tol = tol, sample_tol = sample_tol, max_flux = max_flux, mode_abs_floor = mode_abs_floor, zero_low_flux = zero_low_flux, threaded_sampling = threaded_sampling, adaptive = adaptive, adaptive_local_r_intervals = adaptive_local_n, adaptive_local_theta_intervals = adaptive_local_n, adaptive_min_depth = adaptive_min_depth, adaptive_max_depth = adaptive_max_depth, adaptive_tol_max = adaptive_tol_max, cache=route.cache)
     end
 end
 

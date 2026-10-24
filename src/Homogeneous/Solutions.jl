@@ -18,6 +18,17 @@ _DEFAULTSOLVER = AutoVern9(Rosenbrock23(autodiff=false))
 _DEFAULTTOLERANCE = 1e-12
 
 # First-order non-linear ODE form of the GSN equation
+# Step budget of the ODE solves. The historical budget, 50 steps per unit r* capped at 1e5, is kept
+# unchanged for tolerances down to the default 1e-12; tighter tolerances (arbitrary-precision runs)
+# need more steps, otherwise the solve stops with MaxIters and the partial solution would be returned
+# as valid. The budget then grows like tol^(-1/8) (ninth-order method), capped at 1e7.
+function _ode_maxiters(rsin, rsout, reltol, abstol)
+    base = min(50 * floor(rsout - rsin), 1e5)
+    tol = max(min(float(reltol), float(abstol)), 1e-300)
+    tol >= 1e-12 && return base
+    return min(base * (1e-12 / tol)^(1 / 8), 1e7)
+end
+
 function GSN_Riccati_eqn(u, p, rs)
     r = r_from_rstar(p.a, rs)
     _sF = sF(p.s, p.m, p.a, p.omega, p.lambda, r)
@@ -73,7 +84,7 @@ function solve_Phiup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialcondi
     if rsin > rsout
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
     end
-    maxiters = min(50 * floor(rsout - rsin), 1e5)
+    maxiters = _ode_maxiters(rsin, rsout, reltol, abstol)
     # Initial conditions at rs = rsout, the outer boundary
     Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order, dtype=dtype)
     # Convert initial conditions for Xup for Phi
@@ -91,7 +102,7 @@ function solve_Phiin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialcondi
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
     end
-    maxiters = min(50 * floor(rsout - rsin), 1e5) 
+    maxiters = _ode_maxiters(rsin, rsout, reltol, abstol)
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
     Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order, dtype=dtype)
     # Convert initial conditions for Xin for PhiRe PhiIm
@@ -109,7 +120,7 @@ function solve_Xup(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditi
     if rsin > rsout
         throw(DomainError(rsout, "rsout ($rsout) must be larger than rsin ($rsin)"))
     end
-    maxiters = min(50 * floor(rsout - rsin), 1e5)
+    maxiters = _ode_maxiters(rsin, rsout, reltol, abstol)
     # Initial conditions at rs = rsout, the outer boundary
     Xup_rsout, Xupprime_rsout = Xup_initialconditions(s, m, a, omega, lambda, rsout; order=initialconditions_order, dtype=dtype)
     u0 = SA[dtype(Xup_rsout); dtype(Xupprime_rsout)]
@@ -125,7 +136,7 @@ function solve_Xin(s::Int, m::Int, a, omega, lambda, rsin, rsout; initialconditi
     if rsin > rsout
         throw(DomainError(rsin, "rsin ($rsin) must be smaller than rsout ($rsout)"))
     end
-    maxiters = min(50 * floor(rsout - rsin), 1e5)
+    maxiters = _ode_maxiters(rsin, rsout, reltol, abstol)
     # Initial conditions at rs = rsin, the inner boundary; this should be very close to EH
     Xin_rsin, Xinprime_rsin = Xin_initialconditions(s, m, a, omega, lambda, rsin; order=initialconditions_order, dtype=dtype)
     u0 = SA[dtype(Xin_rsin); dtype(Xinprime_rsin)]
@@ -424,9 +435,11 @@ function Teukolsky_radial_function_from_Sasaki_Nakamura_function(s::Int, m::Int,
     =#
 
     overall_conversion_matrix(r) = Teukolsky_radial_function_from_Sasaki_Nakamura_function_conversion_matrix(s, m, a, omega, lambda, r)
-    X(rs) = Xsoln(rs)[1]
-    Xprime(rs) = Xsoln(rs)[2]
-    Rsoln = (r -> overall_conversion_matrix(r) * SA[X(rstar_from_r(a, r)); Xprime(rstar_from_r(a, r))])
+    Rsoln = r -> begin
+        matrix = overall_conversion_matrix(r)
+        state = Xsoln(rstar_from_r(a, r))
+        matrix * SA[state[1]; state[2]]
+    end
     return Rsoln
 end
 
@@ -524,27 +537,29 @@ function CrefCinc_SN_from_Xup(s::Int, m::Int, a, omega, lambda, Xupsoln, rsin; o
 
     rin = r_from_rstar(a, rsin)
     # Computing A1, A2, A3, A4
+    cin = coefficient_sequence(ingoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
+    cout = coefficient_sequence(outgoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
     gin(r) = gansatz(
-        ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+        cin,
         a,
         r;
         order=order
     )
     dgin_dr(r) = dgansatz_dr(
-        ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+        cin,
         a,
         r;
         order=order
     )
     A1 = gin(rin) * exp(-1im*p*rsin)
     gout(r) = gansatz(
-        ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+        cout,
         a,
         r;
         order=order
     )
     dgout_dr(r) = dgansatz_dr(
-        ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+        cout,
         a,
         r;
         order=order
@@ -566,27 +581,29 @@ end
 function BrefBinc_SN_from_Xin(s::Int, m::Int, a, omega, lambda, Xinsoln, rsout; order=3, dtype=_DEFAULTDATATYPE)
     rout = r_from_rstar(a, rsout)
     # Computing A1, A2, A3, A4
+    cin = coefficient_sequence(ingoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
+    cout = coefficient_sequence(outgoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
     fin(r) = fansatz(
-        ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+        cin,
         omega,
         r;
         order=order
     )
     dfin_dr(r) = dfansatz_dr(
-        ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+        cin,
         omega,
         r;
         order=order
     )
     A1 = fin(rout) * exp(-1im*omega*rsout)
     fout(r) = fansatz(
-        ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+        cout,
         omega,
         r;
         order=order
     )
     dfout_dr(r) = dfansatz_dr(
-        ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+        cout,
         omega,
         r;
         order=order
@@ -613,14 +630,15 @@ function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizo
 
         # Construct the analytical ansatz
         p = omega - m*omega_horizon(a)
+        cin = coefficient_sequence(ingoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
         gin(r) = gansatz(
-            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+            cin,
             a,
             r;
             order=horizon_expansionorder
         )
         dgin_dr(r) = dgansatz_dr(
-            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+            cin,
             a,
             r;
             order=horizon_expansionorder
@@ -639,26 +657,28 @@ function semianalytical_Xin(s, m, a, omega, lambda, Xinsoln, rsin, rsout, horizo
         Bref_SN, Binc_SN = BrefBinc_SN_from_Xin(s, m, a, omega, lambda, Xinsoln, rsout; order=infinity_expansionorder, dtype=dtype)
 
         # Construct the analytical ansatz
+        cin = coefficient_sequence(ingoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
+        cout = coefficient_sequence(outgoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
         fin(r) = fansatz(
-            ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+            cin,
             omega,
             r;
             order=infinity_expansionorder
         )
         dfin_dr(r) = dfansatz_dr(
-            ord -> ingoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+            cin,
             omega,
             r;
             order=infinity_expansionorder
         )
         fout(r) = fansatz(
-            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+            cout,
             omega,
             r;
             order=infinity_expansionorder
         )
         dfout_dr(r) = dfansatz_dr(
-            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+            cout,
             omega,
             r;
             order=infinity_expansionorder
@@ -688,26 +708,28 @@ function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizo
 
         # Construct the analytical ansatz
         p = omega - m*omega_horizon(a)
+        cin = coefficient_sequence(ingoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
+        cout = coefficient_sequence(outgoing_coefficient_at_hor, s, m, a, omega, lambda; data_type=dtype)
         gin(r) = gansatz(
-            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+            cin,
             a,
             r;
             order=horizon_expansionorder
         )
         dgin_dr(r) = dgansatz_dr(
-            ord -> ingoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+            cin,
             a,
             r;
             order=horizon_expansionorder
         )
         gout(r) = gansatz(
-            ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+            cout,
             a,
             r;
             order=horizon_expansionorder
         )
         dgout_dr(r) = dgansatz_dr(
-            ord -> outgoing_coefficient_at_hor(s, m, a, omega, lambda, ord; data_type=dtype),
+            cout,
             a,
             r;
             order=horizon_expansionorder
@@ -722,14 +744,15 @@ function semianalytical_Xup(s, m, a, omega, lambda, Xupsoln, rsin, rsout, horizo
     elseif rs > rsout
         # Extend the numerical solution to the analytical ansatz from rsout to infinity
 
+        cout = coefficient_sequence(outgoing_coefficient_at_inf, s, m, a, omega, lambda; data_type=dtype)
         fout(r) = fansatz(
-            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+            cout,
             omega,
             r;
             order=infinity_expansionorder
         )
         dfout_dr(r) = dfansatz_dr(
-            ord -> outgoing_coefficient_at_inf(s, m, a, omega, lambda, ord; data_type=dtype),
+            cout,
             omega,
             r;
             order=infinity_expansionorder
@@ -792,8 +815,8 @@ function r_from_x(a, x)
     return 1 + gamma - 2*gamma*x
 end
 
-function isnegativeinteger(x)
-    isinteger(x) && x < 0
+function isnonpositiveinteger(x)
+    isinteger(x) && x <= 0
 end
 
 # Some helper functions for manipulating hypergeometric functions
@@ -804,26 +827,27 @@ end
 
 #=
 Since there is no implementation of a "regularized" Gauss hypergeometric function in
-HypergeometricFunctions.jl yet, we use the fact that when c approaches a negative
+HypergeometricFunctions.jl yet, we use the fact that when c approaches a nonpositive
 integer, 2F1(a,b;c,z)/Gamma(c) approaches the value
 
-lim c->-m 2F1(a, b; c, z)/Gamma(c) = (a)_m (b)_m / m! * z^m * 2F1(a+m, b+m; m+1; z)
+For c = 1-m with m >= 1:
+2F1(a, b; c, z)/Gamma(c) = (a)_m (b)_m / m! * z^m * 2F1(a+m, b+m; m+1; z).
 
 which is implemented below
 =#
 function _2F1_over_Gamma_c(a, b, c, z)
-    # NOTE This is true only when c is a negative integer
+    # Valid for nonpositive integer c.
     z *= (1 + 0im) # Make sure that z is a complex number
     m = abs(c) + 1
     ( pochhammer(a, m) * pochhammer(b, m) / factorial(m) ) * z^m * pFq((a+m, b+m), (m+1, ), z)
 end
 
 function _d2F1_over_Gamma_c_dz(a, b, c, z)
-    # NOTE This is true only when c is a negative integer
+    # Valid for nonpositive integer c.
     z *= (1 + 0im) # Make sure that z is a complex number
     m = abs(c) + 1
     # Here we explicitly compute the derivative because ForwardDiff.jl does not work very well with HypergeometricFunctions.jl
-    ( pochhammer(a, m) * pochhammer(b, m) / factorial(m) ) * (m*z^(m-1) * pFq((a+m, b+m), (m+1, ), z) + z^m * pFq((a+m+1, b+m+1), (m+2, ), z))
+    ( pochhammer(a, m) * pochhammer(b, m) / factorial(m) ) * (m*z^(m-1) * pFq((a+m, b+m), (m+1, ), z) + z^m * (a+m)*(b+m)/(m+1) * pFq((a+m+1, b+m+1), (m+2, ), z))
 end
 
 function solve_static_Rin(s::Int, l::Int, m::Int, a)
@@ -842,7 +866,7 @@ function solve_static_Rin(s::Int, l::Int, m::Int, a)
 
     Rin(r) = begin
         x = x_from_r(a, r)
-        if iszero(kappa) && isnegativeinteger(1-s)
+        if iszero(kappa) && isnonpositiveinteger(1-s)
             # Regularization
             normalization_const * x^(-s + kappa/2) * (1-x)^(kappa/2) * _2F1_over_Gamma_c(-l+kappa, 1+l+kappa, 1-s, x)
         else
@@ -852,7 +876,7 @@ function solve_static_Rin(s::Int, l::Int, m::Int, a)
 
     dRindr(r) = begin
         x = x_from_r(a, r)
-        if iszero(kappa) && isnegativeinteger(1-s)
+        if iszero(kappa) && isnonpositiveinteger(1-s)
             # Regularization
             normalization_const * (-1/(2*gamma)) * ( (1/2) * (1-x)^(-1+kappa/2) * x^(-1-s+kappa/2) * (2*s*(x-1) + kappa - 2*kappa*x) * _2F1_over_Gamma_c(-l+kappa, 1+l+kappa, 1-s, x) + x^(-s + kappa/2) * (1-x)^(kappa/2) * _d2F1_over_Gamma_c_dz(-l+kappa, 1+l+kappa, 1-s, x) )
         else

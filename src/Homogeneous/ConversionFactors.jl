@@ -2,6 +2,10 @@ module ConversionFactors
 
 const I = 1im
 
+# sqrt(2) in the floating type of the mode parameters, so that arbitrary-precision inputs are not
+# capped by a binary64 constant (for Float64 inputs this is the same value as before).
+@inline _sqrt_two(a, omega) = sqrt(2 * one(promote_type(typeof(float(real(a))), typeof(float(real(omega))))))
+
 #=
 The conversion factors here are *always* defined as
 the ratio of the coefficient in Teukosky equation *over*
@@ -49,24 +53,25 @@ function Binc(s::Int, m::Int, a, omega, lambda)
 end
 
 function Btrans(s::Int, m::Int, a, omega, lambda)
+    sqrt2 = _sqrt_two(a, omega)
     if s == 0
-        inv = sqrt(2)*sqrt(1 + sqrt(1 - a^2))
+        inv = sqrt2*sqrt(1 + sqrt(1 - a^2))
         return 1/inv
     elseif s == +1
         return begin
-            (sqrt(2)*sqrt(1 + sqrt(1 - a^2))*((-a)*m + 2*(1 + sqrt(1 - a^2))*omega))/
+            (sqrt2*sqrt(1 + sqrt(1 - a^2))*((-a)*m + 2*(1 + sqrt(1 - a^2))*omega))/
             (2*a*m + 2*I*(2 + lambda))
         end
     elseif s == -1
         inv = begin
-            (1/(1 + sqrt(1 - a^2))^(5/2))*(4*sqrt(2)*(2 - 2*a^2 + 2*sqrt(1 - a^2) - 
+            (1/(1 + sqrt(1 - a^2))^(5/2))*(4*sqrt2*(2 - 2*a^2 + 2*sqrt(1 - a^2) - 
             a^2*sqrt(1 - a^2) + 2*I*a*m - I*a^3*m + 2*I*a*sqrt(1 - a^2)*m - 8*I*omega + 
             6*I*a^2*omega - 8*I*sqrt(1 - a^2)*omega + 2*I*a^2*sqrt(1 - a^2)*omega))
         end
         return 1/inv
     elseif s == +2
         return begin
-            (2*sqrt(2)*(1 + sqrt(1 - a^2))^(3/2)*(2*a*(1 + sqrt(1 - a^2))*m*(1 + 8*I*omega) - 
+            (2*sqrt2*(1 + sqrt(1 - a^2))^(3/2)*(2*a*(1 + sqrt(1 - a^2))*m*(1 + 8*I*omega) - 
             8*I*(1 + sqrt(1 - a^2))*omega*(-I + 4*omega) + 
             a^3*m*(-2 - sqrt(1 - a^2) - 4*I*(3 + sqrt(1 - a^2))*omega) + 
             I*a^4*(m^2 + 2*(I - 2*omega)*omega) + 2*a^2*((-I)*(1 + sqrt(1 - a^2))*m^2 + 
@@ -82,7 +87,7 @@ function Btrans(s::Int, m::Int, a, omega, lambda)
         end
     elseif s == -2
         inv = begin
-            -((1/(1 + sqrt(1 - a^2))^(3/2))*(4*(sqrt(2)*(-4 + 6*a^2 - 2*a^4 - 4*sqrt(1 - a^2) + 
+            -((1/(1 + sqrt(1 - a^2))^(3/2))*(4*(sqrt2*(-4 + 6*a^2 - 2*a^4 - 4*sqrt(1 - a^2) + 
             4*a^2*sqrt(1 - a^2) - 6*I*a*m + 6*I*a^3*m - 6*I*a*sqrt(1 - a^2)*m + 
             3*I*a^3*sqrt(1 - a^2)*m + 2*a^2*m^2 - a^4*m^2 + 2*a^2*sqrt(1 - a^2)*m^2 + 
             24*I*omega - 30*I*a^2*omega + 6*I*a^4*omega + 24*I*sqrt(1 - a^2)*omega - 
@@ -97,11 +102,12 @@ function Btrans(s::Int, m::Int, a, omega, lambda)
 end
 
 function Cinc(s::Int, m::Int, a, omega, lambda)
+    sqrt2 = _sqrt_two(a, omega)
     if s == 0
-        return 1/(sqrt(2)*sqrt(1 + sqrt(1 - a^2)))
+        return 1/(sqrt2*sqrt(1 + sqrt(1 - a^2)))
     elseif s == +1
         inv = begin
-            (4*sqrt(2)*((-I)*a*(1 + sqrt(1 - a^2))*m + a^2*(-1 - 2*I*omega) + 
+            (4*sqrt2*((-I)*a*(1 + sqrt(1 - a^2))*m + a^2*(-1 - 2*I*omega) + 
             (1 + sqrt(1 - a^2))*(1 + 4*I*omega)))/(1 + sqrt(1 - a^2))^(3/2)
         end
         return 1/inv
@@ -109,11 +115,11 @@ function Cinc(s::Int, m::Int, a, omega, lambda)
         return begin
             (-4*a*m + 3*a^3*m - 4*a*sqrt(1 - a^2)*m + a^3*sqrt(1 - a^2)*m + 16*omega - 16*a^2*omega + 
             2*a^4*omega + 16*sqrt(1 - a^2)*omega - 8*a^2*sqrt(1 - a^2)*omega)/
-            (sqrt(2)*sqrt(1 + sqrt(1 - a^2))*(2 - a^2 + 2*sqrt(1 - a^2))*(a*m - I*lambda))
+            (sqrt2*sqrt(1 + sqrt(1 - a^2))*(2 - a^2 + 2*sqrt(1 - a^2))*(a*m - I*lambda))
         end
     elseif s == +2
         inv = begin
-            -((1/(1 + sqrt(1 - a^2))^(3/2))*(4*sqrt(2)*(-2*a*(1 + sqrt(1 - a^2))*m*(-3*I + 8*omega) + 
+            -((1/(1 + sqrt(1 - a^2))^(3/2))*(4*sqrt2*(-2*a*(1 + sqrt(1 - a^2))*m*(-3*I + 8*omega) + 
             a^3*m*(-3*I*(2 + sqrt(1 - a^2)) + 4*(3 + sqrt(1 - a^2))*omega) - 
             a^4*(2 + m^2 + 6*I*omega - 4*omega^2) + 4*(1 + sqrt(1 - a^2))*(-1 - 6*I*omega + 8*omega^2) + 
             2*a^2*(3 + 2*sqrt(1 - a^2) + (1 + sqrt(1 - a^2))*m^2 + 
@@ -122,7 +128,7 @@ function Cinc(s::Int, m::Int, a, omega, lambda)
         return 1/inv
     elseif s == -2
         return begin
-            -((2*sqrt(2)*(1 + sqrt(1 - a^2))^(3/2)*(-2*I*a*m + 2*I*a^3*m - 2*I*a*sqrt(1 - a^2)*m + 
+            -((2*sqrt2*(1 + sqrt(1 - a^2))^(3/2)*(-2*I*a*m + 2*I*a^3*m - 2*I*a*sqrt(1 - a^2)*m + 
             I*a^3*sqrt(1 - a^2)*m + 2*a^2*m^2 - a^4*m^2 + 2*a^2*sqrt(1 - a^2)*m^2 + 8*I*omega - 
             10*I*a^2*omega + 2*I*a^4*omega + 8*I*sqrt(1 - a^2)*omega - 6*I*a^2*sqrt(1 - a^2)*omega - 
             16*a*m*omega + 12*a^3*m*omega - 16*a*sqrt(1 - a^2)*m*omega + 4*a^3*sqrt(1 - a^2)*m*omega + 

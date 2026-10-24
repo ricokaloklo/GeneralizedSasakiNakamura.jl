@@ -16,12 +16,6 @@ macro bind(def, element)
     #! format: on
 end
 
-# ╔═╡ 1f0d7d7a-55a1-4a32-9a9f-2a4e0a30b101
-begin
-    import Pkg
-    Pkg.activate(joinpath(@__DIR__, ".."))
-end
-
 # ╔═╡ 5c4e0dc0-34b9-4e52-9c0f-d5f1f640a3b2
 begin
     using GeneralizedSasakiNakamura
@@ -50,13 +44,16 @@ begin
 end
 
 # ╔═╡ 0fbcfc49-81de-4452-87a1-5e358edc91f1
-md""
+md"""
+# Real-time ISEM demo
 
-# ╔═╡ 734a0d4b-d6bf-49c4-9498-e7255fd2e481
-md""
-
-# ╔═╡ f94a5856-1af9-414c-82ad-eedac5042fa6
-md""
+Choose a mode with the controls below. Each change solves the radial Teukolsky
+equation on the fly with `method = "ISEM"`, plots the Teukolsky function
+``R(r)`` and the GSN function ``X(r_*)`` on the chosen grid, and shows the
+solve time, the time to evaluate both functions on the grid, and the
+asymptotic amplitudes of ``R``. The first solve after the notebook starts also
+includes compilation time.
+"""
 
 # ╔═╡ 19c21045-e740-4c9a-8625-b0bf419224ac
 begin
@@ -87,31 +84,14 @@ begin
 
 end
 
-# ╔═╡ 45fb83ad-a8a9-4b35-8fc4-2f313d8f6bc7
-md""
-
-# ╔═╡ 3a61205f-8dcb-4073-aaf9-e3526d8e0973
-md""
-
-# ╔═╡ 894fc691-0060-4c6b-a06f-455dc374385c
-md""
-
-# ╔═╡ 1729d364-1888-4861-81cf-957fe3e783ec
-md""
-
-# ╔═╡ 2a59c0cf-618c-430c-818b-4b1e61cc69e0
-begin
-end
-
-# ╔═╡ 69f946d2-9d5e-43e6-9d95-49ef54188436
-md"""
-"""
-
 # ╔═╡ 93a65f2e-19b4-4a15-8210-70df148c519e
 function radial_demo_data(; s, l, m, a, omega, boundary, ngrid)
     solve_time = @elapsed begin
-        R = Teukolsky_radial(s, l, m, a, omega, boundary)
-        X = GSN_radial(s, l, m, a, omega, boundary)
+        R = Teukolsky_radial(
+            s, l, m, a, omega, boundary;
+            method = "ISEM",
+        )
+        X = R.GSN_solution
     end
 
     rsgrid = collect(range(-20, 100; length = ngrid))
@@ -124,9 +104,6 @@ function radial_demo_data(; s, l, m, a, omega, boundary, ngrid)
 
     return (; R, X, rgrid, rsgrid, Rvals, Xvals, solve_time, eval_time)
 end
-
-# ╔═╡ f418c7fc-0e98-4a75-b01d-dced20f289f4
-demo = nothing
 
 # ╔═╡ 56c221a3-e0e7-47e4-bded-00fcfb8bc2d4
 function svg_two_curves(xs, y1, y2; width = 900, height = 330, title = "", xlabel = "", ylabel = "")
@@ -226,7 +203,7 @@ function demo_card(demo; s, l, m, a, omega, boundary)
         xlabel = "r* / M",
         ylabel = "X(r*)",
     )
-    mode_text = @sprintf("s = %d, l = %d, m = %d, a = %.2f, omega = %.2f, boundary = %s", s, l, m, a, omega, string(boundary))
+    mode_text = @sprintf("ISEM | s = %d, l = %d, m = %d, a = %.2f, omega = %.2f, boundary = %s", s, l, m, a, omega, string(boundary))
     solve_time_text = @sprintf("Solve equation on-the-fly: %.3f ms", 1000 * demo.solve_time)
     eval_time_text = @sprintf("Evaluation on %d grid points: %.3f ms", length(demo.rgrid), 1000 * demo.eval_time)
     return HTML("""
@@ -433,29 +410,15 @@ begin
     card
 end
 
-# ╔═╡ 07cc551e-a67a-4dd5-9177-913b3a352a23
-md""
-
 # ╔═╡ Cell order:
-# ╠═1f0d7d7a-55a1-4a32-9a9f-2a4e0a30b101
 # ╠═5c4e0dc0-34b9-4e52-9c0f-d5f1f640a3b2
 # ╟─4d30ec04-4ab2-4a89-9ff9-b6e2fd5119d0
 # ╠═728bf380-6bb2-4012-8e7e-97ce7c4d7b42
 # ╟─0fbcfc49-81de-4452-87a1-5e358edc91f1
-# ╟─734a0d4b-d6bf-49c4-9498-e7255fd2e481
-# ╟─f94a5856-1af9-414c-82ad-eedac5042fa6
 # ╠═19c21045-e740-4c9a-8625-b0bf419224ac
-# ╟─45fb83ad-a8a9-4b35-8fc4-2f313d8f6bc7
-# ╟─3a61205f-8dcb-4073-aaf9-e3526d8e0973
-# ╟─894fc691-0060-4c6b-a06f-455dc374385c
-# ╟─1729d364-1888-4861-81cf-957fe3e783ec
-# ╠═2a59c0cf-618c-430c-818b-4b1e61cc69e0
-# ╟─69f946d2-9d5e-43e6-9d95-49ef54188436
 # ╠═93a65f2e-19b4-4a15-8210-70df148c519e
-# ╠═f418c7fc-0e98-4a75-b01d-dced20f289f4
 # ╠═56c221a3-e0e7-47e4-bded-00fcfb8bc2d4
 # ╠═755b4134-b6ed-4e81-8011-7f3d45e2dc54
 # ╠═4f683a59-1104-43ad-9175-4dd15a4525a4
 # ╠═7e7b5749-b83c-4439-8770-c9b64360e4c9
 # ╠═4888058e-51a4-42b4-8d6d-7de35af7a601
-# ╟─07cc551e-a67a-4dd5-9177-913b3a352a23
